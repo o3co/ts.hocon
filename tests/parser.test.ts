@@ -137,4 +137,18 @@ describe('parseTokens', () => {
       expect(node.fields[0]!.value.kind).toBe('include')
     }
   })
+
+  it('chains two quoted key segments with a dot', () => {
+    const node = parse('"a"."b" = 1')
+    if (node.kind === 'object') {
+      expect(node.fields[0]!.key).toEqual(['a', 'b'])
+    }
+  })
+
+  it('chains three quoted key segments with dots', () => {
+    const node = parse('"a"."b"."c" = 1')
+    if (node.kind === 'object') {
+      expect(node.fields[0]!.key).toEqual(['a', 'b', 'c'])
+    }
+  })
 })
