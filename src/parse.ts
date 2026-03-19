@@ -40,6 +40,12 @@ export function parse(input: string, opts: ParseOptions = {}): Config {
   return new Config(value)
 }
 
+/**
+ * Async wrapper around `parse()`. Returns a resolved Promise — the parsing
+ * itself is synchronous. Use `parseFileAsync()` for async file I/O.
+ * Note: `include` directives in string input are resolved synchronously
+ * via `readFileSync`; `readFile` is not used by this function.
+ */
 export async function parseAsync(input: string, opts: ParseOptions = {}): Promise<Config> {
   return Promise.resolve(parse(input, opts))
 }
