@@ -1,6 +1,9 @@
+import * as nodePath from 'node:path'
 import { ResolveError } from '../../errors.js'
-import type { AstNode, AstField } from '../parser/ast.js'
 import type { HoconValue } from '../../value.js'
+import type { AstNode, AstField } from '../parser/ast.js'
+import { tokenize } from '../lexer/lexer.js'
+import { parseTokens } from '../parser/parser.js'
 
 // ---- Internal placeholder types (not exported) ----
 type SubstPlaceholder = {
@@ -329,7 +332,22 @@ function lookupPath(root: ResObj, segments: string[]): ResolverValue | undefined
   return undefined
 }
 
-// loadInclude: stub — implemented in Task 6
 function loadInclude(includePath: string, opts: ResolveOptions): ResObj {
-  throw new ResolveError(`include not yet supported: ${includePath}`, includePath, 0, 0)
+  const { baseDir, readFileSync, includeStack = [], env } = opts
+  const absPath = baseDir
+    ? nodePath.resolve(baseDir, includePath)
+    : nodePath.resolve(includePath)
+
+  if (includeStack.includes(absPath)) {
+    throw new ResolveError(`circular include: ${absPath}`, absPath, 0, 0)
+  }
+
+  const content = readFileSync(absPath)
+  const ast = parseTokens(tokenize(content))
+  return buildResObj(ast, {
+    env,
+    baseDir: nodePath.dirname(absPath),
+    readFileSync,
+    includeStack: [...includeStack, absPath],
+  })
 }

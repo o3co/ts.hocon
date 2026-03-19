@@ -125,3 +125,35 @@ describe('Resolver - Pass 2 (substitutions)', () => {
     expect(obj(v).get('url')).toEqual({ kind: 'scalar', value: 'localhost' })
   })
 })
+
+describe('Resolver - include', () => {
+  function resolveWithFs(input: string, files: Record<string, string>): HoconValue {
+    const ast = parseTokens(tokenize(input))
+    return resolve(ast, {
+      env: {},
+      baseDir: '/fake',
+      readFileSync: (p: string) => {
+        const key = p.replace('/fake/', '')
+        if (!(key in files)) throw new Error(`file not found: ${p}`)
+        return files[key] ?? ''
+      },
+    })
+  }
+
+  it('merges included file into current object', () => {
+    const v = resolveWithFs('include "other.conf"\nport = 8080', {
+      'other.conf': 'host = "localhost"',
+    })
+    expect(obj(v).get('host')).toEqual({ kind: 'scalar', value: 'localhost' })
+    expect(obj(v).get('port')).toEqual({ kind: 'scalar', value: 8080 })
+  })
+
+  it('throws ResolveError on circular include', () => {
+    expect(() =>
+      resolveWithFs('include "a.conf"', {
+        'a.conf': 'include "b.conf"',
+        'b.conf': 'include "a.conf"',
+      })
+    ).toThrow(ResolveError)
+  })
+})
