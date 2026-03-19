@@ -6,7 +6,11 @@ export function parseTokens(tokens: Token[]): AstNode {
   let pos = 0
 
   function peek(): Token { return tokens[pos] ?? { kind: 'eof', value: '', line: 0, col: 0, isQuoted: false, precedingSpace: false } }
-  function advance(): Token { return tokens[pos++] ?? peek() }
+  function advance(): Token {
+    const t = tokens[pos]
+    if (pos < tokens.length) pos++
+    return t ?? { kind: 'eof', value: '', line: 0, col: 0, isQuoted: false, precedingSpace: false }
+  }
   function skip(...kinds: string[]): void {
     while (kinds.includes(peek().kind)) advance()
   }
@@ -79,10 +83,18 @@ export function parseTokens(tokens: Token[]): AstNode {
         // Split unquoted key at dots
         segments.push(...t.value.split('.').filter(s => s.length > 0))
       } else {
-        throw new ParseError(`expected key, got ${t.kind}`, t.line, t.col)
+        if (segments.length === 0) throw new ParseError(`expected key, got ${t.kind}`, t.line, t.col)
+        break
       }
-      // Only continue key parsing for quoted segments chained with a dot-prefixed next token.
-      // Unquoted keys are already dot-split above; quoted key chaining is not common in HOCON.
+
+      // Check for explicit dot separator between segments (e.g. "a"."b")
+      // A lone dot as an unquoted token with no preceding space continues the key
+      const next = peek()
+      if (next.kind === 'unquoted' && next.value === '.' && !next.precedingSpace) {
+        advance() // consume the dot separator
+        continue
+      }
+
       break
     }
     return segments
@@ -124,8 +136,6 @@ export function parseTokens(tokens: Token[]): AstNode {
     while (true) {
       const t = peek()
       if (t.kind === 'eof' || t.kind === 'newline' || t.kind === 'rbrace' || t.kind === 'rbracket' || t.kind === 'comma') break
-      // Space between tokens in value position ends a simple value (no concat across spaces)
-      if (parts.length > 0 && t.precedingSpace) break
 
       let node: AstNode
       if (t.kind === 'lbrace') {
