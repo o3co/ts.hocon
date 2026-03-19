@@ -153,6 +153,11 @@ export function parseTokens(tokens: Token[]): AstNode {
       } else if (t.kind === 'unquoted') {
         advance()
         node = { kind: 'scalar', value: parseScalarValue(t.value), pos: { line: t.line, col: t.col } }
+      } else if ((t.kind === 'colon' || t.kind === 'equals') && parts.length > 0) {
+        // In value concat context, colon/equals after at least one part are plain string chars
+        // e.g.  url = ${host}:/path  or  x = ${a}=b
+        advance()
+        node = { kind: 'scalar', value: t.value, pos: { line: t.line, col: t.col } }
       } else {
         break
       }
