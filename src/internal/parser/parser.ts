@@ -96,8 +96,8 @@ export function parseTokens(tokens: Token[]): AstNode {
     if (t.kind === 'string') {
       // include "path"
       path = advance().value
-    } else if (t.kind === 'unquoted' && (t.value === 'file(' || t.value === 'file' || t.value === 'url(' || t.value === 'url' || t.value === 'classpath(' || t.value === 'classpath')) {
-      // include file("path"), include url("path"), include classpath("path")
+    } else if (t.kind === 'unquoted' && (t.value === 'file(' || t.value === 'file')) {
+      // include file("path")
       advance()
       // Skip tokens until we find the quoted path string
       while (peek().kind !== 'string' && peek().kind !== 'eof') advance()
