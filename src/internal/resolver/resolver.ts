@@ -1,6 +1,6 @@
 import { ResolveError } from '../../errors.js'
 import type { AstNode, AstField } from '../parser/ast.js'
-import type { HoconValue } from '../../../value.js'
+import type { HoconValue } from '../../value.js'
 
 // ---- Internal placeholder types (not exported) ----
 type SubstPlaceholder = {
@@ -192,7 +192,7 @@ function resolveVal(
   if (hv.kind === 'array') {
     return {
       kind: 'array',
-      items: hv.items.map(item =>
+      items: hv.items.map((item: HoconValue) =>
         resolveVal(item as ResolverValue, scope, root, resolving, resolvedCache, opts)
         ?? ({ kind: 'scalar', value: null } satisfies HoconValue)
       ),
@@ -213,7 +213,7 @@ function resolveSubst(
 
   if (resolving.has(s.path)) {
     // Cycle detected: try prior value for self-referential substitutions.
-    // Look at the innermost key of the path in scope.priorValues first,
+    // Look at the outermost (root) segment of the path in scope.priorValues first,
     // then fall back to root-level priorValues.
     const rootSeg = s.path.split('.')[0]!
     const prior = scope.priorValues.get(rootSeg) ?? root.priorValues.get(rootSeg)
@@ -274,6 +274,19 @@ function resolveConcat(
 
   if (resolved.length === 0) return { kind: 'scalar', value: null }
   if (resolved.length === 1) return resolved[0]!
+
+  // Object concatenation: if all elements are objects, deep-merge them
+  if (resolved.every(v => v.kind === 'object')) {
+    const merged = new Map<string, HoconValue>()
+    for (const v of resolved) {
+      if (v.kind === 'object') {
+        for (const [k, val] of v.fields) {
+          merged.set(k, val)
+        }
+      }
+    }
+    return { kind: 'object', fields: merged }
+  }
 
   // Array concatenation: if any element is an array, treat all as array elements
   if (resolved.some(v => v.kind === 'array')) {

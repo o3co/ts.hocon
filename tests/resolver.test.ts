@@ -119,4 +119,9 @@ describe('Resolver - Pass 2 (substitutions)', () => {
   it('throws ResolveError on circular substitution', () => {
     expect(() => resolveStr('a = ${b}\nb = ${a}')).toThrow(ResolveError)
   })
+
+  it('resolves forward-reference substitution', () => {
+    const v = resolveStr('url = $' + '{host}\nhost = "localhost"')
+    expect(obj(v).get('url')).toEqual({ kind: 'scalar', value: 'localhost' })
+  })
 })
