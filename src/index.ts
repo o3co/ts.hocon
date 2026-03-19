@@ -1,2 +1,5 @@
-// exports will be added in later tasks
-export {}
+export { Config } from './config.js'
+export { ConfigError, ParseError, ResolveError } from './errors.js'
+export type { HoconValue } from './value.js'
+export { parse, parseAsync, parseFile, parseFileAsync } from './parse.js'
+export type { ParseOptions } from './parse.js'
