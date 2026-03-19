@@ -33,6 +33,10 @@ export function parseTokens(tokens: Token[]): AstNode {
       if (t.kind === 'unquoted' && t.value === 'include') {
         advance()
         fields.push(parseInclude())
+        // trailing separator after include
+        skip('newline')
+        if (peek().kind === 'comma') advance()
+        skip('newline')
         continue
       }
 
@@ -73,25 +77,35 @@ export function parseTokens(tokens: Token[]): AstNode {
 
   function parseKey(): string[] {
     const segments: string[] = []
+    let trailingDot = false
     while (true) {
       const t = peek()
       if (t.kind === 'string') {
         advance()
         segments.push(t.value) // quoted: no dot split
+        trailingDot = false
       } else if (t.kind === 'unquoted') {
         advance()
         // Split unquoted key at dots
-        segments.push(...t.value.split('.').filter(s => s.length > 0))
+        const parts = t.value.split('.')
+        const filtered = parts.filter(s => s.length > 0)
+        segments.push(...filtered)
+        // If the unquoted value ended with a dot, the next token continues the key
+        trailingDot = t.value.endsWith('.')
       } else {
         if (segments.length === 0) throw new ParseError(`expected key, got ${t.kind}`, t.line, t.col)
         break
       }
+
+      // If the last unquoted segment ended with a dot, continue to next token
+      if (trailingDot) continue
 
       // Check for explicit dot separator between segments (e.g. "a"."b")
       // A lone dot as an unquoted token with no preceding space continues the key
       const next = peek()
       if (next.kind === 'unquoted' && next.value === '.' && !next.precedingSpace) {
         advance() // consume the dot separator
+        trailingDot = true
         continue
       }
 
@@ -102,6 +116,7 @@ export function parseTokens(tokens: Token[]): AstNode {
 
   function parseInclude(): AstField {
     const p = currentPos()
+    skip('newline')
     const t = peek()
     let path: string
 
@@ -137,6 +152,10 @@ export function parseTokens(tokens: Token[]): AstNode {
       const t = peek()
       if (t.kind === 'eof' || t.kind === 'newline' || t.kind === 'rbrace' || t.kind === 'rbracket' || t.kind === 'comma') break
 
+      // If there was whitespace before this token and we already have parts,
+      // insert a space node for proper string concatenation.
+      const hadSpace = t.precedingSpace && parts.length > 0
+
       let node: AstNode
       if (t.kind === 'lbrace') {
         advance()
@@ -160,6 +179,9 @@ export function parseTokens(tokens: Token[]): AstNode {
         node = { kind: 'scalar', value: t.value, pos: { line: t.line, col: t.col } }
       } else {
         break
+      }
+      if (hadSpace) {
+        parts.push({ kind: 'scalar', value: ' ', pos: { line: t.line, col: t.col } })
       }
       parts.push(node)
     }

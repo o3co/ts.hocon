@@ -218,7 +218,7 @@ function resolveSubst(
     // Cycle detected: try prior value for self-referential substitutions.
     // Look at the outermost (root) segment of the path in scope.priorValues first,
     // then fall back to root-level priorValues.
-    const rootSeg = s.path.split('.')[0]!
+    const rootSeg = parseSubstPath(s.path)[0] ?? ''
     const prior = scope.priorValues.get(rootSeg) ?? root.priorValues.get(rootSeg)
     if (prior !== undefined) {
       // Resolve prior with a fresh resolving set to avoid re-triggering the cycle check
@@ -230,12 +230,12 @@ function resolveSubst(
 
   resolving.add(s.path)
   try {
-    const found = lookupPath(root, s.path.split('.'))
+    const found = lookupPath(root, parseSubstPath(s.path))
     if (found !== undefined) {
       // If the found value is still a subst/concat placeholder pointing at itself,
       // use the prior value (self-referential overwrite case).
       if (isSubst(found) || isConcat(found)) {
-        const rootSeg = s.path.split('.')[0]!
+        const rootSeg = parseSubstPath(s.path)[0] ?? ''
         const prior = scope.priorValues.get(rootSeg) ?? root.priorValues.get(rootSeg)
         if (prior !== undefined) {
           const result = resolveVal(prior, scope, root, resolving, resolvedCache, opts)
@@ -302,7 +302,7 @@ function resolveConcat(
   }
 
   // String concatenation
-  const str = resolved.map(v => v.kind === 'scalar' ? String(v.value ?? '') : JSON.stringify(v)).join('')
+  const str = resolved.map(v => v.kind === 'scalar' ? String(v.value) : JSON.stringify(v)).join('')
   return { kind: 'scalar', value: str }
 }
 
@@ -324,12 +324,66 @@ function resolveAppend(
 
 function lookupPath(root: ResObj, segments: string[]): ResolverValue | undefined {
   const [head, ...tail] = segments
-  if (!head) return undefined
+  if (head === undefined || head === '') {
+    // For empty-string keys like "", try direct lookup
+    if (segments.length > 0) {
+      const val = root.fields.get('')
+      if (val === undefined) return undefined
+      if (tail.length === 0) return val
+      if (isResObj(val)) return lookupPath(val, tail)
+      return undefined
+    }
+    return undefined
+  }
   const val = root.fields.get(head)
   if (val === undefined) return undefined
   if (tail.length === 0) return val
   if (isResObj(val)) return lookupPath(val, tail)
   return undefined
+}
+
+/**
+ * Parse a substitution path that may contain quoted segments.
+ * E.g. `"a.b.c"` → ["a.b.c"], `a.b.c` → ["a","b","c"],
+ * `"".""."""` → ["","",""]
+ */
+function parseSubstPath(raw: string): string[] {
+  const segments: string[] = []
+  let i = 0
+  while (i < raw.length) {
+    // Skip whitespace
+    while (i < raw.length && (raw[i] === ' ' || raw[i] === '\t')) i++
+    if (i >= raw.length) break
+
+    if (raw[i] === '"') {
+      // Quoted segment
+      i++ // skip opening quote
+      let seg = ''
+      while (i < raw.length && raw[i] !== '"') {
+        seg += raw[i]
+        i++
+      }
+      if (i < raw.length) i++ // skip closing quote
+      segments.push(seg)
+      // Skip whitespace and dot separator
+      while (i < raw.length && (raw[i] === ' ' || raw[i] === '\t')) i++
+      if (i < raw.length && raw[i] === '.') i++
+    } else if (raw[i] === '.') {
+      // Dot at start or after dot means empty-string segment
+      segments.push('')
+      i++
+    } else {
+      // Unquoted segment - read until dot or end
+      let seg = ''
+      while (i < raw.length && raw[i] !== '.') {
+        seg += raw[i]
+        i++
+      }
+      segments.push(seg.trim())
+      if (i < raw.length && raw[i] === '.') i++
+    }
+  }
+  return segments
 }
 
 function loadInclude(includePath: string, opts: ResolveOptions): ResObj {
@@ -342,12 +396,33 @@ function loadInclude(includePath: string, opts: ResolveOptions): ResObj {
     throw new ResolveError(`circular include: ${absPath}`, absPath, 0, 0)
   }
 
-  const content = readFileSync(absPath)
-  const ast = parseTokens(tokenize(content))
-  return buildResObj(ast, {
-    env,
-    baseDir: nodePath.dirname(absPath),
-    readFileSync,
-    includeStack: [...includeStack, absPath],
-  })
+  // Try the path as-is, then with .conf and .json extensions
+  const candidates = [absPath]
+  if (!absPath.endsWith('.conf') && !absPath.endsWith('.json') && !absPath.endsWith('.properties')) {
+    candidates.push(absPath + '.conf', absPath + '.json')
+  }
+
+  for (const candidate of candidates) {
+    let content: string
+    try {
+      content = readFileSync(candidate)
+    } catch {
+      continue // file not found, try next candidate
+    }
+
+    if (includeStack.includes(candidate)) {
+      throw new ResolveError(`circular include: ${candidate}`, candidate, 0, 0)
+    }
+
+    const ast = parseTokens(tokenize(content))
+    return buildResObj(ast, {
+      env,
+      baseDir: nodePath.dirname(candidate),
+      readFileSync,
+      includeStack: [...includeStack, candidate],
+    })
+  }
+
+  // Missing includes are silently ignored per HOCON spec
+  return makeResObj()
 }

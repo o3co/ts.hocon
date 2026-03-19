@@ -79,11 +79,25 @@ export function tokenize(input: string): Token[] {
     if (ch === '"' && peek(1) === '"' && peek(2) === '"') {
       advance(); advance(); advance()
       let value = ''
-      while (!(peek() === '"' && peek(1) === '"' && peek(2) === '"')) {
-        if (pos >= input.length) throw new ParseError('unterminated triple-quoted string', sl, sc)
+      while (pos < input.length) {
+        if (peek() === '"') {
+          // Count consecutive quotes
+          let quoteCount = 0
+          while (pos < input.length && peek() === '"') {
+            quoteCount++
+            advance()
+          }
+          if (quoteCount >= 3) {
+            // Last 3 quotes are the closing delimiter; extras are content
+            for (let i = 0; i < quoteCount - 3; i++) value += '"'
+            break
+          }
+          // Fewer than 3 quotes — they are content
+          for (let i = 0; i < quoteCount; i++) value += '"'
+          continue
+        }
         value += advance()
       }
-      advance(); advance(); advance()
       if (value.startsWith('\n')) value = value.slice(1)
       push('triple_string', value, sl, sc, true)
       continue
