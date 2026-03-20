@@ -174,7 +174,16 @@ function resolveResObj(
   const result = new Map<string, HoconValue>()
   for (const [key, val] of obj.fields) {
     const resolved = resolveVal(val, obj, root, resolving, resolvedCache, opts)
-    if (resolved !== undefined) result.set(key, resolved)
+    if (resolved !== undefined) {
+      result.set(key, resolved)
+    } else {
+      // Unresolved optional substitution: fall back to prior value per HOCON spec
+      const prior = obj.priorValues.get(key)
+      if (prior !== undefined) {
+        const priorResolved = resolveVal(prior, obj, root, resolving, resolvedCache, opts)
+        if (priorResolved !== undefined) result.set(key, priorResolved)
+      }
+    }
   }
   return { kind: 'object', fields: result }
 }
