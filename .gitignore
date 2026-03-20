@@ -1,3 +1,19 @@
-node_modules/
+# Build output
 dist/
 *.tsbuildinfo
+
+# Dependencies
+node_modules/
+
+# Coverage
+coverage/
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Claude Code (local-only settings)
+.claude/settings.local.json
