@@ -20,27 +20,27 @@ Open an issue first to discuss the proposal before sending a PR. This avoids was
 ```bash
 git clone https://github.com/o3co/ts.hocon.git
 cd ts.hocon
-npm install
-npm test
+pnpm install
+pnpm test
 ```
 
 ## Running Tests
 
 ```bash
 # All tests
-npm test
+pnpm test
 
 # Watch mode
-npm run test:watch
+pnpm test:watch
 
 # With coverage
-npm run coverage
+pnpm coverage
 
 # Type check only
-npm run typecheck
+pnpm typecheck
 
 # Lightbend spec compliance suite
-npx vitest run tests/lightbend/
+pnpm vitest run tests/lightbend/
 ```
 
 ## Code Style
@@ -54,7 +54,7 @@ npx vitest run tests/lightbend/
 
 1. Fork the repository and create a branch from `develop`
 2. Write tests for your change
-3. Ensure `npm test` and `npm run typecheck` pass
+3. Ensure `pnpm test` and `pnpm typecheck` pass
 4. Open a PR against `develop` with a clear description of what and why
 
 ## License
