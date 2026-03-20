@@ -10,7 +10,7 @@ Provide transparent performance data for ts.hocon so users can make informed ado
 
 ## Approach
 
-Use Vitest's built-in benchmark feature (`vitest bench` / `tinybench`). No additional dependencies required.
+Use Vitest's built-in benchmark feature (`vitest bench` / `tinybench`). No additional dependencies required. Use tinybench defaults for warmup and iteration count — Vitest auto-calibrates iterations based on execution time, which is sufficient for these benchmarks.
 
 ## File Structure
 
@@ -34,7 +34,18 @@ Add script:
 
 ### vitest.config.ts
 
-Add benchmark configuration to include `tests/bench/**/*.bench.ts`. Ensure bench files are excluded from normal test runs.
+Add benchmark configuration under `test.benchmark.include`. Normal test runs already exclude `.bench.ts` files via the existing `test.include` pattern (`tests/**/*.test.ts`).
+
+```typescript
+export default defineConfig({
+  test: {
+    include: ['tests/**/*.test.ts'],
+    benchmark: {
+      include: ['tests/bench/**/*.bench.ts'],
+    },
+  },
+})
+```
 
 ## Test Data (fixtures.ts)
 
@@ -44,19 +55,23 @@ Dynamic generators that produce equivalent data in both HOCON and JSON formats.
 
 ```typescript
 generateConfig(size: 'small' | 'medium' | 'large'): { hocon: string; json: string }
-generateWithSubstitutions(count: number): { hocon: string; json: string }
+generateWithSubstitutions(count: number, baseKeys?: number): { hocon: string; json: string }
 generateDeepNested(depth: number): { hocon: string; json: string }
 ```
 
 ### Size Definitions
 
-| Scenario | Keys | Nesting Depth |
-|---|---|---|
-| small | ~10 | 2 |
-| medium | ~100 | 4 |
-| large | ~1000 | 6 |
+| Scenario | Keys | Nesting Depth | Rationale |
+|---|---|---|---|
+| small | ~10 | 2 | Typical microservice config |
+| medium | ~100 | 4 | Typical monolith / multi-module config |
+| large | ~1000 | 6 | Stress test |
 
 Substitution and deep nesting are separate generators to isolate their individual cost impact.
+
+### Substitution Benchmark Data
+
+For substitution benchmarks, the base config size should be proportional: `baseKeys = count * 2` (each substitution needs at least one source key to reference). For example, 50 substitutions uses a config with ~100 base keys. The `generateWithSubstitutions` function accepts an optional `baseKeys` parameter, defaulting to `count * 2`.
 
 ### Fairness Constraint
 
@@ -64,7 +79,7 @@ For JSON.parse comparison, only substitution-free equivalent data is used (since
 
 ## Benchmark 1: ts.hocon Single Performance (parse.bench.ts)
 
-End-to-end measurement: `parse(hoconString)` -> `Config` -> `config.getString('key')`.
+Intentionally end-to-end only: `parse(hoconString)` -> `Config` -> `config.getString('key')`. Parse-only (without value retrieval) is not measured separately — the goal is to show the cost users actually experience, not internal breakdown.
 
 ### Groups
 
@@ -151,8 +166,12 @@ To be included alongside benchmark results for context.
 | Append operator (`+=`) | Yes | No |
 | Environment-based config | Configurable via HOCON | Yes (filename convention) |
 | Schema validation | Zod integration | No |
-| Programmatic API | `parse(string)` | File-based only |
+| Programmatic API | `parse(string)` | File-based initialization, then `get()` |
 | Typed getters | `getString`, `getNumber`, etc. | `get()` (any) |
+
+## Scope
+
+This spec covers the benchmark implementation only. Publishing results to README or docs is a separate task.
 
 ## Execution
 
