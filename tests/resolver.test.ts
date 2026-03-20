@@ -94,6 +94,24 @@ describe('Resolver - Pass 2 (substitutions)', () => {
     expect(obj(v).get('b')).toBeUndefined()
   })
 
+  it('falls back to prior value when ${?path} is unresolved', () => {
+    const v = resolveStr('port = 50051\nport = ${?GRPC_PORT}')
+    expect(obj(v).get('port')).toEqual({ kind: 'scalar', value: 50051 })
+  })
+
+  it('uses env var when ${?path} resolves', () => {
+    const v = resolveStr('port = 50051\nport = ${?GRPC_PORT}', { GRPC_PORT: '9090' })
+    expect(obj(v).get('port')).toEqual({ kind: 'scalar', value: '9090' })
+  })
+
+  it('falls back to prior value for nested ${?path}', () => {
+    const v = resolveStr('server { port = 8080 }\nserver { port = ${?SERVER_PORT} }')
+    const server = obj(v).get('server')
+    if (server?.kind === 'object') {
+      expect(server.fields.get('port')).toEqual({ kind: 'scalar', value: 8080 })
+    }
+  })
+
   it('throws ResolveError for unresolved mandatory substitution', () => {
     expect(() => resolveStr('b = ${missing}')).toThrow(ResolveError)
   })
