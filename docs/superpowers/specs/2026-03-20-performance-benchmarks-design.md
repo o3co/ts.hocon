@@ -55,7 +55,7 @@ Dynamic generators that produce equivalent data in both HOCON and JSON formats.
 
 ```typescript
 generateConfig(size: 'small' | 'medium' | 'large'): { hocon: string; json: string }
-generateWithSubstitutions(count: number, baseKeys?: number): { hocon: string; json: string }
+generateWithSubstitutions(count: number, baseKeys?: number): { hocon: string }
 generateDeepNested(depth: number): { hocon: string; json: string }
 ```
 
