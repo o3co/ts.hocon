@@ -174,6 +174,55 @@ v0.1.0 で未対応の機能:
 - `include classpath(...)`
 - `.properties` ファイルのパース
 
+## パフォーマンス
+
+### ts.hocon のパースコスト
+
+[Vitest bench](https://vitest.dev/guide/features.html#benchmarking)（tinybench）で計測。`pnpm bench` で再現できます。
+
+| シナリオ | ops/sec | 1回あたりの時間 |
+|---|---|---|
+| 小規模設定（10キー） | ~200,000 | ~5 µs |
+| 中規模設定（100キー） | ~23,000 | ~43 µs |
+| 大規模設定（1,000キー） | ~2,100 | ~476 µs |
+| substitution 10個 | ~74,000 | ~14 µs |
+| substitution 50個 | ~14,000 | ~71 µs |
+| substitution 100個 | ~6,900 | ~145 µs |
+| ネスト深度 5 | ~210,000 | ~5 µs |
+| ネスト深度 10 | ~147,000 | ~7 µs |
+| ネスト深度 20 | ~80,000 | ~13 µs |
+
+### JSON.parse との比較
+
+JSON.parse は V8 のネイティブ C++ 実装であり、最速の基準線です。この比較は HOCON の豊富な機能によるオーバーヘッドを示します。
+
+| 設定サイズ | ts.hocon | JSON.parse | 倍率 |
+|---|---|---|---|
+| 小規模（10キー） | ~198K ops/s | ~1,967K ops/s | ~10x |
+| 中規模（100キー） | ~23K ops/s | ~280K ops/s | ~12x |
+| 大規模（1,000キー） | ~2.2K ops/s | ~12K ops/s | ~5.4x |
+
+一般的なアプリケーション設定（起動時に1回読み込み）であれば、パースコストは無視できるレベルです。1,000キーの設定でも 0.5 ms 未満でパースできます。
+
+### node-config との機能比較
+
+ts.hocon は [node-config](https://github.com/node-config/node-config)（JSON）と比較して、大幅に豊富な設定機能を提供します：
+
+| 機能 | ts.hocon | node-config (JSON) |
+|---|---|---|
+| コメント | `//` `#` | 非対応 |
+| 複数行文字列 | `"""..."""` | 非対応 |
+| substitution（`${path}`） | 対応 | 非対応 |
+| optional substitution（`${?path}`） | 対応 | 非対応 |
+| 環境変数参照 | 対応（substitution経由） | 部分対応（`custom-environment-variables` ファイル） |
+| include | 対応 | 非対応 |
+| ディープマージ | 対応（配列も対応） | 部分対応（配列は置換） |
+| 追加演算子（`+=`） | 対応 | 非対応 |
+| 環境別設定 | HOCON仕様で自由に構成可 | 対応（ファイル名規約） |
+| スキーマ検証 | Zod 統合 | 非対応 |
+| プログラマティック API | `parse(string)` | ファイルベース初期化後に `get()` |
+| 型付きゲッター | `getString`, `getNumber` 等 | `get()`（any） |
+
 ## ブラウザ対応
 
 `parse()` と `parseAsync()` はブラウザで動作します。`parseFile()` と `parseFileAsync()` は Node.js（またはカスタムの `readFileSync`/`readFile` オプション）が必要です。

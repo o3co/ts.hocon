@@ -174,6 +174,55 @@ Not supported in v0.1.0:
 - `include classpath(...)`
 - `.properties` file parsing
 
+## Performance
+
+### ts.hocon Parsing Cost
+
+Measured with [Vitest bench](https://vitest.dev/guide/features.html#benchmarking) (tinybench). Run `pnpm bench` to reproduce.
+
+| Scenario | ops/sec | Time per op |
+|---|---|---|
+| Small config (10 keys) | ~200,000 | ~5 µs |
+| Medium config (100 keys) | ~23,000 | ~43 µs |
+| Large config (1,000 keys) | ~2,100 | ~476 µs |
+| 10 substitutions | ~74,000 | ~14 µs |
+| 50 substitutions | ~14,000 | ~71 µs |
+| 100 substitutions | ~6,900 | ~145 µs |
+| Depth 5 nesting | ~210,000 | ~5 µs |
+| Depth 10 nesting | ~147,000 | ~7 µs |
+| Depth 20 nesting | ~80,000 | ~13 µs |
+
+### Comparison with JSON.parse
+
+JSON.parse is V8's native C++ implementation — the fastest possible baseline. This comparison shows the overhead of HOCON's rich feature set.
+
+| Config Size | ts.hocon | JSON.parse | Ratio |
+|---|---|---|---|
+| Small (10 keys) | ~198K ops/s | ~1,967K ops/s | ~10x |
+| Medium (100 keys) | ~23K ops/s | ~280K ops/s | ~12x |
+| Large (1,000 keys) | ~2.2K ops/s | ~12K ops/s | ~5.4x |
+
+For typical application configs (loaded once at startup), the parsing cost is negligible — even a 1,000-key config parses in under 0.5 ms.
+
+### Feature Comparison with node-config
+
+ts.hocon provides significantly richer configuration capabilities compared to [node-config](https://github.com/node-config/node-config) (JSON):
+
+| Feature | ts.hocon | node-config (JSON) |
+|---|---|---|
+| Comments | `//` `#` | No |
+| Multi-line strings | `"""..."""` | No |
+| Substitution (`${path}`) | Yes | No |
+| Optional substitution (`${?path}`) | Yes | No |
+| Environment variable reference | Yes (via substitution) | Partial (`custom-environment-variables` file) |
+| Include | Yes | No |
+| Deep merge | Yes (arrays too) | Partial (arrays replaced) |
+| Append operator (`+=`) | Yes | No |
+| Environment-based config | Configurable via HOCON | Yes (filename convention) |
+| Schema validation | Zod integration | No |
+| Programmatic API | `parse(string)` | File-based initialization, then `get()` |
+| Typed getters | `getString`, `getNumber`, etc. | `get()` (any) |
+
 ## Browser Compatibility
 
 `parse()` and `parseAsync()` work in browsers. `parseFile()` and `parseFileAsync()` require Node.js (or a custom `readFileSync`/`readFile` option).
