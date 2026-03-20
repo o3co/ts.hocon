@@ -18,14 +18,22 @@ export class Config {
 
   getNumber(path: string): number {
     const v = this.requireScalar(path)
-    if (typeof v !== 'number') throw new ConfigError(`expected number at ${path}, got ${typeof v}`, path)
-    return v
+    if (typeof v === 'number') return v
+    if (typeof v === 'string') {
+      const n = Number(v)
+      if (!Number.isNaN(n)) return n
+    }
+    throw new ConfigError(`expected number at ${path}, got ${typeof v}`, path)
   }
 
   getBoolean(path: string): boolean {
     const v = this.requireScalar(path)
-    if (typeof v !== 'boolean') throw new ConfigError(`expected boolean at ${path}, got ${typeof v}`, path)
-    return v
+    if (typeof v === 'boolean') return v
+    if (typeof v === 'string') {
+      if (v === 'true') return true
+      if (v === 'false') return false
+    }
+    throw new ConfigError(`expected boolean at ${path}, got ${typeof v}`, path)
   }
 
   getConfig(path: string): Config {

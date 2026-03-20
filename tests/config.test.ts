@@ -40,14 +40,39 @@ describe('Config', () => {
     expect(c.getNumber('port')).toBe(8080)
   })
 
-  it('getNumber() throws ConfigError for non-number', () => {
+  it('getNumber() coerces numeric string to number', () => {
+    const c = makeConfig({ port: { kind: 'scalar', value: '9999' } })
+    expect(c.getNumber('port')).toBe(9999)
+  })
+
+  it('getNumber() throws ConfigError for non-numeric string', () => {
     const c = makeConfig({ host: { kind: 'scalar', value: 'localhost' } })
     expect(() => c.getNumber('host')).toThrow(ConfigError)
+  })
+
+  it('getNumber() throws ConfigError for non-number/non-string', () => {
+    const c = makeConfig({ flag: { kind: 'scalar', value: true } })
+    expect(() => c.getNumber('flag')).toThrow(ConfigError)
   })
 
   it('getBoolean() returns boolean value', () => {
     const c = makeConfig({ debug: { kind: 'scalar', value: true } })
     expect(c.getBoolean('debug')).toBe(true)
+  })
+
+  it('getBoolean() coerces string "true" to true', () => {
+    const c = makeConfig({ debug: { kind: 'scalar', value: 'true' } })
+    expect(c.getBoolean('debug')).toBe(true)
+  })
+
+  it('getBoolean() coerces string "false" to false', () => {
+    const c = makeConfig({ debug: { kind: 'scalar', value: 'false' } })
+    expect(c.getBoolean('debug')).toBe(false)
+  })
+
+  it('getBoolean() throws ConfigError for non-boolean string', () => {
+    const c = makeConfig({ val: { kind: 'scalar', value: 'yes' } })
+    expect(() => c.getBoolean('val')).toThrow(ConfigError)
   })
 
   it('getConfig() returns sub-config', () => {
