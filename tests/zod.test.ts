@@ -39,6 +39,163 @@ describe('validate()', () => {
   })
 })
 
+describe('validate() HOCON-aware coercion', () => {
+  it('coerces string "true" to boolean for z.boolean()', () => {
+    const c = parse('debug = "true"')
+    const schema = z.object({ debug: z.boolean() })
+    const result = validate(c, schema)
+    expect(result.debug).toBe(true)
+  })
+
+  it('coerces string "false" to boolean for z.boolean()', () => {
+    const c = parse('debug = "false"')
+    const schema = z.object({ debug: z.boolean() })
+    const result = validate(c, schema)
+    expect(result.debug).toBe(false)
+  })
+
+  it('coerces "yes"/"no"/"on"/"off" to boolean', () => {
+    const c = parse(`
+      a = "yes"
+      b = "no"
+      c = "on"
+      d = "off"
+    `)
+    const schema = z.object({
+      a: z.boolean(),
+      b: z.boolean(),
+      c: z.boolean(),
+      d: z.boolean(),
+    })
+    const result = validate(c, schema)
+    expect(result.a).toBe(true)
+    expect(result.b).toBe(false)
+    expect(result.c).toBe(true)
+    expect(result.d).toBe(false)
+  })
+
+  it('coerces case-insensitively', () => {
+    const c = parse('flag = "TRUE"')
+    const schema = z.object({ flag: z.boolean() })
+    expect(validate(c, schema).flag).toBe(true)
+  })
+
+  it('passes through boolean literals without coercion', () => {
+    const c = parse('debug = false')
+    const schema = z.object({ debug: z.boolean() })
+    expect(validate(c, schema).debug).toBe(false)
+  })
+})
+
+describe('validate() number coercion', () => {
+  it('coerces numeric string to number for z.number()', () => {
+    const c = parse('port = "8080"')
+    const schema = z.object({ port: z.number() })
+    expect(validate(c, schema).port).toBe(8080)
+  })
+
+  it('coerces float string to number', () => {
+    const c = parse('rate = "3.14"')
+    const schema = z.object({ rate: z.number() })
+    expect(validate(c, schema).rate).toBe(3.14)
+  })
+
+  it('passes through number literals without coercion', () => {
+    const c = parse('port = 8080')
+    const schema = z.object({ port: z.number() })
+    expect(validate(c, schema).port).toBe(8080)
+  })
+
+  it('lets Zod reject non-numeric strings', () => {
+    const c = parse('port = "abc"')
+    const schema = z.object({ port: z.number() })
+    expect(() => validate(c, schema)).toThrow()
+  })
+})
+
+describe('validate() wrapper unwrapping', () => {
+  it('coerces through z.optional()', () => {
+    const c = parse('debug = "true"')
+    const schema = z.object({ debug: z.boolean().optional() })
+    expect(validate(c, schema).debug).toBe(true)
+  })
+
+  it('coerces through z.nullable()', () => {
+    const c = parse('debug = "false"')
+    const schema = z.object({ debug: z.boolean().nullable() })
+    expect(validate(c, schema).debug).toBe(false)
+  })
+
+  it('coerces through z.default()', () => {
+    const c = parse('debug = "on"')
+    const schema = z.object({ debug: z.boolean().default(false) })
+    expect(validate(c, schema).debug).toBe(true)
+  })
+
+  it('coerces through z.readonly()', () => {
+    const c = parse('debug = "true"')
+    const schema = z.object({ debug: z.boolean().readonly() })
+    expect(validate(c, schema).debug).toBe(true)
+  })
+
+  it('coerces through z.catch()', () => {
+    const c = parse('debug = "yes"')
+    const schema = z.object({ debug: z.boolean().catch(false) })
+    expect(validate(c, schema).debug).toBe(true)
+  })
+
+  it('coerces inside z.array()', () => {
+    const c = parse('flags = ["true", "false", "yes"]')
+    const schema = z.object({ flags: z.array(z.boolean()) })
+    const result = validate(c, schema)
+    expect(result.flags).toEqual([true, false, true])
+  })
+
+  it('coerces in nested objects', () => {
+    const c = parse(`
+      server {
+        debug = "true"
+        port = "3000"
+      }
+    `)
+    const schema = z.object({
+      server: z.object({
+        debug: z.boolean(),
+        port: z.number(),
+      }),
+    })
+    const result = validate(c, schema)
+    expect(result.server.debug).toBe(true)
+    expect(result.server.port).toBe(3000)
+  })
+})
+
+describe('validate() passthrough behavior', () => {
+  it('passes through string values for z.string()', () => {
+    const c = parse('name = "hello"')
+    const schema = z.object({ name: z.string() })
+    expect(validate(c, schema).name).toBe('hello')
+  })
+
+  it('lets Zod reject non-boolean strings for z.boolean()', () => {
+    const c = parse('debug = "maybe"')
+    const schema = z.object({ debug: z.boolean() })
+    expect(() => validate(c, schema)).toThrow()
+  })
+})
+
+describe('getValidated() coercion', () => {
+  it('coerces boolean string at path', () => {
+    const c = parse('debug = "false"')
+    expect(getValidated(c, 'debug', z.boolean())).toBe(false)
+  })
+
+  it('coerces numeric string at path', () => {
+    const c = parse('port = "8080"')
+    expect(getValidated(c, 'port', z.number())).toBe(8080)
+  })
+})
+
 describe('getValidated()', () => {
   it('returns typed value at path', () => {
     const port = getValidated(cfg, 'server.port', z.number().int())
