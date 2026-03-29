@@ -55,6 +55,21 @@ describe('Config', () => {
     expect(() => c.getNumber('flag')).toThrow(ConfigError)
   })
 
+  it('getNumber() rejects hex strings', () => {
+    const c = makeConfig({ val: { kind: 'scalar', value: '0xff' } })
+    expect(() => c.getNumber('val')).toThrow(ConfigError)
+  })
+
+  it('getNumber() rejects Infinity', () => {
+    const c = makeConfig({ val: { kind: 'scalar', value: 'Infinity' } })
+    expect(() => c.getNumber('val')).toThrow(ConfigError)
+  })
+
+  it('getNumber() rejects whitespace-only string', () => {
+    const c = makeConfig({ val: { kind: 'scalar', value: '   ' } })
+    expect(() => c.getNumber('val')).toThrow(ConfigError)
+  })
+
   it('getBoolean() returns boolean value', () => {
     const c = makeConfig({ debug: { kind: 'scalar', value: true } })
     expect(c.getBoolean('debug')).toBe(true)
