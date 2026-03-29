@@ -132,6 +132,12 @@ describe('validate() wrapper unwrapping', () => {
     expect(validate(c, schema).debug).toBe(true)
   })
 
+  it('coerces through z.readonly()', () => {
+    const c = parse('debug = "true"')
+    const schema = z.object({ debug: z.boolean().readonly() })
+    expect(validate(c, schema).debug).toBe(true)
+  })
+
   it('coerces inside z.array()', () => {
     const c = parse('flags = ["true", "false", "yes"]')
     const schema = z.object({ flags: z.array(z.boolean()) })

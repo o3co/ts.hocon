@@ -25,6 +25,15 @@ function getInnerSchema(schema: ZodType): ZodType | undefined {
   return def?.innerType ?? def?.schema
 }
 
+function getObjectShape(schema: ZodType): Record<string, ZodType> | undefined {
+  const shape = (schema as any)._zod?.def?.shape
+  return typeof shape === 'object' && shape !== null ? shape : undefined
+}
+
+function getArrayElement(schema: ZodType): ZodType | undefined {
+  return (schema as any)._zod?.def?.element
+}
+
 function coerceValue(value: unknown, schema: ZodType): unknown {
   if (value === null || value === undefined) return value
 
@@ -40,7 +49,6 @@ function coerceValue(value: unknown, schema: ZodType): unknown {
       return value
 
     case 'number':
-    case 'int':
       if (typeof value === 'string') {
         const coerced = coerceNumber(value)
         return coerced !== undefined ? coerced : value
@@ -49,20 +57,21 @@ function coerceValue(value: unknown, schema: ZodType): unknown {
 
     case 'object': {
       if (typeof value !== 'object' || Array.isArray(value)) return value
-      const shape = (schema as any)._zod?.def?.shape
-      if (!shape || typeof shape !== 'object') return value
-      const result: Record<string, unknown> = {}
+      const shape = getObjectShape(schema)
+      if (!shape) return value
       const obj = value as Record<string, unknown>
-      for (const key of Object.keys(obj)) {
-        const fieldSchema = shape[key]
-        result[key] = fieldSchema ? coerceValue(obj[key], fieldSchema) : obj[key]
+      const result: Record<string, unknown> = { ...obj }
+      for (const key of Object.keys(shape)) {
+        if (key in obj) {
+          result[key] = coerceValue(obj[key], shape[key])
+        }
       }
       return result
     }
 
     case 'array': {
       if (!Array.isArray(value)) return value
-      const elementSchema = (schema as any)._zod?.def?.element
+      const elementSchema = getArrayElement(schema)
       if (!elementSchema) return value
       return value.map((item) => coerceValue(item, elementSchema))
     }
@@ -70,7 +79,8 @@ function coerceValue(value: unknown, schema: ZodType): unknown {
     case 'optional':
     case 'nullable':
     case 'default':
-    case 'catch': {
+    case 'catch':
+    case 'readonly': {
       const inner = getInnerSchema(schema)
       return inner ? coerceValue(value, inner) : value
     }
