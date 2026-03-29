@@ -9,9 +9,6 @@ export function coerceBoolean(value: string): boolean | undefined {
 }
 
 export function coerceNumber(value: string): number | undefined {
-  const trimmed = value.trim()
-  if (trimmed === '') return undefined
-  // Only allow JSON-like numeric literals (no hex, octal, Infinity etc.)
-  if (!/^-?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/.test(trimmed)) return undefined
-  return Number(trimmed)
+  if (!/^-?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/.test(value)) return undefined
+  return Number(value)
 }

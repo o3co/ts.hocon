@@ -138,6 +138,12 @@ describe('validate() wrapper unwrapping', () => {
     expect(validate(c, schema).debug).toBe(true)
   })
 
+  it('coerces through z.catch()', () => {
+    const c = parse('debug = "yes"')
+    const schema = z.object({ debug: z.boolean().catch(false) })
+    expect(validate(c, schema).debug).toBe(true)
+  })
+
   it('coerces inside z.array()', () => {
     const c = parse('flags = ["true", "false", "yes"]')
     const schema = z.object({ flags: z.array(z.boolean()) })
@@ -161,6 +167,20 @@ describe('validate() wrapper unwrapping', () => {
     const result = validate(c, schema)
     expect(result.server.debug).toBe(true)
     expect(result.server.port).toBe(3000)
+  })
+})
+
+describe('validate() passthrough behavior', () => {
+  it('passes through string values for z.string()', () => {
+    const c = parse('name = "hello"')
+    const schema = z.object({ name: z.string() })
+    expect(validate(c, schema).name).toBe('hello')
+  })
+
+  it('lets Zod reject non-boolean strings for z.boolean()', () => {
+    const c = parse('debug = "maybe"')
+    const schema = z.object({ debug: z.boolean() })
+    expect(() => validate(c, schema)).toThrow()
   })
 })
 

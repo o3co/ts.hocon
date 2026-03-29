@@ -22,6 +22,9 @@ function getDefType(schema: ZodType): string | undefined {
 
 function getInnerSchema(schema: ZodType): ZodType | undefined {
   const def = (schema as any)._zod?.def
+  // Zod v4 wrapper types (optional, nullable, default, catch, readonly) store
+  // the wrapped schema in `def.innerType`. The `def.schema` fallback is for
+  // forward-compatibility in case future Zod versions change the property name.
   return def?.innerType ?? def?.schema
 }
 
