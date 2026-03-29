@@ -42,4 +42,18 @@ describe('coerceNumber', () => {
     expect(coerceNumber('')).toBeUndefined()
     expect(coerceNumber('NaN')).toBeUndefined()
   })
+
+  it('returns undefined for whitespace-only string', () => {
+    expect(coerceNumber('   ')).toBeUndefined()
+  })
+
+  it('returns undefined for Infinity', () => {
+    expect(coerceNumber('Infinity')).toBeUndefined()
+    expect(coerceNumber('-Infinity')).toBeUndefined()
+  })
+
+  it('returns undefined for hex literals', () => {
+    expect(coerceNumber('0xff')).toBeUndefined()
+    expect(coerceNumber('0xFF')).toBeUndefined()
+  })
 })
