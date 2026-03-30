@@ -1,3 +1,4 @@
+import { coerceBoolean, coerceNumber } from './coerce.js'
 import { ConfigError } from './errors.js'
 import type { HoconValue } from './value.js'
 
@@ -20,8 +21,8 @@ export class Config {
     const v = this.requireScalar(path)
     if (typeof v === 'number') return v
     if (typeof v === 'string') {
-      const n = Number(v)
-      if (!Number.isNaN(n)) return n
+      const coerced = coerceNumber(v)
+      if (coerced !== undefined) return coerced
     }
     throw new ConfigError(`expected number at ${path}, got ${typeof v}`, path)
   }
@@ -30,8 +31,8 @@ export class Config {
     const v = this.requireScalar(path)
     if (typeof v === 'boolean') return v
     if (typeof v === 'string') {
-      if (v === 'true') return true
-      if (v === 'false') return false
+      const coerced = coerceBoolean(v)
+      if (coerced !== undefined) return coerced
     }
     throw new ConfigError(`expected boolean at ${path}, got ${typeof v}`, path)
   }

@@ -55,6 +55,21 @@ describe('Config', () => {
     expect(() => c.getNumber('flag')).toThrow(ConfigError)
   })
 
+  it('getNumber() rejects hex strings', () => {
+    const c = makeConfig({ val: { kind: 'scalar', value: '0xff' } })
+    expect(() => c.getNumber('val')).toThrow(ConfigError)
+  })
+
+  it('getNumber() rejects Infinity', () => {
+    const c = makeConfig({ val: { kind: 'scalar', value: 'Infinity' } })
+    expect(() => c.getNumber('val')).toThrow(ConfigError)
+  })
+
+  it('getNumber() rejects whitespace-only string', () => {
+    const c = makeConfig({ val: { kind: 'scalar', value: '   ' } })
+    expect(() => c.getNumber('val')).toThrow(ConfigError)
+  })
+
   it('getBoolean() returns boolean value', () => {
     const c = makeConfig({ debug: { kind: 'scalar', value: true } })
     expect(c.getBoolean('debug')).toBe(true)
@@ -70,8 +85,37 @@ describe('Config', () => {
     expect(c.getBoolean('debug')).toBe(false)
   })
 
-  it('getBoolean() throws ConfigError for non-boolean string', () => {
+  it('getBoolean() coerces string "yes" to true', () => {
     const c = makeConfig({ val: { kind: 'scalar', value: 'yes' } })
+    expect(c.getBoolean('val')).toBe(true)
+  })
+
+  it('getBoolean() coerces string "no" to false', () => {
+    const c = makeConfig({ val: { kind: 'scalar', value: 'no' } })
+    expect(c.getBoolean('val')).toBe(false)
+  })
+
+  it('getBoolean() coerces string "on" to true', () => {
+    const c = makeConfig({ val: { kind: 'scalar', value: 'on' } })
+    expect(c.getBoolean('val')).toBe(true)
+  })
+
+  it('getBoolean() coerces string "off" to false', () => {
+    const c = makeConfig({ val: { kind: 'scalar', value: 'off' } })
+    expect(c.getBoolean('val')).toBe(false)
+  })
+
+  it('getBoolean() is case-insensitive', () => {
+    const c1 = makeConfig({ val: { kind: 'scalar', value: 'TRUE' } })
+    expect(c1.getBoolean('val')).toBe(true)
+    const c2 = makeConfig({ val: { kind: 'scalar', value: 'Yes' } })
+    expect(c2.getBoolean('val')).toBe(true)
+    const c3 = makeConfig({ val: { kind: 'scalar', value: 'OFF' } })
+    expect(c3.getBoolean('val')).toBe(false)
+  })
+
+  it('getBoolean() throws ConfigError for non-boolean string', () => {
+    const c = makeConfig({ val: { kind: 'scalar', value: 'maybe' } })
     expect(() => c.getBoolean('val')).toThrow(ConfigError)
   })
 
