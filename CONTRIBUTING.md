@@ -57,6 +57,26 @@ pnpm vitest run tests/lightbend/
 3. Ensure `pnpm test` and `pnpm typecheck` pass
 4. Open a PR against `develop` with a clear description of what and why
 
+## Releasing
+
+Releases are published to npm automatically by CI when a `v*` tag is pushed.
+Use `npm version` to do everything in one command:
+
+```bash
+npm version patch   # or: npm version minor / npm version major
+git push && git push --tags
+```
+
+`npm version` will:
+
+1. Bump the version in `package.json`
+2. Create a commit (`v0.1.4`)
+3. Tag it (`v0.1.4`)
+
+Then `git push --tags` triggers CI, which runs tests, builds, and publishes to npm.
+
+> **Do not** run `pnpm publish` locally — CI handles it and verifies the tag matches `package.json`.
+
 ## License
 
 By contributing, you agree that your contributions will be licensed under the [Apache License 2.0](LICENSE).
