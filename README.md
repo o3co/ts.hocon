@@ -237,8 +237,18 @@ const cfg = await parseAsync(hoconString, {
 })
 ```
 
+## Related Projects
+
+| Project | Language | Description |
+|---------|----------|-------------|
+| [go.hocon](https://github.com/o3co/go.hocon) | Go | HOCON parser for Go |
+| [rs.hocon](https://github.com/o3co/rs.hocon) | Rust | HOCON parser for Rust |
+| [hocon2](https://github.com/o3co/hocon2) | Go | CLI tools to convert HOCON → JSON/YAML/TOML/Properties |
+
+All implementations are full Lightbend HOCON spec compliant.
+
 ## License
 
 Apache License 2.0 — see [LICENSE](LICENSE).
 
-Copyright 2026 o3co Inc.
+Copyright 2026 1o1 Co. Ltd.
