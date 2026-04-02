@@ -237,6 +237,42 @@ const cfg = await parseAsync(hoconString, {
 })
 ```
 
+## Best Practices
+
+### Config Structure
+
+- **Split by domain**: Separate configuration into logical units (`database.conf`, `server.conf`, `logging.conf`)
+- **Use `include` for composition**: Compose a full config from domain-specific files
+- **Avoid logic in config**: HOCON is for declarative data, not conditionals or computation
+
+### Environment Variables
+
+- **Minimize `${ENV}` usage**: Prefer `${?ENV}` (optional) with sensible defaults defined in the config itself
+- **Never require env vars for local development**: Defaults should work out of the box
+- **Document required env vars**: List them in your project's README or a `.env.example`
+
+### Dev / Prod Separation
+
+```text
+config/
+├── application.conf    # shared defaults
+├── dev.conf            # include "application.conf" + dev overrides
+└── prod.conf           # include "application.conf" + prod overrides
+```
+
+### Validation
+
+- Always validate config at application startup, not at point-of-use
+- Use schema validation (Zod for TypeScript, struct unmarshaling for Go, Serde for Rust) to catch errors early
+
+```typescript
+const schema = z.object({
+  server: z.object({ host: z.string(), port: z.number() }),
+  debug: z.boolean(),
+})
+const config = parseWithSchema(hoconInput, schema) // fails fast on startup
+```
+
 ## Related Projects
 
 | Project | Language | Description |
