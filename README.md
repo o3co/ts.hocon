@@ -8,10 +8,53 @@
 A full [Lightbend HOCON](https://github.com/lightbend/config/blob/main/HOCON.md) spec-compliant TypeScript library.
 
 > **Implemented by [Claude](https://claude.ai/) (Anthropic)** — designed and built end-to-end with Claude Code.
+> Reviewed by [GitHub Copilot](https://github.com/features/copilot) and [OpenAI Codex](https://openai.com/index/openai-codex/).
 
 [日本語](README.ja.md)
 
 ---
+
+## Quick Start
+
+### 1. Install
+
+```bash
+npm install @o3co/ts.hocon
+```
+
+Requires Node.js 18+.
+
+### 2. Use
+
+```ts
+import { parse } from '@o3co/ts.hocon'
+
+const cfg = parse(`
+  server {
+    host = "localhost"
+    port = 8080
+  }
+`)
+
+cfg.getString('server.host')   // "localhost"
+cfg.getNumber('server.port')   // 8080
+cfg.has('server.host')         // true
+```
+
+## Why HOCON?
+
+| | `.env` | JSON | YAML | HOCON |
+|---|---|---|---|---|
+| Comments | No | No | Yes | Yes |
+| Nesting | No | Yes | Yes | Yes |
+| References / Substitution | No | No | No | Yes (`${var}`) |
+| File inclusion | No | No | No | Yes (`include`) |
+| Object merging | No | No | Anchors (fragile) | Yes (deep merge) |
+| Optional values | No | No | No | Yes (`${?var}`) |
+| Trailing commas | N/A | No | N/A | Yes |
+| Unquoted strings | Yes | No | Yes | Yes |
+
+HOCON gives you the readability of YAML, the structure of JSON, and features that neither has — substitutions, includes, and deep merge. If your config is more than a few flat key-value pairs, HOCON is worth considering.
 
 ## Features
 
@@ -25,39 +68,6 @@ A full [Lightbend HOCON](https://github.com/lightbend/config/blob/main/HOCON.md)
 - ESM + CJS dual package
 - Optional [Zod](https://zod.dev/) integration for schema validation
 - Browser compatible (`parse`/`parseAsync` — no Node.js required)
-
-## Installation
-
-```bash
-npm install @o3co/ts.hocon
-```
-
-Requires Node.js 18+.
-
-## Quick Start
-
-```ts
-import { parse, parseFile } from '@o3co/ts.hocon'
-
-// Parse from string
-const cfg = parse(`
-  server {
-    host = "localhost"
-    port = 8080
-  }
-`)
-
-// Parse from file
-const cfg = parseFile('application.conf')
-
-// Scalar getters (throw ConfigError on missing/wrong type)
-const host = cfg.getString('server.host')   // "localhost"
-const port = cfg.getNumber('server.port')   // 8080
-
-// Safe access
-const host = cfg.get('server.host')         // unknown | undefined
-const exists = cfg.has('server.host')       // true
-```
 
 ## API
 
