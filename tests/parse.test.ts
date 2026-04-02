@@ -55,8 +55,7 @@ describe('parseFile()', () => {
       const c = parseFile(file)
       expect(c.getString('app.name')).toBe('myapp')
     } finally {
-      fs.unlinkSync(file)
-      fs.rmdirSync(dir)
+      fs.rmSync(dir, { recursive: true })
     }
   })
 
@@ -71,9 +70,7 @@ describe('parseFile()', () => {
       expect(c.getString('host')).toBe('localhost')
       expect(c.getNumber('port')).toBe(3000)
     } finally {
-      fs.unlinkSync(base)
-      fs.unlinkSync(main)
-      fs.rmdirSync(dir)
+      fs.rmSync(dir, { recursive: true })
     }
   })
 
@@ -95,8 +92,7 @@ describe('parseFileAsync()', () => {
       const c = await parseFileAsync(file)
       expect(c.getString('db.host')).toBe('dbhost')
     } finally {
-      fs.unlinkSync(file)
-      fs.rmdirSync(dir)
+      fs.rmSync(dir, { recursive: true })
     }
   })
 

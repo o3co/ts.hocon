@@ -279,8 +279,7 @@ describe('parseFileWithSchema()', () => {
       const result = parseFileWithSchema(tmpFile, Schema)
       expect(result.app.name).toBe('myapp')
     } finally {
-      fs.unlinkSync(tmpFile)
-      fs.rmdirSync(tmpDir)
+      fs.rmSync(tmpDir, { recursive: true })
     }
   })
 })
