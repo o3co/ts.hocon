@@ -1,6 +1,6 @@
 {
   "name": "@o3co/ts.hocon",
-  "version": "0.1.4",
+  "version": "0.0.0-snapshot",
   "description": "Full Lightbend HOCON spec-compliant parser and config library for TypeScript",
   "keywords": ["hocon", "config", "configuration", "parser", "typescript", "lightbend"],
   "type": "module",
