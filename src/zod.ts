@@ -2,6 +2,12 @@ import type { ZodType } from 'zod'
 
 import { coerceBoolean, coerceNumber } from './coerce.js'
 import type { Config } from './config.js'
+// NOTE: parse/parseFile are imported at module level. This means importing
+// '@o3co/ts.hocon/zod' pulls in Node.js built-ins (fs, path). Consumers
+// who only need validate()/getValidated() in browser environments should
+// import those from a custom wrapper that avoids this module.
+import { parse, parseFile } from './parse.js'
+import type { ParseOptions } from './parse.js'
 
 export function validate<T>(config: Config, schema: ZodType<T>): T {
   const plain = config.toObject()
@@ -35,6 +41,16 @@ function getObjectShape(schema: ZodType): Record<string, ZodType> | undefined {
 
 function getArrayElement(schema: ZodType): ZodType | undefined {
   return (schema as any)._zod?.def?.element
+}
+
+export function parseWithSchema<T>(input: string, schema: ZodType<T>, opts?: ParseOptions): T {
+  const config = parse(input, opts)
+  return validate(config, schema)
+}
+
+export function parseFileWithSchema<T>(filePath: string, schema: ZodType<T>, opts?: ParseOptions): T {
+  const config = parseFile(filePath, opts)
+  return validate(config, schema)
 }
 
 function coerceValue(value: unknown, schema: ZodType): unknown {

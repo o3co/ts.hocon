@@ -1,7 +1,10 @@
 import { describe, it, expect } from 'vitest'
 import { z } from 'zod'
 import { parse } from '../src/parse.js'
-import { validate, getValidated } from '../src/zod.js'
+import { validate, getValidated, parseWithSchema, parseFileWithSchema } from '../src/zod.js'
+import * as path from 'node:path'
+import * as fs from 'node:fs'
+import * as os from 'node:os'
 
 const cfg = parse(`
   server {
@@ -210,5 +213,73 @@ describe('getValidated()', () => {
 
   it('throws on missing path', () => {
     expect(() => getValidated(cfg, 'missing.path', z.string())).toThrow()
+  })
+})
+
+describe('parseWithSchema()', () => {
+  const Schema = z.object({
+    server: z.object({
+      host: z.string(),
+      port: z.number().int(),
+    }),
+    debug: z.boolean(),
+  })
+
+  it('parses HOCON string and validates in one step', () => {
+    const input = `
+      server {
+        host = "localhost"
+        port = 8080
+      }
+      debug = false
+    `
+    const result = parseWithSchema(input, Schema)
+    expect(result.server.host).toBe('localhost')
+    expect(result.server.port).toBe(8080)
+    expect(result.debug).toBe(false)
+  })
+
+  it('applies HOCON-aware coercion', () => {
+    const input = `
+      server {
+        host = "localhost"
+        port = "3000"
+      }
+      debug = "true"
+    `
+    const result = parseWithSchema(input, Schema)
+    expect(result.server.port).toBe(3000)
+    expect(result.debug).toBe(true)
+  })
+
+  it('throws ZodError on schema mismatch', () => {
+    const input = 'server { host = 42, port = 8080 }, debug = false'
+    expect(() => parseWithSchema(input, Schema)).toThrow(z.ZodError)
+  })
+
+  it('passes ParseOptions through', () => {
+    const input = 'host = ${HOST}'
+    const HostSchema = z.object({ host: z.string() })
+    const result = parseWithSchema(input, HostSchema, { env: { HOST: 'example.com' } })
+    expect(result.host).toBe('example.com')
+  })
+})
+
+describe('parseFileWithSchema()', () => {
+  const Schema = z.object({
+    app: z.object({ name: z.string() }),
+  })
+
+  it('parses a file and validates in one step', () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'hocon-test-'))
+    const tmpFile = path.join(tmpDir, 'test.conf')
+    fs.writeFileSync(tmpFile, 'app { name = "myapp" }')
+
+    try {
+      const result = parseFileWithSchema(tmpFile, Schema)
+      expect(result.app.name).toBe('myapp')
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true })
+    }
   })
 })
