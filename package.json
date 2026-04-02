@@ -17,7 +17,9 @@
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsup",
     "test": "vitest run",
@@ -36,10 +38,10 @@
   },
   "devDependencies": {
     "@types/node": "^25.5.0",
-    "@vitest/coverage-v8": "^3.2.4",
+    "@vitest/coverage-v8": "^4.1.2",
     "tsup": "^8.5.1",
     "typescript": "^5.9.3",
-    "vitest": "^3.2.4",
+    "vitest": "^4.1.2",
     "zod": "^4.3.6"
   },
   "packageManager": "pnpm@10.30.2"
