@@ -266,6 +266,9 @@ config/
 - Use schema validation (Zod for TypeScript, struct unmarshaling for Go, Serde for Rust) to catch errors early
 
 ```typescript
+import { parseWithSchema } from '@o3co/ts.hocon/zod'
+import { z } from 'zod'
+
 const schema = z.object({
   server: z.object({ host: z.string(), port: z.number() }),
   debug: z.boolean(),

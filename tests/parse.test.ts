@@ -80,7 +80,7 @@ describe('parseFile()', () => {
   it('accepts custom readFileSync', () => {
     const c = parseFile('virtual.conf', {
       readFileSync: () => 'key = "from-custom-reader"',
-      baseDir: '/tmp',
+      baseDir: os.tmpdir(),
     })
     expect(c.getString('key')).toBe('from-custom-reader')
   })
@@ -103,7 +103,7 @@ describe('parseFileAsync()', () => {
   it('accepts custom readFile', async () => {
     const c = await parseFileAsync('virtual.conf', {
       readFile: async () => 'key = "async-reader"',
-      baseDir: '/tmp',
+      baseDir: os.tmpdir(),
     })
     expect(c.getString('key')).toBe('async-reader')
   })

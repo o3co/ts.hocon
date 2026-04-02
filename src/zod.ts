@@ -2,6 +2,10 @@ import type { ZodType } from 'zod'
 
 import { coerceBoolean, coerceNumber } from './coerce.js'
 import type { Config } from './config.js'
+// NOTE: parse/parseFile are imported at module level. This means importing
+// '@o3co/ts.hocon/zod' pulls in Node.js built-ins (fs, path). Consumers
+// who only need validate()/getValidated() in browser environments should
+// import those from a custom wrapper that avoids this module.
 import { parse, parseFile } from './parse.js'
 import type { ParseOptions } from './parse.js'
 

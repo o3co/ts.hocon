@@ -254,7 +254,7 @@ describe('parseWithSchema()', () => {
 
   it('throws ZodError on schema mismatch', () => {
     const input = 'server { host = 42, port = 8080 }, debug = false'
-    expect(() => parseWithSchema(input, Schema)).toThrow()
+    expect(() => parseWithSchema(input, Schema)).toThrow(z.ZodError)
   })
 
   it('passes ParseOptions through', () => {
