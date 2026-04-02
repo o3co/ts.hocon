@@ -8,10 +8,53 @@
 [Lightbend HOCON](https://github.com/lightbend/config/blob/main/HOCON.md) 仕様に完全準拠した TypeScript ライブラリです。
 
 > **[Claude](https://claude.ai/)（Anthropic）による実装** — Claude Code を用いて設計・実装されました。
+> [GitHub Copilot](https://github.com/features/copilot) および [OpenAI Codex](https://openai.com/index/openai-codex/) によるレビュー。
 
 [English](README.md)
 
 ---
+
+## クイックスタート
+
+### 1. インストール
+
+```bash
+npm install @o3co/ts.hocon
+```
+
+Node.js 18 以上が必要です。
+
+### 2. 使い方
+
+```ts
+import { parse } from '@o3co/ts.hocon'
+
+const cfg = parse(`
+  server {
+    host = "localhost"
+    port = 8080
+  }
+`)
+
+cfg.getString('server.host')   // "localhost"
+cfg.getNumber('server.port')   // 8080
+cfg.has('server.host')         // true
+```
+
+## なぜ HOCON？
+
+| | `.env` | JSON | YAML | HOCON |
+|---|---|---|---|---|
+| Comments | No | No | Yes | Yes |
+| Nesting | No | Yes | Yes | Yes |
+| References / Substitution | No | No | No | Yes (`${var}`) |
+| File inclusion | No | No | No | Yes (`include`) |
+| Object merging | No | No | Anchors (fragile) | Yes (deep merge) |
+| Optional values | No | No | No | Yes (`${?var}`) |
+| Trailing commas | N/A | No | N/A | Yes |
+| Unquoted strings | Yes | No | Yes | Yes |
+
+HOCON は YAML の可読性と JSON の構造性を兼ね備え、どちらにもない機能 — 変数参照、インクルード、ディープマージ — を提供します。設定がフラットなキーバリューペア以上のものであれば、HOCON を検討する価値があります。
 
 ## 特徴
 
@@ -25,39 +68,6 @@
 - ESM + CJS デュアルパッケージ
 - [Zod](https://zod.dev/) スキーマバリデーション統合（オプション）
 - ブラウザ対応（`parse`/`parseAsync` — Node.js 不要）
-
-## インストール
-
-```bash
-npm install @o3co/ts.hocon
-```
-
-Node.js 18 以上が必要です。
-
-## クイックスタート
-
-```ts
-import { parse, parseFile } from '@o3co/ts.hocon'
-
-// 文字列からパース
-const cfg = parse(`
-  server {
-    host = "localhost"
-    port = 8080
-  }
-`)
-
-// ファイルからパース
-const cfg = parseFile('application.conf')
-
-// スカラーゲッター（存在しない・型が違う場合は ConfigError をスロー）
-const host = cfg.getString('server.host')   // "localhost"
-const port = cfg.getNumber('server.port')   // 8080
-
-// 安全なアクセス
-const host = cfg.get('server.host')         // unknown | undefined
-const exists = cfg.has('server.host')       // true
-```
 
 ## API
 
@@ -237,8 +247,57 @@ const cfg = await parseAsync(hoconString, {
 })
 ```
 
+## ベストプラクティス
+
+### 設定構成
+
+- **ドメインごとに分割**: 設定を論理的な単位に分けましょう（`database.conf`、`server.conf`、`logging.conf`）
+- **`include` で合成**: ドメイン別ファイルからフル設定を組み立てましょう
+- **設定にロジックを入れない**: HOCON は宣言的なデータのためのもので、条件分岐や計算には向きません
+
+### 環境変数
+
+- **`${ENV}` の使用を最小限に**: 設定ファイル自体にデフォルト値を定義し、`${?ENV}`（オプショナル）を使いましょう
+- **ローカル開発で環境変数を必須にしない**: デフォルトだけで動くようにしましょう
+- **必須の環境変数を文書化**: プロジェクトの README や `.env.example` にリストしましょう
+
+### 開発 / 本番の分離
+
+```text
+config/
+├── application.conf    # 共有デフォルト
+├── dev.conf            # include "application.conf" + 開発用オーバーライド
+└── prod.conf           # include "application.conf" + 本番用オーバーライド
+```
+
+### バリデーション
+
+- 設定のバリデーションは常にアプリケーション起動時に行い、使用時ではなく早期に検出しましょう
+- スキーマバリデーション（TypeScript は Zod、Go は struct Unmarshal、Rust は Serde）を使って早期にエラーをキャッチしましょう
+
+```typescript
+import { parseWithSchema } from '@o3co/ts.hocon/zod'
+import { z } from 'zod'
+
+const schema = z.object({
+  server: z.object({ host: z.string(), port: z.number() }),
+  debug: z.boolean(),
+})
+const config = parseWithSchema(hoconInput, schema) // 起動時に即座に失敗
+```
+
+## 関連プロジェクト
+
+| プロジェクト | 言語 | 説明 |
+|---------|----------|-------------|
+| [go.hocon](https://github.com/o3co/go.hocon) | Go | Go 向け HOCON パーサー |
+| [rs.hocon](https://github.com/o3co/rs.hocon) | Rust | Rust 向け HOCON パーサー |
+| [hocon2](https://github.com/o3co/hocon2) | Go | HOCON → JSON/YAML/TOML/Properties 変換 CLI ツール |
+
+すべての実装が Lightbend HOCON 仕様に完全準拠しています。
+
 ## ライセンス
 
 Apache License 2.0 — [LICENSE](LICENSE) を参照。
 
-Copyright 2026 o3co Inc.
+Copyright 2026 1o1 Co. Ltd.
