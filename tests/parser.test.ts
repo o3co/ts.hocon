@@ -138,6 +138,44 @@ describe('parseTokens', () => {
     }
   })
 
+  it('parses include required("base.conf") with required: true', () => {
+    const node = parse('include required("base.conf")')
+    if (node.kind !== 'object') return
+    const field = node.fields[0]
+    if (!field) return
+    const inc = field.value
+    expect(inc.kind).toBe('include')
+    if (inc.kind === 'include') {
+      expect(inc.path).toBe('base.conf')
+      expect(inc.required).toBe(true)
+    }
+  })
+
+  it('parses include required(file("base.conf")) with required: true', () => {
+    const node = parse('include required(file("base.conf"))')
+    if (node.kind !== 'object') return
+    const field = node.fields[0]
+    if (!field) return
+    const inc = field.value
+    expect(inc.kind).toBe('include')
+    if (inc.kind === 'include') {
+      expect(inc.path).toBe('base.conf')
+      expect(inc.required).toBe(true)
+    }
+  })
+
+  it('regular include "base.conf" has required: false', () => {
+    const node = parse('include "base.conf"')
+    if (node.kind !== 'object') return
+    const field = node.fields[0]
+    if (!field) return
+    const inc = field.value
+    expect(inc.kind).toBe('include')
+    if (inc.kind === 'include') {
+      expect(inc.required).toBe(false)
+    }
+  })
+
   it('chains two quoted key segments with a dot', () => {
     const node = parse('"a"."b" = 1')
     if (node.kind === 'object') {
@@ -190,5 +228,63 @@ describe('parseTokens', () => {
 
   it('should error on stray } after braced root', () => {
     expect(() => parseTokens(tokenize('{ a = 1 } }'))).toThrow()
+  })
+
+  it('should error on include url() with "not supported" message', () => {
+    expect(() => parseTokens(tokenize('include url("http://example.com")'))).toThrow(/not supported/)
+  })
+
+  it('should error on include classpath() with "not supported" message', () => {
+    expect(() => parseTokens(tokenize('include classpath("reference.conf")'))).toThrow(/not supported/)
+  })
+
+  it('should error on include required(url()) with "not supported" message', () => {
+    expect(() => parseTokens(tokenize('include required(url("http://example.com"))'))).toThrow(/not supported/)
+  })
+
+  it('should error on include required(classpath()) with "not supported" message', () => {
+    expect(() => parseTokens(tokenize('include required(classpath("reference.conf"))'))).toThrow(/not supported/)
+  })
+
+  // Fix 1: required without ( must error
+  it('should error on include required "file.conf" (missing parens)', () => {
+    expect(() => parseTokens(tokenize('include required "file.conf"'))).toThrow()
+  })
+
+  // Fix 2: skip loops stop on comma
+  it('parses include file(...) followed by comma-separated field', () => {
+    const node = parseTokens(tokenize('{ include file("base.conf"), a = 1 }'))
+    if (node.kind !== 'object') throw new Error('expected object')
+    // The 'a' field must not be swallowed by the skip loop
+    const aField = node.fields.find(f => f.key[0] === 'a')
+    expect(aField).toBeDefined()
+  })
+
+  it('parses include "..." followed by comma-separated field', () => {
+    const node = parseTokens(tokenize('{ include "base.conf", a = 1 }'))
+    if (node.kind !== 'object') throw new Error('expected object')
+    const aField = node.fields.find(f => f.key[0] === 'a')
+    expect(aField).toBeDefined()
+  })
+
+  it('parses include required(...) followed by comma-separated field', () => {
+    const node = parseTokens(tokenize('{ include required("base.conf"), a = 1 }'))
+    if (node.kind !== 'object') throw new Error('expected object')
+    const aField = node.fields.find(f => f.key[0] === 'a')
+    expect(aField).toBeDefined()
+  })
+
+  it('should error on include with invalid token (catch-all)', () => {
+    // A number token after include should hit the catch-all error path
+    expect(() => parseTokens(tokenize('include 12345'))).toThrow()
+  })
+
+  it('should error on include required(url()) when url is space-separated from required(', () => {
+    // Tests the case where required( and url are separate tokens
+    expect(() => parseTokens(tokenize('include required( url("http://example.com") )'))).toThrow(/not supported/)
+  })
+
+  it('should error on include required(classpath()) when classpath is space-separated', () => {
+    expect(() => parseTokens(tokenize('include required( classpath("reference.conf") )'))).toThrow(/not supported/)
   })
 })

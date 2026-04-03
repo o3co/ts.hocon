@@ -6,7 +6,7 @@ export type AstNode =
   | { kind: 'scalar'; value: string | number | boolean | null; pos: Pos; _separator?: boolean }
   | { kind: 'concat'; nodes: AstNode[]; pos: Pos }
   | { kind: 'subst'; path: string; optional: boolean; pos: Pos }
-  | { kind: 'include'; path: string; pos: Pos }
+  | { kind: 'include'; path: string; required: boolean; pos: Pos }
 
 // key が空配列のとき include ディレクティブを表す（value は include ノード）
 export type AstField = {

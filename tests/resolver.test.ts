@@ -15,7 +15,7 @@ function resolveStr(input: string, env: Record<string, string> = {}, files: Reco
     readFileSync: (p: string) => {
       const content = files[p]
       if (content !== undefined) return content
-      throw new Error(`file not found: ${p}`)
+      throw Object.assign(new Error(`ENOENT: ${p}`), { code: 'ENOENT' })
     },
   })
 }
@@ -216,7 +216,7 @@ describe('Resolver - include', () => {
       baseDir: '/fake',
       readFileSync: (p: string) => {
         const key = p.replace('/fake/', '')
-        if (!(key in files)) throw new Error(`file not found: ${p}`)
+        if (!(key in files)) throw Object.assign(new Error(`ENOENT: ${p}`), { code: 'ENOENT' })
         return files[key] ?? ''
       },
     })
@@ -295,5 +295,56 @@ describe('Resolver - include .conf extension probing (sync)', () => {
     const v = resolveStr('include "ghost"\nlocal = 7', {}, {})
     expect(obj(v).get('local')).toEqual({ kind: 'scalar', value: 7 })
     expect(obj(v).get('ghost')).toBeUndefined()
+  })
+})
+
+describe('Resolver - include required()', () => {
+  function resolveWithFs(input: string, files: Record<string, string>): HoconValue {
+    const ast = parseTokens(tokenize(input))
+    return resolve(ast, {
+      env: {},
+      baseDir: '/fake',
+      readFileSync: (p: string) => {
+        const key = p.replace('/fake/', '')
+        if (!(key in files)) throw Object.assign(new Error(`ENOENT: ${p}`), { code: 'ENOENT' })
+        return files[key] ?? ''
+      },
+    })
+  }
+
+  it('throws error containing "required" when required include file is missing', () => {
+    expect(() =>
+      resolveWithFs('include required("nonexistent.conf")\na = 1', {})
+    ).toThrow(/required/)
+  })
+
+  it('silently ignores missing non-required include and preserves other keys', () => {
+    const v = resolveWithFs('include "nonexistent.conf"\na = 1', {})
+    expect(obj(v).get('a')).toEqual({ kind: 'scalar', value: 1 })
+  })
+})
+
+describe('Resolver - ENOENT narrowing in loadInclude', () => {
+  it('re-throws non-ENOENT errors from readFileSync (sync)', () => {
+    const ast = parseTokens(tokenize('include "boom.conf"\na = 1'))
+    const permError = Object.assign(new Error('Permission denied'), { code: 'EACCES' })
+    expect(() =>
+      resolve(ast, {
+        env: {},
+        baseDir: '/fake',
+        readFileSync: () => { throw permError },
+      })
+    ).toThrow('Permission denied')
+  })
+
+  it('silently ignores ENOENT errors from readFileSync (sync)', () => {
+    const ast = parseTokens(tokenize('include "missing.conf"\na = 1'))
+    const enoent = Object.assign(new Error('ENOENT'), { code: 'ENOENT' })
+    const v = resolve(ast, {
+      env: {},
+      baseDir: '/fake',
+      readFileSync: () => { throw enoent },
+    })
+    expect(obj(v).get('a')).toEqual({ kind: 'scalar', value: 1 })
   })
 })

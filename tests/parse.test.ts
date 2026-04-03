@@ -250,7 +250,7 @@ describe('resolveAsync() — loadIncludeAsync branches', () => {
       baseDir: '/cfg',
       readFile: async (p: string) => {
         const content = files[p]
-        if (content === undefined) throw new Error(`not found: ${p}`)
+        if (content === undefined) throw Object.assign(new Error(`ENOENT: ${p}`), { code: 'ENOENT' })
         return content
       },
     })
@@ -263,7 +263,7 @@ describe('resolveAsync() — loadIncludeAsync branches', () => {
     // Include a file that doesn't exist — should not throw, just produce empty merge
     const v = await resolveAsyncStr('include "nonexistent.conf"\napp = 42', {
       baseDir: '/cfg',
-      readFile: async (_p: string) => { throw new Error('file not found') },
+      readFile: async (_p: string) => { throw Object.assign(new Error('ENOENT: not found'), { code: 'ENOENT' }) },
     })
     if (v.kind !== 'object') throw new Error('expected object')
     expect(v.fields.get('app')).toEqual({ kind: 'scalar', value: 42 })
@@ -280,7 +280,7 @@ describe('resolveAsync() — loadIncludeAsync branches', () => {
         baseDir: '/cfg',
         readFile: async (p: string) => {
           const content = files[p]
-          if (content === undefined) throw new Error(`not found: ${p}`)
+          if (content === undefined) throw Object.assign(new Error(`ENOENT: ${p}`), { code: 'ENOENT' })
           return content
         },
       })
@@ -296,7 +296,7 @@ describe('resolveAsync() — loadIncludeAsync branches', () => {
       baseDir: '/cfg',
       readFileSync: (p: string) => {
         const content = files[p]
-        if (content === undefined) throw new Error(`not found: ${p}`)
+        if (content === undefined) throw Object.assign(new Error(`ENOENT: ${p}`), { code: 'ENOENT' })
         return content
       },
       // no readFile provided — exercises sync fallback path in loadIncludeAsync
@@ -317,7 +317,7 @@ describe('resolveAsync() — loadIncludeAsync branches', () => {
         baseDir: '/cfg',
         readFile: async (p: string) => {
           const content = files[p]
-          if (content === undefined) throw new Error(`not found: ${p}`)
+          if (content === undefined) throw Object.assign(new Error(`ENOENT: ${p}`), { code: 'ENOENT' })
           return content
         },
       })
@@ -336,7 +336,7 @@ describe('resolve() — loadInclude sync branches', () => {
         baseDir: '/cfg',
         readFileSync: (p: string) => {
           const content = files[p]
-          if (content === undefined) throw new Error(`not found: ${p}`)
+          if (content === undefined) throw Object.assign(new Error(`ENOENT: ${p}`), { code: 'ENOENT' })
           return content
         },
       })
@@ -346,8 +346,89 @@ describe('resolve() — loadInclude sync branches', () => {
   it('silently ignores missing sync includes', () => {
     const c = parse('include "nonexistent.conf"\napp = 99', {
       baseDir: '/cfg',
-      readFileSync: (_p: string) => { throw new Error('not found') },
+      readFileSync: (_p: string) => { throw Object.assign(new Error('ENOENT: not found'), { code: 'ENOENT' }) },
     })
     expect(c.getNumber('app')).toBe(99)
+  })
+
+  it('propagates parse errors from included files during sync probing', () => {
+    const files: Record<string, string> = {
+      '/config/broken.conf': '{ invalid = }',  // syntax error
+    }
+    expect(() => parse('include "broken"', {
+      baseDir: '/config',
+      readFileSync: (path: string) => {
+        const content = files[path]
+        if (content === undefined) throw Object.assign(new Error(`ENOENT: ${path}`), { code: 'ENOENT' })
+        return content
+      },
+    })).toThrow()
+  })
+})
+
+describe('resolveAsync() — parse error propagation in include probing', () => {
+  it('propagates parse errors from included files during async probing', async () => {
+    const files: Record<string, string> = {
+      '/config/broken.conf': '{ invalid = }',  // syntax error
+    }
+    await expect(parseAsync('include "broken"', {
+      baseDir: '/config',
+      readFile: async (path: string) => {
+        const content = files[path]
+        if (content === undefined) throw Object.assign(new Error(`ENOENT: ${path}`), { code: 'ENOENT' })
+        return content
+      },
+    })).rejects.toThrow()
+  })
+})
+
+describe('parseAsync — required include error paths', () => {
+  it('errors on required include when file missing (async path)', async () => {
+    await expect(parseAsync('include required("nonexistent.conf")', {
+      baseDir: '/nowhere',
+      readFile: async (p: string) => {
+        throw Object.assign(new Error(`ENOENT: ${p}`), { code: 'ENOENT' })
+      },
+    })).rejects.toThrow(/required/)
+  })
+
+  it('silently ignores MODULE_NOT_FOUND in async probing', async () => {
+    const cfg = await parseAsync('include "mod"\na = 1', {
+      baseDir: '/nowhere',
+      readFile: async (p: string) => {
+        throw Object.assign(new Error(`MODULE_NOT_FOUND: ${p}`), { code: 'MODULE_NOT_FOUND' })
+      },
+    })
+    expect(cfg.getNumber('a')).toBe(1) // include silently ignored
+  })
+
+  it('re-throws non-ENOENT errors in async include probing', async () => {
+    await expect(parseAsync('include "perm"\na = 1', {
+      baseDir: '/nowhere',
+      readFile: async (p: string) => {
+        throw Object.assign(new Error(`EACCES: ${p}`), { code: 'EACCES' })
+      },
+    })).rejects.toThrow(/EACCES/)
+  })
+
+  it('silently ignores custom readFile errors without .code for missing files', async () => {
+    // Custom readFile may throw plain Error without .code property
+    const cfg = await parseAsync('include "missing"\na = 1', {
+      baseDir: '/nowhere',
+      readFile: async (p: string) => {
+        throw new Error(`File not found: ${p}`)
+      },
+    })
+    expect(cfg.getNumber('a')).toBe(1) // include silently ignored
+  })
+
+  it('silently ignores custom sync readFileSync errors without .code for missing files', () => {
+    const cfg = parse('include "missing"\na = 1', {
+      baseDir: '/nowhere',
+      readFileSync: (p: string) => {
+        throw new Error(`no such file or directory: ${p}`)
+      },
+    })
+    expect(cfg.getNumber('a')).toBe(1)
   })
 })
