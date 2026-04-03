@@ -348,3 +348,44 @@ describe('Resolver - ENOENT narrowing in loadInclude', () => {
     expect(obj(v).get('a')).toEqual({ kind: 'scalar', value: 1 })
   })
 })
+
+describe('include merge-all probing', () => {
+  it('merges all found extensions when path has no extension', () => {
+    const files: Record<string, string> = {
+      '/merge-probe.json': '{"from_json": true, "shared": "json"}',
+      '/merge-probe.conf': 'from_conf = true\nshared = "conf"',
+    }
+    const v = resolveStr('include "merge-probe"', {}, files)
+    const fields = obj(v)
+    expect(fields.get('from_json')).toEqual({ kind: 'scalar', value: true })
+    expect(fields.get('from_conf')).toEqual({ kind: 'scalar', value: true })
+    // .conf is loaded last (probe order: .properties, .json, .conf) so it wins
+    expect(fields.get('shared')).toEqual({ kind: 'scalar', value: 'conf' })
+  })
+
+  it('merges .properties, .json, and .conf in correct order', () => {
+    const files: Record<string, string> = {
+      '/all-three.properties': 'from_props = propval\nshared = props',
+      '/all-three.json': '{"from_json": true, "shared": "json"}',
+      '/all-three.conf': 'from_conf = true\nshared = "conf"',
+    }
+    const v = resolveStr('include "all-three"', {}, files)
+    const fields = obj(v)
+    expect(fields.get('from_props')).toEqual({ kind: 'scalar', value: 'propval' })
+    expect(fields.get('from_json')).toEqual({ kind: 'scalar', value: true })
+    expect(fields.get('from_conf')).toEqual({ kind: 'scalar', value: true })
+    expect(fields.get('shared')).toEqual({ kind: 'scalar', value: 'conf' })
+  })
+
+  it('still loads single explicit extension without merging', () => {
+    const files: Record<string, string> = {
+      '/single.json': '{"only_json": true}',
+      '/single.conf': 'only_conf = true',
+    }
+    // Explicit .json extension — should only load that file
+    const v = resolveStr('include "single.json"', {}, files)
+    const fields = obj(v)
+    expect(fields.get('only_json')).toEqual({ kind: 'scalar', value: true })
+    expect(fields.has('only_conf')).toBe(false)
+  })
+})
