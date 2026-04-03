@@ -237,4 +237,12 @@ describe('parseTokens', () => {
   it('should error on include classpath() with "not supported" message', () => {
     expect(() => parseTokens(tokenize('include classpath("reference.conf")'))).toThrow(/not supported/)
   })
+
+  it('should error on include required(url()) with "not supported" message', () => {
+    expect(() => parseTokens(tokenize('include required(url("http://example.com"))'))).toThrow(/not supported/)
+  })
+
+  it('should error on include required(classpath()) with "not supported" message', () => {
+    expect(() => parseTokens(tokenize('include required(classpath("reference.conf"))'))).toThrow(/not supported/)
+  })
 })

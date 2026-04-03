@@ -128,6 +128,20 @@ export function parseTokens(tokens: Token[]): AstNode {
       // depending on whether there is whitespace before "file(".
       required = true
       advance()
+
+      // Check for unsupported url/classpath forms inside required():
+      // Case 1 (no space): lexer produced a single token like "required(url(" or "required(classpath("
+      const innerPrefix = t.value.startsWith('required(') ? t.value.slice('required('.length) : ''
+      if (innerPrefix.startsWith('url') || innerPrefix.startsWith('classpath')) {
+        throw new ParseError('include url(...) and classpath(...) are not supported', t.line, t.col)
+      }
+      // Case 2 (with space): next token starts with url/classpath
+      const next = peek()
+      if (next.kind === 'unquoted' && (next.value === 'url' || next.value.startsWith('url(') ||
+          next.value === 'classpath' || next.value.startsWith('classpath('))) {
+        throw new ParseError('include url(...) and classpath(...) are not supported', next.line, next.col)
+      }
+
       // Skip tokens until we find the quoted path string
       while (peek().kind !== 'string' && peek().kind !== 'eof') advance()
       if (peek().kind === 'eof') throw new ParseError('expected include path', t.line, t.col)
