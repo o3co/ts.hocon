@@ -461,16 +461,17 @@ function isFileNotFoundError(e: unknown): boolean {
 
 function loadSingleInclude(candidate: string, opts: ResolveOptions): ResObj {
   const { readFileSync, includeStack = [], env } = opts
+
+  if (includeStack.includes(candidate)) {
+    throw new ResolveError(`circular include: ${candidate}`, candidate, 0, 0)
+  }
+
   let content: string
   try {
     content = readFileSync(candidate)
   } catch (e: unknown) {
     if (isFileNotFoundError(e)) return makeResObj()
     throw e
-  }
-
-  if (includeStack.includes(candidate)) {
-    throw new ResolveError(`circular include: ${candidate}`, candidate, 0, 0)
   }
 
   if (candidate.endsWith('.properties')) {
@@ -625,16 +626,16 @@ async function loadSingleIncludeAsync(candidate: string, opts: ResolveOptions): 
     ? async (p: string) => readFile(p)
     : async (p: string) => readFileSync(p)
 
+  if (includeStack.includes(candidate)) {
+    throw new ResolveError(`circular include: ${candidate}`, candidate, 0, 0)
+  }
+
   let content: string
   try {
     content = await read(candidate)
   } catch (e: unknown) {
     if (isFileNotFoundError(e)) return makeResObj()
     throw e
-  }
-
-  if (includeStack.includes(candidate)) {
-    throw new ResolveError(`circular include: ${candidate}`, candidate, 0, 0)
   }
 
   if (candidate.endsWith('.properties')) {
