@@ -452,3 +452,20 @@ describe('parseAsync — required include error paths', () => {
     expect(cfg.getNumber('a')).toBe(1)
   })
 })
+
+describe('parseAsync — .properties extension probing', () => {
+  it('should probe .properties extension during include resolution', async () => {
+    const files: Record<string, string> = {
+      '/config/app.properties': 'key=from-properties',
+    }
+    const cfg = await parseAsync('include "app"\nother = 1', {
+      baseDir: '/config',
+      readFile: async (path: string) => {
+        const content = files[path]
+        if (!content) throw Object.assign(new Error(`ENOENT: ${path}`), { code: 'ENOENT' })
+        return content
+      },
+    })
+    expect(cfg.getString('key')).toBe('from-properties')
+  })
+})

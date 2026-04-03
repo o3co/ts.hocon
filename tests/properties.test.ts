@@ -38,4 +38,9 @@ describe('parseProperties', () => {
     const result = parseProperties('num=42\nbool=true\nnull=null')
     expect(result).toEqual({ num: '42', bool: 'true', null: 'null' })
   })
+
+  it('should not pollute prototype via __proto__ key', () => {
+    parseProperties('__proto__.polluted=true')
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined()
+  })
 })

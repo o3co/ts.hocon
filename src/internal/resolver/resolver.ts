@@ -469,10 +469,10 @@ function loadInclude(includePath: string, required: boolean, opts: ResolveOption
     throw new ResolveError(`circular include: ${absPath}`, absPath, 0, 0)
   }
 
-  // Try the path as-is, then with .conf and .json extensions
+  // Try the path as-is, then with .conf, .json, and .properties extensions
   const candidates = [absPath]
   if (!absPath.endsWith('.conf') && !absPath.endsWith('.json') && !absPath.endsWith('.properties')) {
-    candidates.push(absPath + '.conf', absPath + '.json')
+    candidates.push(`${absPath}.conf`, `${absPath}.json`, `${absPath}.properties`)
   }
 
   for (const candidate of candidates) {
@@ -609,7 +609,7 @@ async function loadIncludeAsync(includePath: string, required: boolean, opts: Re
 
   const candidates = [absPath]
   if (!absPath.endsWith('.conf') && !absPath.endsWith('.json') && !absPath.endsWith('.properties')) {
-    candidates.push(absPath + '.conf', absPath + '.json')
+    candidates.push(`${absPath}.conf`, `${absPath}.json`, `${absPath}.properties`)
   }
 
   // Prefer async readFile if available, fall back to sync

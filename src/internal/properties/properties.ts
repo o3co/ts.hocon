@@ -1,7 +1,7 @@
 import type { HoconValue } from '../../value.js'
 
 export function parseProperties(input: string): Record<string, unknown> {
-  const root: Record<string, unknown> = {}
+  const root: Record<string, unknown> = Object.create(null)
 
   for (const line of input.split('\n')) {
     const trimmed = line.trim()
@@ -27,16 +27,21 @@ function findSeparator(line: string): number {
   return -1
 }
 
+const DANGEROUS_KEYS = new Set(['__proto__', 'constructor', 'prototype'])
+
 function setNested(obj: Record<string, unknown>, segments: string[], value: string): void {
   let current = obj
   for (let i = 0; i < segments.length - 1; i++) {
     const seg = segments[i]
+    if (seg === undefined || DANGEROUS_KEYS.has(seg)) return
     if (!(seg in current) || typeof current[seg] !== 'object' || current[seg] === null) {
-      current[seg] = {}
+      current[seg] = Object.create(null)
     }
     current = current[seg] as Record<string, unknown>
   }
-  current[segments[segments.length - 1]!] = value
+  const last = segments[segments.length - 1]
+  if (last === undefined || DANGEROUS_KEYS.has(last)) return
+  current[last] = value
 }
 
 /**
