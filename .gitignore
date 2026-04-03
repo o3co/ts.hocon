@@ -18,5 +18,8 @@ coverage/
 # Claude Code (local-only settings)
 .claude/settings.local.json
 
+# Generated API docs
+docs/
+
 # Superpowers (development process artifacts)
 docs/superpowers/
