@@ -323,6 +323,14 @@ const config = parseWithSchema(hoconInput, schema) // fails fast on startup
 
 All implementations are full Lightbend HOCON spec compliant.
 
+## Security Considerations
+
+When parsing untrusted HOCON input, be aware of:
+
+- **Path traversal in includes:** `include "../../../etc/passwd"` will resolve relative to `baseDir`. Use a custom `readFileSync`/`readFile` that validates paths if parsing untrusted input.
+- **Input size:** The parser has no built-in input size limit. For untrusted input, validate size before calling `parse()`.
+- **Include depth:** Limited to 50 levels to prevent stack overflow from deep include chains.
+
 ## License
 
 Apache License 2.0 — see [LICENSE](LICENSE).
