@@ -287,13 +287,20 @@ function resolveConcat(
   if (resolved.length === 0) return { kind: 'scalar', value: null }
   if (resolved.length === 1) return resolved[0]!
 
-  // Object concatenation: if all elements are objects, deep-merge them
-  if (resolved.every(v => v.kind === 'object')) {
+  // Object concatenation: if all non-whitespace elements are objects, deep-merge them
+  // (the parser inserts whitespace scalars between adjacent objects like {a:1} {b:2})
+  const nonWs = resolved.filter(v => !(v.kind === 'scalar' && typeof v.value === 'string' && v.value.trim() === ''))
+  if (nonWs.length > 0 && nonWs.every(v => v.kind === 'object')) {
     const merged = new Map<string, HoconValue>()
-    for (const v of resolved) {
+    for (const v of nonWs) {
       if (v.kind === 'object') {
         for (const [k, val] of v.fields) {
-          merged.set(k, val)
+          const existing = merged.get(k)
+          if (existing?.kind === 'object' && val.kind === 'object') {
+            merged.set(k, deepMergeHoconValues(existing, val))
+          } else {
+            merged.set(k, val)
+          }
         }
       }
     }
@@ -313,6 +320,22 @@ function resolveConcat(
   // String concatenation
   const str = resolved.map(v => v.kind === 'scalar' ? String(v.value) : JSON.stringify(v)).join('')
   return { kind: 'scalar', value: str }
+}
+
+function deepMergeHoconValues(
+  base: HoconValue & { kind: 'object' },
+  overlay: HoconValue & { kind: 'object' },
+): HoconValue & { kind: 'object' } {
+  const merged = new Map(base.fields)
+  for (const [k, v] of overlay.fields) {
+    const existing = merged.get(k)
+    if (existing?.kind === 'object' && v.kind === 'object') {
+      merged.set(k, deepMergeHoconValues(existing as HoconValue & { kind: 'object' }, v as HoconValue & { kind: 'object' }))
+    } else {
+      merged.set(k, v)
+    }
+  }
+  return { kind: 'object', fields: merged }
 }
 
 function resolveAppend(
