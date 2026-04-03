@@ -162,11 +162,11 @@ export function tokenize(input: string): Token[] {
 }
 
 function isUnquotedStart(ch: string): boolean {
-  return ch !== '' && !'{}[],:=+#\n\r\t "$'.includes(ch)
+  return ch !== '' && !'{}[],:=+#\n\r\t "$?!@*&^\\'.includes(ch)
 }
 
 function isUnquotedContinue(ch: string, nextFn: () => string): boolean {
-  if (ch === '' || '{}[],:=\n\r\t #"$'.includes(ch) || ch === ' ') return false
+  if (ch === '' || '{}[],:=\n\r\t #"$?!@*&^\\'.includes(ch) || ch === ' ') return false
   if (ch === '+' && nextFn() === '=') return false
   if (ch === '/' && nextFn() === '/') return false
   return true
