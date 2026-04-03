@@ -138,7 +138,8 @@ export function tokenize(input: string): Token[] {
               for (let i = 0; i < 4; i++) advance()
               break
             }
-            default: value += esc
+            default:
+              throw new ParseError(`Unknown escape sequence: \\${esc}`, line, col)
           }
         } else {
           value += advance()

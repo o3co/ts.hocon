@@ -67,6 +67,14 @@ describe('tokenize', () => {
     expect(() => tokenize('"\\u"')).toThrow(ParseError)
   })
 
+  it('throws on unknown escape sequence \\q', () => {
+    expect(() => tokenize('"hello\\qworld"')).toThrow(/unknown escape/i)
+  })
+
+  it('throws on unknown escape sequence \\a', () => {
+    expect(() => tokenize('"\\a"')).toThrow(/unknown escape/i)
+  })
+
   it('tokenizes triple-quoted strings', () => {
     const [t] = tokenize('"""hello\nworld"""')
     expect(t.kind).toBe('triple_string')
