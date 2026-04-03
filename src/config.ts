@@ -69,7 +69,7 @@ export class Config {
   }
 
   private lookupNode(path: string): HoconValue | undefined {
-    const segments = path.split('.')
+    const segments = splitConfigPath(path)
     let current: HoconValue = this.root
     for (const seg of segments) {
       if (current.kind !== 'object') return undefined
@@ -86,6 +86,32 @@ export class Config {
     if (v.kind !== 'scalar') throw new ConfigError(`expected scalar at ${path}, got ${v.kind}`, path)
     return v.value
   }
+}
+
+function splitConfigPath(path: string): string[] {
+  const segments: string[] = []
+  let i = 0
+  while (i < path.length) {
+    if (path[i] === '"') {
+      const end = path.indexOf('"', i + 1)
+      if (end === -1) {
+        segments.push(path.slice(i + 1))
+        break
+      }
+      segments.push(path.slice(i + 1, end))
+      i = end + 1
+      if (i < path.length && path[i] === '.') i++
+    } else {
+      const dot = path.indexOf('.', i)
+      if (dot === -1) {
+        segments.push(path.slice(i))
+        break
+      }
+      segments.push(path.slice(i, dot))
+      i = dot + 1
+    }
+  }
+  return segments
 }
 
 function hoconToJs(v: HoconValue): unknown {
