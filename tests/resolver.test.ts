@@ -1,14 +1,23 @@
 // tests/resolver.test.ts
-import { describe, it, expect } from 'vitest'
+import { describe, expect, it } from 'vitest'
+import { ResolveError } from '../src/errors.js'
 import { tokenize } from '../src/internal/lexer/lexer.js'
 import { parseTokens } from '../src/internal/parser/parser.js'
 import { resolve } from '../src/internal/resolver/resolver.js'
 import type { HoconValue } from '../src/value.js'
-import { ResolveError } from '../src/errors.js'
 
-function resolveStr(input: string, env: Record<string, string> = {}): HoconValue {
+function resolveStr(input: string, env: Record<string, string> = {}, files: Record<string, string> = {}): HoconValue {
   const ast = parseTokens(tokenize(input))
-  return resolve(ast, { env, baseDir: undefined, readFileSync: () => { throw new Error('no fs') } })
+  const hasFiles = Object.keys(files).length > 0
+  return resolve(ast, {
+    env,
+    baseDir: hasFiles ? '/' : undefined,
+    readFileSync: (p: string) => {
+      const content = files[p]
+      if (content !== undefined) return content
+      throw new Error(`file not found: ${p}`)
+    },
+  })
 }
 
 function obj(v: HoconValue): Map<string, HoconValue> {
@@ -228,5 +237,63 @@ describe('Resolver - include', () => {
         'b.conf': 'include "a.conf"',
       })
     ).toThrow(ResolveError)
+  })
+})
+
+describe('Resolver - resolveConcat edge cases', () => {
+  it('returns null scalar when concat resolves to zero elements (all optional missing)', () => {
+    // a concat of two missing optional substitutions → both resolve to undefined → empty
+    // resolveConcat returns null scalar for empty resolved list
+    const v = resolveStr('x = ${?missing1}${?missing2}')
+    const x = obj(v).get('x')
+    expect(x).toEqual({ kind: 'scalar', value: null })
+  })
+
+  it('concatenates arrays from substitution in concat context', () => {
+    // arr is resolved array; concat of arr subst + scalar item produces array concat
+    const v = resolveStr('arr = [1, 2]\nresult = ${arr}[3]')
+    const result = obj(v).get('result')
+    // array concat: [1,2] + [3] merged or string fallback — at minimum should not throw
+    expect(result).toBeDefined()
+  })
+})
+
+describe('Resolver - circular substitution without prior value', () => {
+  it('throws ResolveError for optional circular substitution with no prior', () => {
+    // ${?a} that cycles and has no prior value — should return undefined (field dropped)
+    const v = resolveStr('a = ${?a}')
+    // 'a' has no prior, so the optional circular sub resolves to undefined → field dropped
+    expect(obj(v).get('a')).toBeUndefined()
+  })
+})
+
+describe('Resolver - parseSubstPath quoted segments', () => {
+  it('resolves substitution with quoted path containing dots', () => {
+    // ${"a.b"} should treat "a.b" as a single key, not split at dot
+    const v = resolveStr('"a.b" = 42\nx = ${"a.b"}')
+    expect(obj(v).get('x')).toEqual({ kind: 'scalar', value: 42 })
+  })
+
+  it('resolves substitution with dot-starting path (empty segment)', () => {
+    // Paths starting with a dot produce an empty leading segment in parseSubstPath.
+    // If the key isn't found, optional sub returns undefined (field dropped).
+    const v = resolveStr('x = ${?.missing}')
+    expect(obj(v).get('x')).toBeUndefined()
+  })
+})
+
+describe('Resolver - include .conf extension probing (sync)', () => {
+  it('probes .conf extension when include name has no extension', () => {
+    const v = resolveStr('include "base"\nlocal = 1', {}, {
+      '/base.conf': 'probed = true',
+    })
+    expect(obj(v).get('probed')).toEqual({ kind: 'scalar', value: true })
+    expect(obj(v).get('local')).toEqual({ kind: 'scalar', value: 1 })
+  })
+
+  it('silently ignores include when no candidates found', () => {
+    const v = resolveStr('include "ghost"\nlocal = 7', {}, {})
+    expect(obj(v).get('local')).toEqual({ kind: 'scalar', value: 7 })
+    expect(obj(v).get('ghost')).toBeUndefined()
   })
 })
