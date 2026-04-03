@@ -155,6 +155,18 @@ describe('Resolver - object concatenation deep merge', () => {
     expect(entries).toEqual({ y: 1, z: 2 })
   })
 
+  it('should recursively deep-merge nested objects', () => {
+    const v = resolveStr('a = {x: {y: {deep: 1}}} {x: {y: {other: 2}}}')
+    const a = obj(v).get('a')
+    if (a?.kind !== 'object') throw new Error('expected object')
+    const x = a.fields.get('x')
+    if (x?.kind !== 'object') throw new Error('expected object')
+    const y = x.fields.get('y')
+    if (y?.kind !== 'object') throw new Error('expected object')
+    const entries = Object.fromEntries([...y.fields.entries()].map(([k, v]) => [k, v.kind === 'scalar' ? v.value : v]))
+    expect(entries).toEqual({ deep: 1, other: 2 })
+  })
+
   it('should deep-merge multiple concatenated objects', () => {
     const v = resolveStr('a = {x: 1, nested: {a: 1}} {y: 2, nested: {b: 2}} {z: 3, nested: {c: 3}}')
     const a = obj(v).get('a')
