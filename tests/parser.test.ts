@@ -138,6 +138,44 @@ describe('parseTokens', () => {
     }
   })
 
+  it('parses include required("base.conf") with required: true', () => {
+    const node = parse('include required("base.conf")')
+    if (node.kind !== 'object') return
+    const field = node.fields[0]
+    if (!field) return
+    const inc = field.value
+    expect(inc.kind).toBe('include')
+    if (inc.kind === 'include') {
+      expect(inc.path).toBe('base.conf')
+      expect(inc.required).toBe(true)
+    }
+  })
+
+  it('parses include required(file("base.conf")) with required: true', () => {
+    const node = parse('include required(file("base.conf"))')
+    if (node.kind !== 'object') return
+    const field = node.fields[0]
+    if (!field) return
+    const inc = field.value
+    expect(inc.kind).toBe('include')
+    if (inc.kind === 'include') {
+      expect(inc.path).toBe('base.conf')
+      expect(inc.required).toBe(true)
+    }
+  })
+
+  it('regular include "base.conf" has required: false', () => {
+    const node = parse('include "base.conf"')
+    if (node.kind !== 'object') return
+    const field = node.fields[0]
+    if (!field) return
+    const inc = field.value
+    expect(inc.kind).toBe('include')
+    if (inc.kind === 'include') {
+      expect(inc.required).toBe(false)
+    }
+  })
+
   it('chains two quoted key segments with a dot', () => {
     const node = parse('"a"."b" = 1')
     if (node.kind === 'object') {

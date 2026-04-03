@@ -119,8 +119,22 @@ export function parseTokens(tokens: Token[]): AstNode {
     skip('newline')
     const t = peek()
     let path: string
+    let required = false
 
-    if (t.kind === 'string') {
+    if (t.kind === 'unquoted' && (t.value === 'required(' || t.value === 'required' ||
+        t.value.startsWith('required('))) {
+      // include required("path") or include required(file("path"))
+      // The lexer may produce "required(" or "required(file(" as a single unquoted token
+      // depending on whether there is whitespace before "file(".
+      required = true
+      advance()
+      // Skip tokens until we find the quoted path string
+      while (peek().kind !== 'string' && peek().kind !== 'eof') advance()
+      if (peek().kind === 'eof') throw new ParseError('expected include path', t.line, t.col)
+      path = advance().value
+      // Skip closing ) and anything else on this line
+      while (peek().kind !== 'newline' && peek().kind !== 'rbrace' && peek().kind !== 'eof') advance()
+    } else if (t.kind === 'string') {
       // include "path"
       path = advance().value
     } else if (t.kind === 'unquoted' && (t.value === 'file(' || t.value === 'file')) {
@@ -138,7 +152,7 @@ export function parseTokens(tokens: Token[]): AstNode {
 
     return {
       key: [],
-      value: { kind: 'include', path, pos: p },
+      value: { kind: 'include', path, required, pos: p },
       append: false,
       pos: p,
     }
