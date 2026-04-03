@@ -323,6 +323,13 @@ const config = parseWithSchema(hoconInput, schema) // fails fast on startup
 
 All implementations are full Lightbend HOCON spec compliant.
 
+## Known Limitations
+
+- **`include url(...)` and `include classpath(...)`** are not supported. These are JVM-specific include forms from the Lightbend spec. Only `include "file"`, `include file("file")`, and `include required(...)` are supported.
+- **No watch/reload** — the library parses config at load time. For live-reloading, re-call `parse()` or `parseFile()` on change.
+- **No streaming parser** — the entire input is loaded into memory. For very large configs, validate input size before parsing (see Security Considerations).
+- **`.properties` include** — supports basic `key=value` syntax. Does not support multiline values (backslash continuation), unicode escapes, or key escaping from the full Java .properties specification.
+
 ## Security Considerations
 
 When parsing untrusted HOCON input, be aware of:
