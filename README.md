@@ -64,6 +64,7 @@ HOCON gives you the readability of YAML, the structure of JSON, and features tha
 - `+=` append operator
 - `include "file.conf"` and `include file("file.conf")` directives
 - Triple-quoted strings (`"""..."""`)
+- Duration and byte size parsing (`getDuration()`, `getBytes()`)
 - Sync and async API (`parse` / `parseAsync` / `parseFile` / `parseFileAsync`)
 - ESM + CJS dual package
 - Optional [Zod](https://zod.dev/) integration for schema validation
@@ -101,6 +102,8 @@ parseFileAsync(path: string, opts?: ParseOptions): Promise<Config>
 | `getBoolean(path)` | `boolean` | missing, wrong type |
 | `getConfig(path)` | `Config` | missing, not an object |
 | `getList(path)` | `unknown[]` | missing, not an array |
+| `getDuration(path, unit?)` | `number` | missing, not a string, or invalid duration format |
+| `getBytes(path, unit?)` | `number` | missing, not a string, or invalid byte size format |
 | `has(path)` | `boolean` | — |
 | `keys()` | `string[]` | — |
 | `withFallback(fallback)` | `Config` | — |
@@ -174,6 +177,26 @@ description = """
   multiline string.
 """
 ```
+
+### Duration and Byte Sizes
+
+```ts
+const c = parse(`
+  timeout   = "30s"
+  cache-ttl = "5m"
+  max-size  = "512MiB"
+`)
+
+c.getDuration('timeout')        // 30000 (ms)
+c.getDuration('timeout', 's')   // 30
+c.getDuration('cache-ttl', 'm') // 5
+
+c.getBytes('max-size')          // 536870912 (bytes)
+c.getBytes('max-size', 'MiB')  // 512
+```
+
+Supported duration units: `ns`, `us`, `ms`, `s`, `m`, `h`, `d` (and long forms like `seconds`, `minutes`).
+Supported byte units: `B`, `KB`/`KiB`, `MB`/`MiB`, `GB`/`GiB`, `TB`/`TiB` (and long forms like `megabytes`, `mebibytes`).
 
 ## Spec Compliance
 

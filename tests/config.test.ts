@@ -205,3 +205,149 @@ describe('Config - quoted path segments', () => {
     expect(() => cfg.has('"unterminated')).toThrow(/unterminated/)
   })
 })
+
+describe('getDuration', () => {
+  it('parses seconds to ms', () => {
+    const c = parse('timeout = "30s"')
+    expect(c.getDuration('timeout')).toBe(30_000)
+  })
+
+  it('parses minutes to ms', () => {
+    const c = parse('ttl = "5m"')
+    expect(c.getDuration('ttl')).toBe(300_000)
+  })
+
+  it('parses hours to ms', () => {
+    const c = parse('expiry = "2h"')
+    expect(c.getDuration('expiry')).toBe(7_200_000)
+  })
+
+  it('parses days to ms', () => {
+    const c = parse('retention = "7d"')
+    expect(c.getDuration('retention')).toBe(604_800_000)
+  })
+
+  it('parses milliseconds', () => {
+    const c = parse('delay = "100ms"')
+    expect(c.getDuration('delay')).toBe(100)
+  })
+
+  it('parses nanoseconds to ms', () => {
+    const c = parse('tick = "5000000ns"')
+    expect(c.getDuration('tick')).toBe(5)
+  })
+
+  it('parses microseconds to ms', () => {
+    const c = parse('tick = "5000us"')
+    expect(c.getDuration('tick')).toBe(5)
+  })
+
+  it('supports long unit names', () => {
+    const c = parse('timeout = "30 seconds"')
+    expect(c.getDuration('timeout')).toBe(30_000)
+  })
+
+  it('supports fractional values', () => {
+    const c = parse('timeout = "1.5s"')
+    expect(c.getDuration('timeout')).toBe(1_500)
+  })
+
+  it('returns in requested unit', () => {
+    const c = parse('timeout = "30s"')
+    expect(c.getDuration('timeout', 's')).toBe(30)
+    expect(c.getDuration('timeout', 'm')).toBeCloseTo(0.5)
+  })
+
+  it('throws on missing path', () => {
+    const c = parse('a = 1')
+    expect(() => c.getDuration('missing')).toThrow(ConfigError)
+  })
+
+  it('throws on non-string value', () => {
+    const c = parse('a = 123')
+    expect(() => c.getDuration('a')).toThrow(ConfigError)
+  })
+
+  it('throws on unknown unit', () => {
+    const c = parse('a = "30x"')
+    expect(() => c.getDuration('a')).toThrow(ConfigError)
+  })
+
+  it('throws on no number', () => {
+    const c = parse('a = "seconds"')
+    expect(() => c.getDuration('a')).toThrow(ConfigError)
+  })
+})
+
+describe('getBytes', () => {
+  it('parses plain bytes', () => {
+    const c = parse('size = "1024B"')
+    expect(c.getBytes('size')).toBe(1024)
+  })
+
+  it('parses kilobytes (SI)', () => {
+    const c = parse('size = "10KB"')
+    expect(c.getBytes('size')).toBe(10_000)
+  })
+
+  it('parses kibibytes (IEC)', () => {
+    const c = parse('size = "10KiB"')
+    expect(c.getBytes('size')).toBe(10_240)
+  })
+
+  it('parses megabytes', () => {
+    const c = parse('size = "512MB"')
+    expect(c.getBytes('size')).toBe(512_000_000)
+  })
+
+  it('parses mebibytes', () => {
+    const c = parse('size = "512MiB"')
+    expect(c.getBytes('size')).toBe(536_870_912)
+  })
+
+  it('parses gigabytes', () => {
+    const c = parse('size = "2GB"')
+    expect(c.getBytes('size')).toBe(2_000_000_000)
+  })
+
+  it('parses gibibytes', () => {
+    const c = parse('size = "1GiB"')
+    expect(c.getBytes('size')).toBe(1_073_741_824)
+  })
+
+  it('parses terabytes', () => {
+    const c = parse('size = "1TB"')
+    expect(c.getBytes('size')).toBe(1_000_000_000_000)
+  })
+
+  it('parses tebibytes', () => {
+    const c = parse('size = "1TiB"')
+    expect(c.getBytes('size')).toBe(1_099_511_627_776)
+  })
+
+  it('supports long unit names', () => {
+    const c = parse('size = "512 megabytes"')
+    expect(c.getBytes('size')).toBe(512_000_000)
+  })
+
+  it('returns in requested unit', () => {
+    const c = parse('size = "1GiB"')
+    expect(c.getBytes('size', 'MiB')).toBe(1024)
+    expect(c.getBytes('size', 'MB')).toBeCloseTo(1073.741824)
+  })
+
+  it('throws on missing path', () => {
+    const c = parse('a = 1')
+    expect(() => c.getBytes('missing')).toThrow(ConfigError)
+  })
+
+  it('throws on non-string value', () => {
+    const c = parse('a = 123')
+    expect(() => c.getBytes('a')).toThrow(ConfigError)
+  })
+
+  it('throws on unknown unit', () => {
+    const c = parse('a = "512XB"')
+    expect(() => c.getBytes('a')).toThrow(ConfigError)
+  })
+})
