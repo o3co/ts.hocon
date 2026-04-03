@@ -459,8 +459,35 @@ function isFileNotFoundError(e: unknown): boolean {
   return msg.includes('not found') || msg.includes('no such file') || msg.includes('enoent')
 }
 
+function loadSingleInclude(candidate: string, opts: ResolveOptions): ResObj {
+  const { readFileSync, includeStack = [], env } = opts
+  let content: string
+  try {
+    content = readFileSync(candidate)
+  } catch (e: unknown) {
+    if (isFileNotFoundError(e)) return makeResObj()
+    throw e
+  }
+
+  if (includeStack.includes(candidate)) {
+    throw new ResolveError(`circular include: ${candidate}`, candidate, 0, 0)
+  }
+
+  if (candidate.endsWith('.properties')) {
+    return hoconValueToResObj(propertiesToHoconValue(content))
+  }
+
+  const ast = parseTokens(tokenize(content))
+  return buildResObj(ast, {
+    env,
+    baseDir: nodePath.dirname(candidate),
+    readFileSync,
+    includeStack: [...includeStack, candidate],
+  })
+}
+
 function loadInclude(includePath: string, required: boolean, opts: ResolveOptions): ResObj {
-  const { baseDir, readFileSync, includeStack = [], env } = opts
+  const { baseDir, includeStack = [] } = opts
   const absPath = baseDir
     ? nodePath.resolve(baseDir, includePath)
     : nodePath.resolve(includePath)
@@ -469,43 +496,38 @@ function loadInclude(includePath: string, required: boolean, opts: ResolveOption
     throw new ResolveError(`circular include: ${absPath}`, absPath, 0, 0)
   }
 
-  // Try the path as-is, then with .conf, .json, and .properties extensions
-  const candidates = [absPath]
-  if (!absPath.endsWith('.conf') && !absPath.endsWith('.json') && !absPath.endsWith('.properties')) {
-    candidates.push(`${absPath}.conf`, `${absPath}.json`, `${absPath}.properties`)
+  const hasExplicitExt = absPath.endsWith('.conf') || absPath.endsWith('.json') || absPath.endsWith('.properties')
+
+  if (hasExplicitExt) {
+    // Explicit extension: load only that file (first-match on bare path)
+    const result = loadSingleInclude(absPath, opts)
+    if (result.fields.size > 0) return result
+    if (required) {
+      throw new ResolveError(`required include file not found: ${includePath}`, includePath, 0, 0)
+    }
+    return makeResObj()
   }
 
-  for (const candidate of candidates) {
-    let content: string
-    try {
-      content = readFileSync(candidate)
-    } catch (e: unknown) {
-      if (isFileNotFoundError(e)) continue
-      throw e
-    }
+  // No extension: try bare path first, then merge all found extensions
+  // Probe order: .properties, .json, .conf (last wins via deepMerge)
+  const barePath = loadSingleInclude(absPath, opts)
+  if (barePath.fields.size > 0) return barePath
 
-    if (includeStack.includes(candidate)) {
-      throw new ResolveError(`circular include: ${candidate}`, candidate, 0, 0)
+  const merged = makeResObj()
+  let found = false
+  const probeExts = ['.properties', '.json', '.conf']
+  for (const ext of probeExts) {
+    const result = loadSingleInclude(`${absPath}${ext}`, opts)
+    if (result.fields.size > 0) {
+      deepMergeResObjInto(merged, result)
+      found = true
     }
-
-    if (candidate.endsWith('.properties')) {
-      return hoconValueToResObj(propertiesToHoconValue(content))
-    }
-
-    const ast = parseTokens(tokenize(content))
-    return buildResObj(ast, {
-      env,
-      baseDir: nodePath.dirname(candidate),
-      readFileSync,
-      includeStack: [...includeStack, candidate],
-    })
   }
 
-  // Missing required includes throw; others are silently ignored per HOCON spec
-  if (required) {
+  if (!found && required) {
     throw new ResolveError(`required include file not found: ${includePath}`, includePath, 0, 0)
   }
-  return makeResObj()
+  return merged
 }
 
 // ---- Async Pass 1 helpers (mirror sync versions but await file reads) ----
@@ -597,8 +619,40 @@ async function astToResolverValueAsync(ast: AstNode, opts: ResolveOptions): Prom
   }
 }
 
+async function loadSingleIncludeAsync(candidate: string, opts: ResolveOptions): Promise<ResObj> {
+  const { readFile, readFileSync, includeStack = [], env } = opts
+  const read = readFile
+    ? async (p: string) => readFile(p)
+    : async (p: string) => readFileSync(p)
+
+  let content: string
+  try {
+    content = await read(candidate)
+  } catch (e: unknown) {
+    if (isFileNotFoundError(e)) return makeResObj()
+    throw e
+  }
+
+  if (includeStack.includes(candidate)) {
+    throw new ResolveError(`circular include: ${candidate}`, candidate, 0, 0)
+  }
+
+  if (candidate.endsWith('.properties')) {
+    return hoconValueToResObj(propertiesToHoconValue(content))
+  }
+
+  const ast = parseTokens(tokenize(content))
+  return buildResObjAsync(ast, {
+    env,
+    baseDir: nodePath.dirname(candidate),
+    readFileSync,
+    readFile,
+    includeStack: [...includeStack, candidate],
+  })
+}
+
 async function loadIncludeAsync(includePath: string, required: boolean, opts: ResolveOptions): Promise<ResObj> {
-  const { baseDir, readFile, readFileSync, includeStack = [], env } = opts
+  const { baseDir, includeStack = [] } = opts
   const absPath = baseDir
     ? nodePath.resolve(baseDir, includePath)
     : nodePath.resolve(includePath)
@@ -607,46 +661,34 @@ async function loadIncludeAsync(includePath: string, required: boolean, opts: Re
     throw new ResolveError(`circular include: ${absPath}`, absPath, 0, 0)
   }
 
-  const candidates = [absPath]
-  if (!absPath.endsWith('.conf') && !absPath.endsWith('.json') && !absPath.endsWith('.properties')) {
-    candidates.push(`${absPath}.conf`, `${absPath}.json`, `${absPath}.properties`)
+  const hasExplicitExt = absPath.endsWith('.conf') || absPath.endsWith('.json') || absPath.endsWith('.properties')
+
+  if (hasExplicitExt) {
+    const result = await loadSingleIncludeAsync(absPath, opts)
+    if (result.fields.size > 0) return result
+    if (required) {
+      throw new ResolveError(`required include file not found: ${includePath}`, includePath, 0, 0)
+    }
+    return makeResObj()
   }
 
-  // Prefer async readFile if available, fall back to sync
-  const read = readFile
-    ? async (p: string) => readFile(p)
-    : async (p: string) => readFileSync(p)
+  // No extension: try bare path first, then merge all found extensions
+  const barePath = await loadSingleIncludeAsync(absPath, opts)
+  if (barePath.fields.size > 0) return barePath
 
-  for (const candidate of candidates) {
-    let content: string
-    try {
-      content = await read(candidate)
-    } catch (e: unknown) {
-      if (isFileNotFoundError(e)) continue
-      throw e
+  const merged = makeResObj()
+  let found = false
+  const probeExts = ['.properties', '.json', '.conf']
+  for (const ext of probeExts) {
+    const result = await loadSingleIncludeAsync(`${absPath}${ext}`, opts)
+    if (result.fields.size > 0) {
+      deepMergeResObjInto(merged, result)
+      found = true
     }
-
-    if (includeStack.includes(candidate)) {
-      throw new ResolveError(`circular include: ${candidate}`, candidate, 0, 0)
-    }
-
-    if (candidate.endsWith('.properties')) {
-      return hoconValueToResObj(propertiesToHoconValue(content))
-    }
-
-    const ast = parseTokens(tokenize(content))
-    return buildResObjAsync(ast, {
-      env,
-      baseDir: nodePath.dirname(candidate),
-      readFileSync,
-      readFile,
-      includeStack: [...includeStack, candidate],
-    })
   }
 
-  // Missing required includes throw; others are silently ignored per HOCON spec
-  if (required) {
+  if (!found && required) {
     throw new ResolveError(`required include file not found: ${includePath}`, includePath, 0, 0)
   }
-  return makeResObj()
+  return merged
 }
