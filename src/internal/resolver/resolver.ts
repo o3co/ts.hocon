@@ -30,6 +30,10 @@ type ResObj = {
 
 type ResolverValue = HoconValue | SubstPlaceholder | ConcatPlaceholder | AppendPlaceholder | ResObj
 
+// Track parser-inserted separator whitespace values without leaking _separator
+// into the public HoconValue type. Uses WeakSet so values can be GC'd normally.
+const separatorValues = new WeakSet<HoconValue>()
+
 function isSubst(v: ResolverValue): v is SubstPlaceholder {
   return (v as SubstPlaceholder)._kind === 'subst-placeholder'
 }
@@ -143,10 +147,11 @@ function applyField(obj: ResObj, field: AstField, opts: ResolveOptions): void {
 
 function astToResolverValue(ast: AstNode, opts: ResolveOptions): ResolverValue {
   switch (ast.kind) {
-    case 'scalar':
-      return ast._separator
-        ? { kind: 'scalar', value: ast.value, _separator: true }
-        : { kind: 'scalar', value: ast.value }
+    case 'scalar': {
+      const sv: HoconValue = { kind: 'scalar', value: ast.value }
+      if (ast._separator) separatorValues.add(sv)
+      return sv
+    }
     case 'array':
       return { kind: 'array', items: ast.items.map(i => astToResolverValue(i, opts) as HoconValue) }
     case 'object': {
@@ -300,9 +305,9 @@ function resolveConcat(
   if (resolved.length === 1) return resolved[0]!
 
   // Object concatenation: if all non-separator elements are objects, deep-merge them.
-  // Only filter parser-inserted separator whitespace (marked with _separator), NOT
-  // user-authored values like "" or " " which should prevent object merging.
-  const nonSep = resolved.filter(v => !(v.kind === 'scalar' && v._separator))
+  // Only filter parser-inserted separator whitespace (tracked via separatorValues WeakSet),
+  // NOT user-authored values like "" or " " which should prevent object merging.
+  const nonSep = resolved.filter(v => !separatorValues.has(v))
   if (nonSep.length > 0 && nonSep.every(v => v.kind === 'object')) {
     const merged = new Map<string, HoconValue>()
     for (const v of nonSep) {
@@ -533,10 +538,11 @@ async function applyFieldAsync(obj: ResObj, field: AstField, opts: ResolveOption
 
 async function astToResolverValueAsync(ast: AstNode, opts: ResolveOptions): Promise<ResolverValue> {
   switch (ast.kind) {
-    case 'scalar':
-      return ast._separator
-        ? { kind: 'scalar', value: ast.value, _separator: true }
-        : { kind: 'scalar', value: ast.value }
+    case 'scalar': {
+      const sv: HoconValue = { kind: 'scalar', value: ast.value }
+      if (ast._separator) separatorValues.add(sv)
+      return sv
+    }
     case 'array': {
       const items = []
       for (const i of ast.items) {
