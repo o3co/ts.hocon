@@ -273,4 +273,18 @@ describe('parseTokens', () => {
     const aField = node.fields.find(f => f.key[0] === 'a')
     expect(aField).toBeDefined()
   })
+
+  it('should error on include with invalid token (catch-all)', () => {
+    // A number token after include should hit the catch-all error path
+    expect(() => parseTokens(tokenize('include 12345'))).toThrow()
+  })
+
+  it('should error on include required(url()) when url is space-separated from required(', () => {
+    // Tests the case where required( and url are separate tokens
+    expect(() => parseTokens(tokenize('include required( url("http://example.com") )'))).toThrow(/not supported/)
+  })
+
+  it('should error on include required(classpath()) when classpath is space-separated', () => {
+    expect(() => parseTokens(tokenize('include required( classpath("reference.conf") )'))).toThrow(/not supported/)
+  })
 })

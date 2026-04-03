@@ -381,3 +381,33 @@ describe('resolveAsync() — parse error propagation in include probing', () => 
     })).rejects.toThrow()
   })
 })
+
+describe('parseAsync — required include error paths', () => {
+  it('errors on required include when file missing (async path)', async () => {
+    await expect(parseAsync('include required("nonexistent.conf")', {
+      baseDir: '/nowhere',
+      readFile: async (p: string) => {
+        throw Object.assign(new Error(`ENOENT: ${p}`), { code: 'ENOENT' })
+      },
+    })).rejects.toThrow(/required/)
+  })
+
+  it('silently ignores MODULE_NOT_FOUND in async probing', async () => {
+    const cfg = await parseAsync('include "mod"\na = 1', {
+      baseDir: '/nowhere',
+      readFile: async (p: string) => {
+        throw Object.assign(new Error(`MODULE_NOT_FOUND: ${p}`), { code: 'MODULE_NOT_FOUND' })
+      },
+    })
+    expect(cfg.getNumber('a')).toBe(1) // include silently ignored
+  })
+
+  it('re-throws non-ENOENT errors in async include probing', async () => {
+    await expect(parseAsync('include "perm"\na = 1', {
+      baseDir: '/nowhere',
+      readFile: async (p: string) => {
+        throw Object.assign(new Error(`EACCES: ${p}`), { code: 'EACCES' })
+      },
+    })).rejects.toThrow(/EACCES/)
+  })
+})
