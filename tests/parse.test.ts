@@ -350,4 +350,34 @@ describe('resolve() — loadInclude sync branches', () => {
     })
     expect(c.getNumber('app')).toBe(99)
   })
+
+  it('propagates parse errors from included files during sync probing', () => {
+    const files: Record<string, string> = {
+      '/config/broken.conf': '{ invalid = }',  // syntax error
+    }
+    expect(() => parse('include "broken"', {
+      baseDir: '/config',
+      readFileSync: (path: string) => {
+        const content = files[path]
+        if (content === undefined) throw Object.assign(new Error(`ENOENT: ${path}`), { code: 'ENOENT' })
+        return content
+      },
+    })).toThrow()
+  })
+})
+
+describe('resolveAsync() — parse error propagation in include probing', () => {
+  it('propagates parse errors from included files during async probing', async () => {
+    const files: Record<string, string> = {
+      '/config/broken.conf': '{ invalid = }',  // syntax error
+    }
+    await expect(parseAsync('include "broken"', {
+      baseDir: '/config',
+      readFile: async (path: string) => {
+        const content = files[path]
+        if (content === undefined) throw Object.assign(new Error(`ENOENT: ${path}`), { code: 'ENOENT' })
+        return content
+      },
+    })).rejects.toThrow()
+  })
 })
