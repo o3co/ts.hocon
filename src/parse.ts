@@ -1,6 +1,6 @@
 import { tokenize } from './internal/lexer/lexer.js'
 import { parseTokens } from './internal/parser/parser.js'
-import { resolve } from './internal/resolver/resolver.js'
+import { resolve, resolveAsync } from './internal/resolver/resolver.js'
 import { Config } from './config.js'
 import type { ResolveOptions } from './internal/resolver/resolver.js'
 import * as fs from 'node:fs'
@@ -27,27 +27,34 @@ async function defaultReadFile(filePath: string): Promise<string> {
   return fs.promises.readFile(filePath, 'utf-8')
 }
 
-export function parse(input: string, opts: ParseOptions = {}): Config {
+function buildResolveContext(input: string, opts: ParseOptions): { ast: ReturnType<typeof parseTokens>, resolveOpts: ResolveOptions } {
   const tokens = tokenize(input)
   const ast = parseTokens(tokens)
   const resolveOpts: ResolveOptions = {
     env: getEnv(opts),
     baseDir: opts.baseDir,
     readFileSync: opts.readFileSync ?? defaultReadFileSync,
+    readFile: opts.readFile,
   }
+  return { ast, resolveOpts }
+}
+
+export function parse(input: string, opts: ParseOptions = {}): Config {
+  const { ast, resolveOpts } = buildResolveContext(input, opts)
   const value = resolve(ast, resolveOpts)
   if (value.kind !== 'object') throw new Error('resolved value is not an object')
   return new Config(value)
 }
 
 /**
- * Async wrapper around `parse()`. Returns a resolved Promise — the parsing
- * itself is synchronous. Use `parseFileAsync()` for async file I/O.
- * Note: `include` directives in string input are resolved synchronously
- * via `readFileSync`; `readFile` is not used by this function.
+ * Truly async version of `parse()`. Include directives are resolved
+ * asynchronously via `readFile` when provided.
  */
 export async function parseAsync(input: string, opts: ParseOptions = {}): Promise<Config> {
-  return Promise.resolve(parse(input, opts))
+  const { ast, resolveOpts } = buildResolveContext(input, opts)
+  const value = await resolveAsync(ast, resolveOpts)
+  if (value.kind !== 'object') throw new Error('resolved value is not an object')
+  return new Config(value)
 }
 
 export function parseFile(filePath: string, opts: ParseOptions = {}): Config {
@@ -71,9 +78,10 @@ export async function parseFileAsync(filePath: string, opts: ParseOptions = {}):
   const resolvedPath = path.resolve(filePath)
   const readFile = opts.readFile ?? defaultReadFile
   const input = await readFile(resolvedPath)
-  return parse(input, {
+  return parseAsync(input, {
     ...opts,
     baseDir: opts.baseDir ?? path.dirname(resolvedPath),
+    readFile,
     readFileSync: opts.readFileSync ?? defaultReadFileSync,
   })
 }

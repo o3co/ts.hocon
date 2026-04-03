@@ -3,6 +3,7 @@ import { describe, it, expect } from 'vitest'
 import { Config } from '../src/config.js'
 import type { HoconValue } from '../src/value.js'
 import { ConfigError } from '../src/errors.js'
+import { parse } from '../src/index.js'
 
 function makeConfig(obj: Record<string, HoconValue>): Config {
   return new Config({ kind: 'object', fields: new Map(Object.entries(obj)) })
@@ -165,5 +166,42 @@ describe('Config', () => {
     const inner = new Map([['host', { kind: 'scalar', value: 'localhost' } satisfies HoconValue]])
     const c = new Config({ kind: 'object', fields: new Map([['server', { kind: 'object', fields: inner }]]) })
     expect(c.toObject()).toEqual({ server: { host: 'localhost' } })
+  })
+})
+
+describe('Config - quoted path segments', () => {
+  it('should access keys containing dots via quoted path', () => {
+    const cfg = parse('"a.b" = 1')
+    expect(cfg.has('"a.b"')).toBe(true)
+    expect(cfg.getNumber('"a.b"')).toBe(1)
+  })
+
+  it('should access nested keys with quoted segments', () => {
+    const cfg = parse('server { "web.api" { port = 8080 } }')
+    expect(cfg.getNumber('server."web.api".port')).toBe(8080)
+  })
+
+  it('should still work with normal dotted paths', () => {
+    const cfg = parse('a { b { c = 1 } }')
+    expect(cfg.getNumber('a.b.c')).toBe(1)
+  })
+
+  it('should access keys containing escaped quotes via quoted path', () => {
+    // HOCON: "a\"b" = 1  — lexer unescapes to key a"b
+    // path arg: '"a\\"b"' — which is the 7-char string: "a\"b"
+    const cfg = parse('"a\\"b" = 1')
+    expect(cfg.getNumber('"a\\"b"')).toBe(1)
+  })
+
+  it('should access keys containing backslash via quoted path', () => {
+    // HOCON: "a\\b" = 2  — lexer unescapes to key a\b
+    // path arg: '"a\\\\b"' — which is the 7-char string: "a\\b"
+    const cfg = parse('"a\\\\b" = 2')
+    expect(cfg.getNumber('"a\\\\b"')).toBe(2)
+  })
+
+  it('should throw on unterminated quoted path segment', () => {
+    const cfg = parse('a = 1')
+    expect(() => cfg.has('"unterminated')).toThrow(/unterminated/)
   })
 })
