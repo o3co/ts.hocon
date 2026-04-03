@@ -27,14 +27,20 @@ async function defaultReadFile(filePath: string): Promise<string> {
   return fs.promises.readFile(filePath, 'utf-8')
 }
 
-export function parse(input: string, opts: ParseOptions = {}): Config {
+function buildResolveContext(input: string, opts: ParseOptions): { ast: ReturnType<typeof parseTokens>, resolveOpts: ResolveOptions } {
   const tokens = tokenize(input)
   const ast = parseTokens(tokens)
   const resolveOpts: ResolveOptions = {
     env: getEnv(opts),
     baseDir: opts.baseDir,
     readFileSync: opts.readFileSync ?? defaultReadFileSync,
+    readFile: opts.readFile,
   }
+  return { ast, resolveOpts }
+}
+
+export function parse(input: string, opts: ParseOptions = {}): Config {
+  const { ast, resolveOpts } = buildResolveContext(input, opts)
   const value = resolve(ast, resolveOpts)
   if (value.kind !== 'object') throw new Error('resolved value is not an object')
   return new Config(value)
@@ -45,14 +51,7 @@ export function parse(input: string, opts: ParseOptions = {}): Config {
  * asynchronously via `readFile` when provided.
  */
 export async function parseAsync(input: string, opts: ParseOptions = {}): Promise<Config> {
-  const tokens = tokenize(input)
-  const ast = parseTokens(tokens)
-  const resolveOpts: ResolveOptions = {
-    env: getEnv(opts),
-    baseDir: opts.baseDir,
-    readFileSync: opts.readFileSync ?? defaultReadFileSync,
-    readFile: opts.readFile,
-  }
+  const { ast, resolveOpts } = buildResolveContext(input, opts)
   const value = await resolveAsync(ast, resolveOpts)
   if (value.kind !== 'object') throw new Error('resolved value is not an object')
   return new Config(value)

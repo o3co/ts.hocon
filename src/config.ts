@@ -93,13 +93,27 @@ function splitConfigPath(path: string): string[] {
   let i = 0
   while (i < path.length) {
     if (path[i] === '"') {
-      const end = path.indexOf('"', i + 1)
-      if (end === -1) {
-        segments.push(path.slice(i + 1))
-        break
+      i++
+      let segment = ''
+      let closed = false
+      while (i < path.length) {
+        const ch = path[i]
+        if (ch === '\\' && i + 1 < path.length) {
+          const next = path[i + 1]
+          segment += next
+          i += 2
+          continue
+        }
+        if (ch === '"') {
+          closed = true
+          i++
+          break
+        }
+        segment += ch
+        i++
       }
-      segments.push(path.slice(i + 1, end))
-      i = end + 1
+      segments.push(segment)
+      if (!closed) break
       if (i < path.length && path[i] === '.') i++
     } else {
       const dot = path.indexOf('.', i)

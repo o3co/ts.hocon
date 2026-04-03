@@ -185,4 +185,18 @@ describe('Config - quoted path segments', () => {
     const cfg = parse('a { b { c = 1 } }')
     expect(cfg.getNumber('a.b.c')).toBe(1)
   })
+
+  it('should access keys containing escaped quotes via quoted path', () => {
+    // HOCON: "a\"b" = 1  — lexer unescapes to key a"b
+    // path arg: '"a\\"b"' — which is the 7-char string: "a\"b"
+    const cfg = parse('"a\\"b" = 1')
+    expect(cfg.getNumber('"a\\"b"')).toBe(1)
+  })
+
+  it('should access keys containing backslash via quoted path', () => {
+    // HOCON: "a\\b" = 2  — lexer unescapes to key a\b
+    // path arg: '"a\\\\b"' — which is the 7-char string: "a\\b"
+    const cfg = parse('"a\\\\b" = 2')
+    expect(cfg.getNumber('"a\\\\b"')).toBe(2)
+  })
 })
