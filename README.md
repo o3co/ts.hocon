@@ -72,6 +72,8 @@ HOCON gives you the readability of YAML, the structure of JSON, and features tha
 
 ## API
 
+For full API documentation, see [o3co.github.io/ts.hocon](https://o3co.github.io/ts.hocon/) (generated with TypeDoc, updated on each minor/major release).
+
 ### Parse functions
 
 ```ts

@@ -63,7 +63,7 @@
   "engines": {
     "node": ">=18"
   },
-  "homepage": "https://github.com/o3co/ts.hocon#readme",
+  "homepage": "https://o3co.github.io/ts.hocon/",
   "bugs": "https://github.com/o3co/ts.hocon/issues",
   "packageManager": "pnpm@10.30.2"
 }
