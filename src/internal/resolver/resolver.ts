@@ -4,6 +4,7 @@ import type { HoconValue } from '../../value.js'
 import type { AstNode, AstField } from '../parser/ast.js'
 import { tokenize } from '../lexer/lexer.js'
 import { parseTokens } from '../parser/parser.js'
+import { propertiesToHoconValue } from '../properties/properties.js'
 
 // ---- Internal placeholder types (not exported) ----
 type SubstPlaceholder = {
@@ -165,6 +166,19 @@ function astToResolverValue(ast: AstNode, opts: ResolveOptions): ResolverValue {
     case 'include':
       return { kind: 'scalar', value: null } // handled by applyField; should not reach here
   }
+}
+
+function hoconValueToResObj(hv: HoconValue): ResObj {
+  const obj = makeResObj()
+  if (hv.kind !== 'object') return obj
+  for (const [key, val] of hv.fields) {
+    if (val.kind === 'object') {
+      obj.fields.set(key, hoconValueToResObj(val))
+    } else {
+      obj.fields.set(key, val)
+    }
+  }
+  return obj
 }
 
 function deepMergeResObjInto(dst: ResObj, src: ResObj): void {
@@ -474,6 +488,10 @@ function loadInclude(includePath: string, required: boolean, opts: ResolveOption
       throw new ResolveError(`circular include: ${candidate}`, candidate, 0, 0)
     }
 
+    if (candidate.endsWith('.properties')) {
+      return hoconValueToResObj(propertiesToHoconValue(content))
+    }
+
     const ast = parseTokens(tokenize(content))
     return buildResObj(ast, {
       env,
@@ -610,6 +628,10 @@ async function loadIncludeAsync(includePath: string, required: boolean, opts: Re
 
     if (includeStack.includes(candidate)) {
       throw new ResolveError(`circular include: ${candidate}`, candidate, 0, 0)
+    }
+
+    if (candidate.endsWith('.properties')) {
+      return hoconValueToResObj(propertiesToHoconValue(content))
     }
 
     const ast = parseTokens(tokenize(content))
