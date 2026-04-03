@@ -469,3 +469,21 @@ describe('parseAsync — .properties extension probing', () => {
     expect(cfg.getString('key')).toBe('from-properties')
   })
 })
+
+describe('parseAsync — include depth limit', () => {
+  it('throws on include depth limit exceeded (async)', async () => {
+    const files: Record<string, string> = {}
+    for (let i = 0; i <= 51; i++) {
+      files[`/depth/file${i}.conf`] = i < 51 ? `include "file${i + 1}.conf"\nkey${i} = ${i}` : `key51 = 51`
+    }
+    await expect(parseAsync('include "file0.conf"', {
+      readFile: async (p: string) => {
+        const name = p.split('/').pop()!
+        const content = files[`/depth/${name}`]
+        if (content === undefined) throw Object.assign(new Error('not found'), { code: 'ENOENT' })
+        return content
+      },
+      baseDir: '/depth',
+    })).rejects.toThrow(/depth limit/)
+  })
+})
