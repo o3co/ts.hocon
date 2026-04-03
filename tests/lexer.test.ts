@@ -75,6 +75,10 @@ describe('tokenize', () => {
     expect(() => tokenize('"\\a"')).toThrow(/unknown escape/i)
   })
 
+  it('should error on trailing backslash in quoted string', () => {
+    expect(() => tokenize('"hello\\\\')).toThrow(ParseError)
+  })
+
   it('tokenizes triple-quoted strings', () => {
     const [t] = tokenize('"""hello\nworld"""')
     expect(t.kind).toBe('triple_string')
