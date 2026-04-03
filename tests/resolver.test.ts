@@ -297,3 +297,29 @@ describe('Resolver - include .conf extension probing (sync)', () => {
     expect(obj(v).get('ghost')).toBeUndefined()
   })
 })
+
+describe('Resolver - include required()', () => {
+  function resolveWithFs(input: string, files: Record<string, string>): HoconValue {
+    const ast = parseTokens(tokenize(input))
+    return resolve(ast, {
+      env: {},
+      baseDir: '/fake',
+      readFileSync: (p: string) => {
+        const key = p.replace('/fake/', '')
+        if (!(key in files)) throw new Error(`file not found: ${p}`)
+        return files[key] ?? ''
+      },
+    })
+  }
+
+  it('throws error containing "required" when required include file is missing', () => {
+    expect(() =>
+      resolveWithFs('include required("nonexistent.conf")\na = 1', {})
+    ).toThrow(/required/)
+  })
+
+  it('silently ignores missing non-required include and preserves other keys', () => {
+    const v = resolveWithFs('include "nonexistent.conf"\na = 1', {})
+    expect(obj(v).get('a')).toEqual({ kind: 'scalar', value: 1 })
+  })
+})

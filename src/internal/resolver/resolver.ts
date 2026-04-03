@@ -95,7 +95,7 @@ function buildResObj(ast: AstNode, opts: ResolveOptions): ResObj {
 function applyField(obj: ResObj, field: AstField, opts: ResolveOptions): void {
   // include directive: key is empty, value is include node
   if (field.key.length === 0 && field.value.kind === 'include') {
-    const included = loadInclude(field.value.path, opts)
+    const included = loadInclude(field.value.path, field.value.required, opts)
     deepMergeResObjInto(obj, included)
     return
   }
@@ -436,7 +436,7 @@ function parseSubstPath(raw: string): string[] {
   return segments
 }
 
-function loadInclude(includePath: string, opts: ResolveOptions): ResObj {
+function loadInclude(includePath: string, required: boolean, opts: ResolveOptions): ResObj {
   const { baseDir, readFileSync, includeStack = [], env } = opts
   const absPath = baseDir
     ? nodePath.resolve(baseDir, includePath)
@@ -473,7 +473,10 @@ function loadInclude(includePath: string, opts: ResolveOptions): ResObj {
     })
   }
 
-  // Missing includes are silently ignored per HOCON spec
+  // Missing required includes throw; others are silently ignored per HOCON spec
+  if (required) {
+    throw new ResolveError(`required include file not found: ${includePath}`, includePath, 0, 0)
+  }
   return makeResObj()
 }
 
@@ -492,7 +495,7 @@ async function buildResObjAsync(ast: AstNode, opts: ResolveOptions): Promise<Res
 
 async function applyFieldAsync(obj: ResObj, field: AstField, opts: ResolveOptions): Promise<void> {
   if (field.key.length === 0 && field.value.kind === 'include') {
-    const included = await loadIncludeAsync(field.value.path, opts)
+    const included = await loadIncludeAsync(field.value.path, field.value.required, opts)
     deepMergeResObjInto(obj, included)
     return
   }
@@ -566,7 +569,7 @@ async function astToResolverValueAsync(ast: AstNode, opts: ResolveOptions): Prom
   }
 }
 
-async function loadIncludeAsync(includePath: string, opts: ResolveOptions): Promise<ResObj> {
+async function loadIncludeAsync(includePath: string, required: boolean, opts: ResolveOptions): Promise<ResObj> {
   const { baseDir, readFile, readFileSync, includeStack = [], env } = opts
   const absPath = baseDir
     ? nodePath.resolve(baseDir, includePath)
@@ -608,5 +611,9 @@ async function loadIncludeAsync(includePath: string, opts: ResolveOptions): Prom
     })
   }
 
+  // Missing required includes throw; others are silently ignored per HOCON spec
+  if (required) {
+    throw new ResolveError(`required include file not found: ${includePath}`, includePath, 0, 0)
+  }
   return makeResObj()
 }
