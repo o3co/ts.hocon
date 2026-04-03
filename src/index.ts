@@ -1,5 +1,6 @@
+export type { ByteUnit, DurationUnit } from './coerce.js'
 export { Config } from './config.js'
 export { ConfigError, ParseError, ResolveError } from './errors.js'
-export type { HoconValue } from './value.js'
 export { parse, parseAsync, parseFile, parseFileAsync } from './parse.js'
 export type { ParseOptions } from './parse.js'
+export type { HoconValue } from './value.js'
