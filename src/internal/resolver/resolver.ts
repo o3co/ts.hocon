@@ -456,8 +456,10 @@ function loadInclude(includePath: string, required: boolean, opts: ResolveOption
     let content: string
     try {
       content = readFileSync(candidate)
-    } catch {
-      continue // file not found, try next candidate
+    } catch (e: unknown) {
+      if (e instanceof Error && (e as NodeJS.ErrnoException).code === 'ENOENT') continue
+      if (e instanceof Error && (e as NodeJS.ErrnoException).code === 'MODULE_NOT_FOUND') continue
+      throw e
     }
 
     if (includeStack.includes(candidate)) {
@@ -593,8 +595,10 @@ async function loadIncludeAsync(includePath: string, required: boolean, opts: Re
     let content: string
     try {
       content = await read(candidate)
-    } catch {
-      continue
+    } catch (e: unknown) {
+      if (e instanceof Error && (e as NodeJS.ErrnoException).code === 'ENOENT') continue
+      if (e instanceof Error && (e as NodeJS.ErrnoException).code === 'MODULE_NOT_FOUND') continue
+      throw e
     }
 
     if (includeStack.includes(candidate)) {

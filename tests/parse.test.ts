@@ -250,7 +250,7 @@ describe('resolveAsync() — loadIncludeAsync branches', () => {
       baseDir: '/cfg',
       readFile: async (p: string) => {
         const content = files[p]
-        if (content === undefined) throw new Error(`not found: ${p}`)
+        if (content === undefined) throw Object.assign(new Error(`ENOENT: ${p}`), { code: 'ENOENT' })
         return content
       },
     })
@@ -263,7 +263,7 @@ describe('resolveAsync() — loadIncludeAsync branches', () => {
     // Include a file that doesn't exist — should not throw, just produce empty merge
     const v = await resolveAsyncStr('include "nonexistent.conf"\napp = 42', {
       baseDir: '/cfg',
-      readFile: async (_p: string) => { throw new Error('file not found') },
+      readFile: async (_p: string) => { throw Object.assign(new Error('ENOENT: not found'), { code: 'ENOENT' }) },
     })
     if (v.kind !== 'object') throw new Error('expected object')
     expect(v.fields.get('app')).toEqual({ kind: 'scalar', value: 42 })
@@ -280,7 +280,7 @@ describe('resolveAsync() — loadIncludeAsync branches', () => {
         baseDir: '/cfg',
         readFile: async (p: string) => {
           const content = files[p]
-          if (content === undefined) throw new Error(`not found: ${p}`)
+          if (content === undefined) throw Object.assign(new Error(`ENOENT: ${p}`), { code: 'ENOENT' })
           return content
         },
       })
@@ -296,7 +296,7 @@ describe('resolveAsync() — loadIncludeAsync branches', () => {
       baseDir: '/cfg',
       readFileSync: (p: string) => {
         const content = files[p]
-        if (content === undefined) throw new Error(`not found: ${p}`)
+        if (content === undefined) throw Object.assign(new Error(`ENOENT: ${p}`), { code: 'ENOENT' })
         return content
       },
       // no readFile provided — exercises sync fallback path in loadIncludeAsync
@@ -317,7 +317,7 @@ describe('resolveAsync() — loadIncludeAsync branches', () => {
         baseDir: '/cfg',
         readFile: async (p: string) => {
           const content = files[p]
-          if (content === undefined) throw new Error(`not found: ${p}`)
+          if (content === undefined) throw Object.assign(new Error(`ENOENT: ${p}`), { code: 'ENOENT' })
           return content
         },
       })
@@ -336,7 +336,7 @@ describe('resolve() — loadInclude sync branches', () => {
         baseDir: '/cfg',
         readFileSync: (p: string) => {
           const content = files[p]
-          if (content === undefined) throw new Error(`not found: ${p}`)
+          if (content === undefined) throw Object.assign(new Error(`ENOENT: ${p}`), { code: 'ENOENT' })
           return content
         },
       })
@@ -346,7 +346,7 @@ describe('resolve() — loadInclude sync branches', () => {
   it('silently ignores missing sync includes', () => {
     const c = parse('include "nonexistent.conf"\napp = 99', {
       baseDir: '/cfg',
-      readFileSync: (_p: string) => { throw new Error('not found') },
+      readFileSync: (_p: string) => { throw Object.assign(new Error('ENOENT: not found'), { code: 'ENOENT' }) },
     })
     expect(c.getNumber('app')).toBe(99)
   })

@@ -245,4 +245,32 @@ describe('parseTokens', () => {
   it('should error on include required(classpath()) with "not supported" message', () => {
     expect(() => parseTokens(tokenize('include required(classpath("reference.conf"))'))).toThrow(/not supported/)
   })
+
+  // Fix 1: required without ( must error
+  it('should error on include required "file.conf" (missing parens)', () => {
+    expect(() => parseTokens(tokenize('include required "file.conf"'))).toThrow()
+  })
+
+  // Fix 2: skip loops stop on comma
+  it('parses include file(...) followed by comma-separated field', () => {
+    const node = parseTokens(tokenize('{ include file("base.conf"), a = 1 }'))
+    if (node.kind !== 'object') throw new Error('expected object')
+    // The 'a' field must not be swallowed by the skip loop
+    const aField = node.fields.find(f => f.key[0] === 'a')
+    expect(aField).toBeDefined()
+  })
+
+  it('parses include "..." followed by comma-separated field', () => {
+    const node = parseTokens(tokenize('{ include "base.conf", a = 1 }'))
+    if (node.kind !== 'object') throw new Error('expected object')
+    const aField = node.fields.find(f => f.key[0] === 'a')
+    expect(aField).toBeDefined()
+  })
+
+  it('parses include required(...) followed by comma-separated field', () => {
+    const node = parseTokens(tokenize('{ include required("base.conf"), a = 1 }'))
+    if (node.kind !== 'object') throw new Error('expected object')
+    const aField = node.fields.find(f => f.key[0] === 'a')
+    expect(aField).toBeDefined()
+  })
 })

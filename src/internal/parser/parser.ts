@@ -126,6 +126,15 @@ export function parseTokens(tokens: Token[]): AstNode {
       // include required("path") or include required(file("path"))
       // The lexer may produce "required(" or "required(file(" as a single unquoted token
       // depending on whether there is whitespace before "file(".
+
+      // Reject bare `required` without a following `(`: e.g. `include required "file.conf"`
+      if (t.value === 'required') {
+        const next = tokens[pos + 1] ?? { kind: 'eof', value: '' }
+        if (next.kind !== 'unquoted' || !next.value.startsWith('(')) {
+          throw new ParseError('include required must be followed by (', t.line, t.col)
+        }
+      }
+
       required = true
       advance()
 
@@ -146,8 +155,8 @@ export function parseTokens(tokens: Token[]): AstNode {
       while (peek().kind !== 'string' && peek().kind !== 'eof') advance()
       if (peek().kind === 'eof') throw new ParseError('expected include path', t.line, t.col)
       path = advance().value
-      // Skip closing ) and anything else on this line
-      while (peek().kind !== 'newline' && peek().kind !== 'rbrace' && peek().kind !== 'eof') advance()
+      // Skip closing ) and anything else on this line (but stop at comma — next field)
+      while (peek().kind !== 'newline' && peek().kind !== 'rbrace' && peek().kind !== 'eof' && peek().kind !== 'comma') advance()
     } else if (t.kind === 'string') {
       // include "path"
       path = advance().value
@@ -158,8 +167,8 @@ export function parseTokens(tokens: Token[]): AstNode {
       while (peek().kind !== 'string' && peek().kind !== 'eof') advance()
       if (peek().kind === 'eof') throw new ParseError('expected include path', t.line, t.col)
       path = advance().value
-      // Skip closing ) and anything else on this line
-      while (peek().kind !== 'newline' && peek().kind !== 'rbrace' && peek().kind !== 'eof') advance()
+      // Skip closing ) and anything else on this line (but stop at comma — next field)
+      while (peek().kind !== 'newline' && peek().kind !== 'rbrace' && peek().kind !== 'eof' && peek().kind !== 'comma') advance()
     } else if (t.kind === 'unquoted' && (t.value === 'url' || t.value.startsWith('url('))) {
       throw new ParseError('include url(...) is not supported', t.line, t.col)
     } else if (t.kind === 'unquoted' && (t.value === 'classpath' || t.value.startsWith('classpath('))) {
