@@ -187,4 +187,8 @@ describe('parseTokens', () => {
       expect(keys).toEqual([['a'], ['garbage']])
     }
   })
+
+  it('should error on stray } after braced root', () => {
+    expect(() => parseTokens(tokenize('{ a = 1 } }'))).toThrow()
+  })
 })

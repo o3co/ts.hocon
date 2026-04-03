@@ -245,6 +245,13 @@ export function parseTokens(tokens: Token[]): AstNode {
       }
     }
 
+    // After merge loop, verify no remaining non-EOF tokens (e.g. stray `}`)
+    skip('newline')
+    const remaining = peek()
+    if (remaining.kind !== 'eof') {
+      throw new ParseError(`Unexpected token '${remaining.value}' after closing brace`, remaining.line, remaining.col)
+    }
+
     return { kind: 'object', fields: allFields, pos: first.pos }
   }
   return parseObject(false)
