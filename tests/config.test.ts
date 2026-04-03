@@ -278,3 +278,76 @@ describe('getDuration', () => {
     expect(() => c.getDuration('a')).toThrow(ConfigError)
   })
 })
+
+describe('getBytes', () => {
+  it('parses plain bytes', () => {
+    const c = parse('size = "1024B"')
+    expect(c.getBytes('size')).toBe(1024)
+  })
+
+  it('parses kilobytes (SI)', () => {
+    const c = parse('size = "10KB"')
+    expect(c.getBytes('size')).toBe(10_000)
+  })
+
+  it('parses kibibytes (IEC)', () => {
+    const c = parse('size = "10KiB"')
+    expect(c.getBytes('size')).toBe(10_240)
+  })
+
+  it('parses megabytes', () => {
+    const c = parse('size = "512MB"')
+    expect(c.getBytes('size')).toBe(512_000_000)
+  })
+
+  it('parses mebibytes', () => {
+    const c = parse('size = "512MiB"')
+    expect(c.getBytes('size')).toBe(536_870_912)
+  })
+
+  it('parses gigabytes', () => {
+    const c = parse('size = "2GB"')
+    expect(c.getBytes('size')).toBe(2_000_000_000)
+  })
+
+  it('parses gibibytes', () => {
+    const c = parse('size = "1GiB"')
+    expect(c.getBytes('size')).toBe(1_073_741_824)
+  })
+
+  it('parses terabytes', () => {
+    const c = parse('size = "1TB"')
+    expect(c.getBytes('size')).toBe(1_000_000_000_000)
+  })
+
+  it('parses tebibytes', () => {
+    const c = parse('size = "1TiB"')
+    expect(c.getBytes('size')).toBe(1_099_511_627_776)
+  })
+
+  it('supports long unit names', () => {
+    const c = parse('size = "512 megabytes"')
+    expect(c.getBytes('size')).toBe(512_000_000)
+  })
+
+  it('returns in requested unit', () => {
+    const c = parse('size = "1GiB"')
+    expect(c.getBytes('size', 'MiB')).toBe(1024)
+    expect(c.getBytes('size', 'MB')).toBeCloseTo(1073.741824)
+  })
+
+  it('throws on missing path', () => {
+    const c = parse('a = 1')
+    expect(() => c.getBytes('missing')).toThrow(ConfigError)
+  })
+
+  it('throws on non-string value', () => {
+    const c = parse('a = 123')
+    expect(() => c.getBytes('a')).toThrow(ConfigError)
+  })
+
+  it('throws on unknown unit', () => {
+    const c = parse('a = "512XB"')
+    expect(() => c.getBytes('a')).toThrow(ConfigError)
+  })
+})

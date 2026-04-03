@@ -48,3 +48,42 @@ export function parseDuration(value: string, outputUnit: DurationUnit = 'ms'): n
   if (divisor === undefined) return NaN
   return ms / divisor
 }
+
+const BYTE_UNITS: Record<string, number> = {
+  B: 1, byte: 1, bytes: 1,
+  KB: 1_000, kilobyte: 1_000, kilobytes: 1_000,
+  KiB: 1_024, kibibyte: 1_024, kibibytes: 1_024,
+  MB: 1_000_000, megabyte: 1_000_000, megabytes: 1_000_000,
+  MiB: 1_048_576, mebibyte: 1_048_576, mebibytes: 1_048_576,
+  GB: 1_000_000_000, gigabyte: 1_000_000_000, gigabytes: 1_000_000_000,
+  GiB: 1_073_741_824, gibibyte: 1_073_741_824, gibibytes: 1_073_741_824,
+  TB: 1_000_000_000_000, terabyte: 1_000_000_000_000, terabytes: 1_000_000_000_000,
+  TiB: 1_099_511_627_776, tebibyte: 1_099_511_627_776, tebibytes: 1_099_511_627_776,
+}
+
+const OUTPUT_BYTE_UNITS: Record<string, number> = {
+  B: 1, KB: 1_000, KiB: 1_024, MB: 1_000_000, MiB: 1_048_576,
+  GB: 1_000_000_000, GiB: 1_073_741_824, TB: 1_000_000_000_000, TiB: 1_099_511_627_776,
+}
+
+export type ByteUnit = 'B' | 'KB' | 'KiB' | 'MB' | 'MiB' | 'GB' | 'GiB' | 'TB' | 'TiB'
+
+export function parseBytes(value: string, outputUnit: ByteUnit = 'B'): number {
+  const trimmed = value.trim()
+  let i = 0
+  while (i < trimmed.length) {
+    const ch = trimmed[i]
+    if (ch < '0' || ch > '9') break
+    i++
+  }
+  if (i === 0) return NaN
+  const num = Number(trimmed.slice(0, i))
+  if (Number.isNaN(num)) return NaN
+  const unit = trimmed.slice(i).trim()
+  const mult = BYTE_UNITS[unit]
+  if (mult === undefined) return NaN
+  const bytes = num * mult
+  const divisor = OUTPUT_BYTE_UNITS[outputUnit]
+  if (divisor === undefined) return NaN
+  return bytes / divisor
+}
