@@ -127,12 +127,19 @@ export function tokenize(input: string): Token[] {
             case 'b': value += '\b'; break
             case 'f': value += '\f'; break
             case 'u': {
+              if (pos + 4 > input.length) {
+                throw new ParseError('Invalid unicode escape: not enough characters', line, col)
+              }
               const hex = input.slice(pos, pos + 4)
+              if (!/^[0-9a-fA-F]{4}$/.test(hex)) {
+                throw new ParseError(`Invalid unicode escape: \\u${hex}`, line, col)
+              }
               value += String.fromCharCode(parseInt(hex, 16))
               for (let i = 0; i < 4; i++) advance()
               break
             }
-            default: value += esc
+            default:
+              throw new ParseError(`Unknown escape sequence: \\${esc}`, line, col)
           }
         } else {
           value += advance()

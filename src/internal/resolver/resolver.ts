@@ -4,6 +4,7 @@ import type { HoconValue } from '../../value.js'
 import type { AstNode, AstField } from '../parser/ast.js'
 import { tokenize } from '../lexer/lexer.js'
 import { parseTokens } from '../parser/parser.js'
+import { propertiesToHoconValue } from '../properties/properties.js'
 
 // ---- Internal placeholder types (not exported) ----
 type SubstPlaceholder = {
@@ -165,6 +166,19 @@ function astToResolverValue(ast: AstNode, opts: ResolveOptions): ResolverValue {
     case 'include':
       return { kind: 'scalar', value: null } // handled by applyField; should not reach here
   }
+}
+
+function hoconValueToResObj(hv: HoconValue): ResObj {
+  const obj = makeResObj()
+  if (hv.kind !== 'object') return obj
+  for (const [key, val] of hv.fields) {
+    if (val.kind === 'object') {
+      obj.fields.set(key, hoconValueToResObj(val))
+    } else {
+      obj.fields.set(key, val)
+    }
+  }
+  return obj
 }
 
 function deepMergeResObjInto(dst: ResObj, src: ResObj): void {
@@ -455,10 +469,10 @@ function loadInclude(includePath: string, required: boolean, opts: ResolveOption
     throw new ResolveError(`circular include: ${absPath}`, absPath, 0, 0)
   }
 
-  // Try the path as-is, then with .conf and .json extensions
+  // Try the path as-is, then with .conf, .json, and .properties extensions
   const candidates = [absPath]
   if (!absPath.endsWith('.conf') && !absPath.endsWith('.json') && !absPath.endsWith('.properties')) {
-    candidates.push(absPath + '.conf', absPath + '.json')
+    candidates.push(`${absPath}.conf`, `${absPath}.json`, `${absPath}.properties`)
   }
 
   for (const candidate of candidates) {
@@ -472,6 +486,10 @@ function loadInclude(includePath: string, required: boolean, opts: ResolveOption
 
     if (includeStack.includes(candidate)) {
       throw new ResolveError(`circular include: ${candidate}`, candidate, 0, 0)
+    }
+
+    if (candidate.endsWith('.properties')) {
+      return hoconValueToResObj(propertiesToHoconValue(content))
     }
 
     const ast = parseTokens(tokenize(content))
@@ -591,7 +609,7 @@ async function loadIncludeAsync(includePath: string, required: boolean, opts: Re
 
   const candidates = [absPath]
   if (!absPath.endsWith('.conf') && !absPath.endsWith('.json') && !absPath.endsWith('.properties')) {
-    candidates.push(absPath + '.conf', absPath + '.json')
+    candidates.push(`${absPath}.conf`, `${absPath}.json`, `${absPath}.properties`)
   }
 
   // Prefer async readFile if available, fall back to sync
@@ -610,6 +628,10 @@ async function loadIncludeAsync(includePath: string, required: boolean, opts: Re
 
     if (includeStack.includes(candidate)) {
       throw new ResolveError(`circular include: ${candidate}`, candidate, 0, 0)
+    }
+
+    if (candidate.endsWith('.properties')) {
+      return hoconValueToResObj(propertiesToHoconValue(content))
     }
 
     const ast = parseTokens(tokenize(content))

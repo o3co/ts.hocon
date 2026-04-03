@@ -55,6 +55,26 @@ describe('tokenize', () => {
     expect(t.value).toBe('A')
   })
 
+  it('throws on \\uZZZZ (invalid hex digits)', () => {
+    expect(() => tokenize('"\\uZZZZ"')).toThrow(ParseError)
+  })
+
+  it('throws on \\u41 (too few hex digits)', () => {
+    expect(() => tokenize('"\\u41"')).toThrow(ParseError)
+  })
+
+  it('throws on \\u at end of string (no hex digits)', () => {
+    expect(() => tokenize('"\\u"')).toThrow(ParseError)
+  })
+
+  it('throws on unknown escape sequence \\q', () => {
+    expect(() => tokenize('"hello\\qworld"')).toThrow(/unknown escape/i)
+  })
+
+  it('throws on unknown escape sequence \\a', () => {
+    expect(() => tokenize('"\\a"')).toThrow(/unknown escape/i)
+  })
+
   it('tokenizes triple-quoted strings', () => {
     const [t] = tokenize('"""hello\nworld"""')
     expect(t.kind).toBe('triple_string')

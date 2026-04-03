@@ -382,6 +382,26 @@ describe('resolveAsync() — parse error propagation in include probing', () => 
   })
 })
 
+describe('parseAsync — .properties include', () => {
+  it('should include .properties file with string values and nested keys', async () => {
+    const files: Record<string, string> = {
+      '/config/app.properties': 'server.host=localhost\nserver.port=8080\ndebug=true',
+    }
+    const cfg = await parseAsync('include "app.properties"\napp = 1', {
+      baseDir: '/config',
+      readFile: async (path: string) => {
+        const content = files[path]
+        if (!content) throw Object.assign(new Error(`ENOENT: ${path}`), { code: 'ENOENT' })
+        return content
+      },
+    })
+    expect(cfg.getString('server.host')).toBe('localhost')
+    expect(cfg.getString('server.port')).toBe('8080')  // string, not number
+    expect(cfg.getString('debug')).toBe('true')  // string, not boolean
+    expect(cfg.getNumber('app')).toBe(1)
+  })
+})
+
 describe('parseAsync — required include error paths', () => {
   it('errors on required include when file missing (async path)', async () => {
     await expect(parseAsync('include required("nonexistent.conf")', {
@@ -430,5 +450,22 @@ describe('parseAsync — required include error paths', () => {
       },
     })
     expect(cfg.getNumber('a')).toBe(1)
+  })
+})
+
+describe('parseAsync — .properties extension probing', () => {
+  it('should probe .properties extension during include resolution', async () => {
+    const files: Record<string, string> = {
+      '/config/app.properties': 'key=from-properties',
+    }
+    const cfg = await parseAsync('include "app"\nother = 1', {
+      baseDir: '/config',
+      readFile: async (path: string) => {
+        const content = files[path]
+        if (!content) throw Object.assign(new Error(`ENOENT: ${path}`), { code: 'ENOENT' })
+        return content
+      },
+    })
+    expect(cfg.getString('key')).toBe('from-properties')
   })
 })
