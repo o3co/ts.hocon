@@ -134,7 +134,9 @@ function applyField(obj: ResObj, field: AstField, opts: ResolveOptions): void {
 function astToResolverValue(ast: AstNode, opts: ResolveOptions): ResolverValue {
   switch (ast.kind) {
     case 'scalar':
-      return { kind: 'scalar', value: ast.value }
+      return ast._separator
+        ? { kind: 'scalar', value: ast.value, _separator: true }
+        : { kind: 'scalar', value: ast.value }
     case 'array':
       return { kind: 'array', items: ast.items.map(i => astToResolverValue(i, opts) as HoconValue) }
     case 'object': {
@@ -287,12 +289,13 @@ function resolveConcat(
   if (resolved.length === 0) return { kind: 'scalar', value: null }
   if (resolved.length === 1) return resolved[0]!
 
-  // Object concatenation: if all non-whitespace elements are objects, deep-merge them
-  // (the parser inserts whitespace scalars between adjacent objects like {a:1} {b:2})
-  const nonWs = resolved.filter(v => !(v.kind === 'scalar' && typeof v.value === 'string' && v.value.trim() === ''))
-  if (nonWs.length > 0 && nonWs.every(v => v.kind === 'object')) {
+  // Object concatenation: if all non-separator elements are objects, deep-merge them.
+  // Only filter parser-inserted separator whitespace (marked with _separator), NOT
+  // user-authored values like "" or " " which should prevent object merging.
+  const nonSep = resolved.filter(v => !(v.kind === 'scalar' && v._separator))
+  if (nonSep.length > 0 && nonSep.every(v => v.kind === 'object')) {
     const merged = new Map<string, HoconValue>()
-    for (const v of nonWs) {
+    for (const v of nonSep) {
       if (v.kind === 'object') {
         for (const [k, val] of v.fields) {
           const existing = merged.get(k)

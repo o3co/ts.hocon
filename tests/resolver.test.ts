@@ -167,6 +167,21 @@ describe('Resolver - object concatenation deep merge', () => {
     expect(entries).toEqual({ deep: 1, other: 2 })
   })
 
+  it('should NOT deep-merge when explicit empty string separates objects', () => {
+    // a = {x:1} "" {y:2} — the "" is an explicit concat operand, so this is string concat
+    const v = resolveStr('a = {x:1} "" {y:2}')
+    const a = obj(v).get('a')
+    // Should be string concatenation, not object merge
+    expect(a?.kind).toBe('scalar')
+  })
+
+  it('should NOT deep-merge when explicit blank string separates objects', () => {
+    // a = {x:1} " " {y:2} — the " " is a user-authored value
+    const v = resolveStr('a = {x:1} " " {y:2}')
+    const a = obj(v).get('a')
+    expect(a?.kind).toBe('scalar')
+  })
+
   it('should deep-merge multiple concatenated objects', () => {
     const v = resolveStr('a = {x: 1, nested: {a: 1}} {y: 2, nested: {b: 2}} {z: 3, nested: {c: 3}}')
     const a = obj(v).get('a')
