@@ -181,7 +181,7 @@ export function parseTokens(tokens: Token[]): AstNode {
         break
       }
       if (hadSpace) {
-        parts.push({ kind: 'scalar', value: ' ', pos: { line: t.line, col: t.col } })
+        parts.push({ kind: 'scalar', value: ' ', pos: { line: t.line, col: t.col }, _separator: true })
       }
       parts.push(node)
     }
@@ -222,8 +222,30 @@ export function parseTokens(tokens: Token[]): AstNode {
   skip('newline')
   const t = peek()
   if (t.kind === 'lbrace') {
+    // Braced root: parse first braced object, then continue parsing
+    // any trailing content as additional root fields to merge (per HOCON spec,
+    // root is always an object and content after } is still part of the root).
     advance()
-    return parseObject(true)
+    const first = parseObject(true)
+    const allFields = first.kind === 'object' ? [...first.fields] : []
+
+    // Merge any additional braced objects or unbraced key-value content
+    while (true) {
+      skip('newline')
+      if (peek().kind === 'eof') break
+      if (peek().kind === 'lbrace') {
+        advance()
+        const extra = parseObject(true)
+        if (extra.kind === 'object') allFields.push(...extra.fields)
+      } else {
+        // Remaining tokens are unbraced root content (key-value pairs, includes)
+        const rest = parseObject(false)
+        if (rest.kind === 'object') allFields.push(...rest.fields)
+        break
+      }
+    }
+
+    return { kind: 'object', fields: allFields, pos: first.pos }
   }
   return parseObject(false)
 }

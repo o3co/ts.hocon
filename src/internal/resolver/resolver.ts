@@ -134,7 +134,9 @@ function applyField(obj: ResObj, field: AstField, opts: ResolveOptions): void {
 function astToResolverValue(ast: AstNode, opts: ResolveOptions): ResolverValue {
   switch (ast.kind) {
     case 'scalar':
-      return { kind: 'scalar', value: ast.value }
+      return ast._separator
+        ? { kind: 'scalar', value: ast.value, _separator: true }
+        : { kind: 'scalar', value: ast.value }
     case 'array':
       return { kind: 'array', items: ast.items.map(i => astToResolverValue(i, opts) as HoconValue) }
     case 'object': {
@@ -287,13 +289,21 @@ function resolveConcat(
   if (resolved.length === 0) return { kind: 'scalar', value: null }
   if (resolved.length === 1) return resolved[0]!
 
-  // Object concatenation: if all elements are objects, deep-merge them
-  if (resolved.every(v => v.kind === 'object')) {
+  // Object concatenation: if all non-separator elements are objects, deep-merge them.
+  // Only filter parser-inserted separator whitespace (marked with _separator), NOT
+  // user-authored values like "" or " " which should prevent object merging.
+  const nonSep = resolved.filter(v => !(v.kind === 'scalar' && v._separator))
+  if (nonSep.length > 0 && nonSep.every(v => v.kind === 'object')) {
     const merged = new Map<string, HoconValue>()
-    for (const v of resolved) {
+    for (const v of nonSep) {
       if (v.kind === 'object') {
         for (const [k, val] of v.fields) {
-          merged.set(k, val)
+          const existing = merged.get(k)
+          if (existing?.kind === 'object' && val.kind === 'object') {
+            merged.set(k, deepMergeHoconValues(existing, val))
+          } else {
+            merged.set(k, val)
+          }
         }
       }
     }
@@ -313,6 +323,22 @@ function resolveConcat(
   // String concatenation
   const str = resolved.map(v => v.kind === 'scalar' ? String(v.value) : JSON.stringify(v)).join('')
   return { kind: 'scalar', value: str }
+}
+
+function deepMergeHoconValues(
+  base: HoconValue & { kind: 'object' },
+  overlay: HoconValue & { kind: 'object' },
+): HoconValue & { kind: 'object' } {
+  const merged = new Map(base.fields)
+  for (const [k, v] of overlay.fields) {
+    const existing = merged.get(k)
+    if (existing?.kind === 'object' && v.kind === 'object') {
+      merged.set(k, deepMergeHoconValues(existing as HoconValue & { kind: 'object' }, v as HoconValue & { kind: 'object' }))
+    } else {
+      merged.set(k, v)
+    }
+  }
+  return { kind: 'object', fields: merged }
 }
 
 function resolveAppend(

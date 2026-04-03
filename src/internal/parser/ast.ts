@@ -3,7 +3,7 @@ export type Pos = { line: number; col: number; file?: string }
 export type AstNode =
   | { kind: 'object'; fields: AstField[]; pos: Pos }
   | { kind: 'array'; items: AstNode[]; pos: Pos }
-  | { kind: 'scalar'; value: string | number | boolean | null; pos: Pos }
+  | { kind: 'scalar'; value: string | number | boolean | null; pos: Pos; _separator?: boolean }
   | { kind: 'concat'; nodes: AstNode[]; pos: Pos }
   | { kind: 'subst'; path: string; optional: boolean; pos: Pos }
   | { kind: 'include'; path: string; pos: Pos }

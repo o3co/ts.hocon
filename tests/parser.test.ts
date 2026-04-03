@@ -151,4 +151,40 @@ describe('parseTokens', () => {
       expect(node.fields[0]!.key).toEqual(['a', 'b', 'c'])
     }
   })
+
+  it('should accept trailing comments after braced root', () => {
+    // Comments after root should be OK (lexer strips them)
+    expect(() => parse('{ a = 1 } // comment')).not.toThrow()
+    expect(() => parse('{ a = 1 } # comment')).not.toThrow()
+  })
+
+  it('should allow trailing key-value pairs after braced root', () => {
+    // Per HOCON spec, root is always an object; content after } merges into root
+    const node = parse('{ a = 1 } b = 2')
+    expect(node.kind).toBe('object')
+    if (node.kind === 'object') {
+      const keys = node.fields.map(f => f.key)
+      expect(keys).toEqual([['a'], ['b']])
+    }
+  })
+
+  it('should allow object concatenation at root level', () => {
+    const node = parse('{ a = 1 } { b = 2 }')
+    expect(node.kind).toBe('object')
+    if (node.kind === 'object') {
+      const keys = node.fields.map(f => f.key)
+      expect(keys).toEqual([['a'], ['b']])
+    }
+  })
+
+  it('should treat unquoted trailing word as key in braced root', () => {
+    // "garbage" becomes a key that needs a value — this should either parse
+    // or throw a "expected value" error, NOT "unexpected token after closing brace"
+    const node = parse('{ a = 1 }\ngarbage = 2')
+    expect(node.kind).toBe('object')
+    if (node.kind === 'object') {
+      const keys = node.fields.map(f => f.key)
+      expect(keys).toEqual([['a'], ['garbage']])
+    }
+  })
 })

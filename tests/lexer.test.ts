@@ -138,4 +138,21 @@ describe('tokenize', () => {
   it('throws ParseError on unterminated substitution', () => {
     expect(() => tokenize('${foo')).toThrow(ParseError)
   })
+
+  it('should error on unterminated triple-quoted string', () => {
+    expect(() => tokenize('a = """unterminated')).toThrow(/unterminated/)
+  })
+
+  it('should error on unterminated triple-quoted string with newlines', () => {
+    expect(() => tokenize('a = """line1\nline2')).toThrow(/unterminated/)
+  })
+
+  it('should not include forbidden characters in unquoted strings', () => {
+    for (const ch of ['?', '!', '@', '*', '&', '^', '\\']) {
+      expect(
+        () => tokenize(`a = hello${ch}world`),
+        `char '${ch}' should not be allowed in unquoted string`,
+      ).toThrow(ParseError)
+    }
+  })
 })

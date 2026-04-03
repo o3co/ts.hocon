@@ -144,6 +144,61 @@ describe('Resolver - Pass 2 (substitutions)', () => {
   })
 })
 
+describe('Resolver - object concatenation deep merge', () => {
+  it('should deep-merge concatenated objects', () => {
+    const v = resolveStr('a = {x: {y: 1}} {x: {z: 2}}')
+    const a = obj(v).get('a')
+    if (a?.kind !== 'object') throw new Error('expected object')
+    const x = a.fields.get('x')
+    if (x?.kind !== 'object') throw new Error('expected object')
+    const entries = Object.fromEntries([...x.fields.entries()].map(([k, v]) => [k, v.kind === 'scalar' ? v.value : v]))
+    expect(entries).toEqual({ y: 1, z: 2 })
+  })
+
+  it('should recursively deep-merge nested objects', () => {
+    const v = resolveStr('a = {x: {y: {deep: 1}}} {x: {y: {other: 2}}}')
+    const a = obj(v).get('a')
+    if (a?.kind !== 'object') throw new Error('expected object')
+    const x = a.fields.get('x')
+    if (x?.kind !== 'object') throw new Error('expected object')
+    const y = x.fields.get('y')
+    if (y?.kind !== 'object') throw new Error('expected object')
+    const entries = Object.fromEntries([...y.fields.entries()].map(([k, v]) => [k, v.kind === 'scalar' ? v.value : v]))
+    expect(entries).toEqual({ deep: 1, other: 2 })
+  })
+
+  it('should NOT deep-merge when explicit empty string separates objects', () => {
+    // a = {x:1} "" {y:2} — the "" is an explicit concat operand, so this is string concat
+    const v = resolveStr('a = {x:1} "" {y:2}')
+    const a = obj(v).get('a')
+    // Should be string concatenation, not object merge
+    expect(a?.kind).toBe('scalar')
+  })
+
+  it('should NOT deep-merge when explicit blank string separates objects', () => {
+    // a = {x:1} " " {y:2} — the " " is a user-authored value
+    const v = resolveStr('a = {x:1} " " {y:2}')
+    const a = obj(v).get('a')
+    expect(a?.kind).toBe('scalar')
+  })
+
+  it('should deep-merge multiple concatenated objects', () => {
+    const v = resolveStr('a = {x: 1, nested: {a: 1}} {y: 2, nested: {b: 2}} {z: 3, nested: {c: 3}}')
+    const a = obj(v).get('a')
+    if (a?.kind !== 'object') throw new Error('expected object')
+    const x = a.fields.get('x')
+    expect(x).toEqual({ kind: 'scalar', value: 1 })
+    const y = a.fields.get('y')
+    expect(y).toEqual({ kind: 'scalar', value: 2 })
+    const z = a.fields.get('z')
+    expect(z).toEqual({ kind: 'scalar', value: 3 })
+    const nested = a.fields.get('nested')
+    if (nested?.kind !== 'object') throw new Error('expected object')
+    const entries = Object.fromEntries([...nested.fields.entries()].map(([k, v]) => [k, v.kind === 'scalar' ? v.value : v]))
+    expect(entries).toEqual({ a: 1, b: 2, c: 3 })
+  })
+})
+
 describe('Resolver - include', () => {
   function resolveWithFs(input: string, files: Record<string, string>): HoconValue {
     const ast = parseTokens(tokenize(input))

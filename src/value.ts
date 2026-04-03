@@ -2,4 +2,4 @@
 export type HoconValue =
   | { kind: 'object'; fields: Map<string, HoconValue> }
   | { kind: 'array'; items: HoconValue[] }
-  | { kind: 'scalar'; value: string | number | boolean | null }
+  | { kind: 'scalar'; value: string | number | boolean | null; _separator?: boolean }

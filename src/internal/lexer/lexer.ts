@@ -79,6 +79,7 @@ export function tokenize(input: string): Token[] {
     if (ch === '"' && peek(1) === '"' && peek(2) === '"') {
       advance(); advance(); advance()
       let value = ''
+      let closed = false
       while (pos < input.length) {
         if (peek() === '"') {
           // Count consecutive quotes
@@ -90,6 +91,7 @@ export function tokenize(input: string): Token[] {
           if (quoteCount >= 3) {
             // Last 3 quotes are the closing delimiter; extras are content
             for (let i = 0; i < quoteCount - 3; i++) value += '"'
+            closed = true
             break
           }
           // Fewer than 3 quotes — they are content
@@ -97,6 +99,9 @@ export function tokenize(input: string): Token[] {
           continue
         }
         value += advance()
+      }
+      if (!closed) {
+        throw new ParseError('unterminated triple-quoted string', sl, sc)
       }
       if (value.startsWith('\n')) value = value.slice(1)
       push('triple_string', value, sl, sc, true)
@@ -157,11 +162,11 @@ export function tokenize(input: string): Token[] {
 }
 
 function isUnquotedStart(ch: string): boolean {
-  return ch !== '' && !'{}[],:=+#\n\r\t "$'.includes(ch)
+  return ch !== '' && !'{}[],:=+#\n\r\t "$?!@*&^\\'.includes(ch)
 }
 
 function isUnquotedContinue(ch: string, nextFn: () => string): boolean {
-  if (ch === '' || '{}[],:=\n\r\t #"$'.includes(ch) || ch === ' ') return false
+  if (ch === '' || '{}[],:=\n\r\t #"$?!@*&^\\'.includes(ch) || ch === ' ') return false
   if (ch === '+' && nextFn() === '=') return false
   if (ch === '/' && nextFn() === '/') return false
   return true
