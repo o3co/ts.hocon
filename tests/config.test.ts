@@ -350,4 +350,19 @@ describe('getBytes', () => {
     const c = parse('a = "512XB"')
     expect(() => c.getBytes('a')).toThrow(ConfigError)
   })
+
+  it('parses fractional byte sizes', () => {
+    const c = parse('size = "1.5GB"')
+    expect(c.getBytes('size')).toBe(1_500_000_000)
+  })
+
+  it('parses lowercase short units', () => {
+    const c = parse('size = "10kb"')
+    expect(c.getBytes('size')).toBe(10_000)
+  })
+
+  it('parses mixed case units', () => {
+    const c = parse('size = "512mb"')
+    expect(c.getBytes('size')).toBe(512_000_000)
+  })
 })

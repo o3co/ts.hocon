@@ -59,6 +59,12 @@ const BYTE_UNITS: Record<string, number> = {
   GiB: 1_073_741_824, gibibyte: 1_073_741_824, gibibytes: 1_073_741_824,
   TB: 1_000_000_000_000, terabyte: 1_000_000_000_000, terabytes: 1_000_000_000_000,
   TiB: 1_099_511_627_776, tebibyte: 1_099_511_627_776, tebibytes: 1_099_511_627_776,
+  // lowercase short-form aliases
+  b: 1,
+  kb: 1_000, kib: 1_024,
+  mb: 1_000_000, mib: 1_048_576,
+  gb: 1_000_000_000, gib: 1_073_741_824,
+  tb: 1_000_000_000_000, tib: 1_099_511_627_776,
 }
 
 const OUTPUT_BYTE_UNITS: Record<string, number> = {
@@ -73,7 +79,7 @@ export function parseBytes(value: string, outputUnit: ByteUnit = 'B'): number {
   let i = 0
   while (i < trimmed.length) {
     const ch = trimmed[i]
-    if (ch < '0' || ch > '9') break
+    if (ch !== '-' && ch !== '.' && (ch < '0' || ch > '9')) break
     i++
   }
   if (i === 0) return NaN
