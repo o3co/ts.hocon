@@ -509,11 +509,8 @@ function loadInclude(includePath: string, required: boolean, opts: ResolveOption
     return makeResObj()
   }
 
-  // No extension: try bare path first, then merge all found extensions
+  // No extension: merge all found extensions
   // Probe order: .properties, .json, .conf (last wins via deepMerge)
-  const barePath = loadSingleInclude(absPath, opts)
-  if (barePath !== undefined) return barePath
-
   const merged = makeResObj()
   let foundAny = false
   const probeExts = ['.properties', '.json', '.conf']
@@ -674,10 +671,7 @@ async function loadIncludeAsync(includePath: string, required: boolean, opts: Re
     return makeResObj()
   }
 
-  // No extension: try bare path first, then merge all found extensions
-  const barePath = await loadSingleIncludeAsync(absPath, opts)
-  if (barePath !== undefined) return barePath
-
+  // No extension: merge all found extensions
   const merged = makeResObj()
   let foundAny = false
   const probeExts = ['.properties', '.json', '.conf']
