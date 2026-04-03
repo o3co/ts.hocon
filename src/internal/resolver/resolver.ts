@@ -497,6 +497,10 @@ function loadInclude(includePath: string, required: boolean, opts: ResolveOption
     throw new ResolveError(`circular include: ${absPath}`, absPath, 0, 0)
   }
 
+  if (includeStack.length >= 50) {
+    throw new ResolveError(`include depth limit exceeded (max 50)`, includePath, 0, 0)
+  }
+
   const hasExplicitExt = absPath.endsWith('.conf') || absPath.endsWith('.json') || absPath.endsWith('.properties')
 
   if (hasExplicitExt) {
@@ -657,6 +661,10 @@ async function loadIncludeAsync(includePath: string, required: boolean, opts: Re
 
   if (includeStack.includes(absPath)) {
     throw new ResolveError(`circular include: ${absPath}`, absPath, 0, 0)
+  }
+
+  if (includeStack.length >= 50) {
+    throw new ResolveError(`include depth limit exceeded (max 50)`, includePath, 0, 0)
   }
 
   const hasExplicitExt = absPath.endsWith('.conf') || absPath.endsWith('.json') || absPath.endsWith('.properties')

@@ -203,8 +203,12 @@ Supported byte units: `B`, `KB`/`KiB`, `MB`/`MiB`, `GB`/`GiB`, `TB`/`TiB` (and l
 Tested against the [Lightbend official test suite](https://github.com/lightbend/config/tree/main/config/src/test/resources): **13/13 test groups pass**.
 
 Not supported in v0.1.0:
+
 - `include url(...)`
 - `include classpath(...)`
+
+Supported since v0.2.0 (P1):
+
 - `.properties` file parsing
 
 ## Performance
@@ -318,6 +322,14 @@ const config = parseWithSchema(hoconInput, schema) // fails fast on startup
 | [hocon2](https://github.com/o3co/hocon2) | Go | [pkg.go.dev](https://pkg.go.dev/github.com/o3co/hocon2) | HOCON → JSON/YAML/TOML/Properties CLI |
 
 All implementations are full Lightbend HOCON spec compliant.
+
+## Security Considerations
+
+When parsing untrusted HOCON input, be aware of:
+
+- **Path traversal in includes:** `include "../../../etc/passwd"` will resolve relative to `baseDir`. Use a custom `readFileSync`/`readFile` that validates paths if parsing untrusted input.
+- **Input size:** The parser has no built-in input size limit. For untrusted input, validate size before calling `parse()`.
+- **Include depth:** Limited to 50 levels to prevent stack overflow from deep include chains.
 
 ## License
 

@@ -349,6 +349,27 @@ describe('Resolver - ENOENT narrowing in loadInclude', () => {
   })
 })
 
+describe('Resolver - include depth limit', () => {
+  it('throws on include depth limit exceeded', () => {
+    // Create a chain of 51 include files
+    const files: Record<string, string> = {}
+    for (let i = 0; i <= 51; i++) {
+      files[`/depth/file${i}.conf`] = i < 51 ? `include "file${i + 1}.conf"\nkey${i} = ${i}` : `key51 = 51`
+    }
+    const ast = parseTokens(tokenize('include "file0.conf"'))
+    expect(() => resolve(ast, {
+      env: {},
+      baseDir: '/depth',
+      readFileSync: (p: string) => {
+        const name = p.split('/').pop()!
+        const content = files[`/depth/${name}`]
+        if (content === undefined) throw Object.assign(new Error('not found'), { code: 'ENOENT' })
+        return content
+      },
+    })).toThrow(/depth limit/)
+  })
+})
+
 describe('include merge-all probing', () => {
   it('merges all found extensions when path has no extension', () => {
     const files: Record<string, string> = {
