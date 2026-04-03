@@ -151,4 +151,18 @@ describe('parseTokens', () => {
       expect(node.fields[0]!.key).toEqual(['a', 'b', 'c'])
     }
   })
+
+  it('should error on trailing garbage after braced root', () => {
+    expect(() => parse('{ a = 1 } garbage')).toThrow()
+  })
+
+  it('should error on trailing tokens after braced root', () => {
+    expect(() => parse('{ a = 1 } extra tokens here')).toThrow()
+  })
+
+  it('should accept trailing comments after braced root', () => {
+    // Comments after root should be OK (lexer strips them)
+    expect(() => parse('{ a = 1 } // comment')).not.toThrow()
+    expect(() => parse('{ a = 1 } # comment')).not.toThrow()
+  })
 })

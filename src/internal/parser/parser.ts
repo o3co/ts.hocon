@@ -223,7 +223,13 @@ export function parseTokens(tokens: Token[]): AstNode {
   const t = peek()
   if (t.kind === 'lbrace') {
     advance()
-    return parseObject(true)
+    const result = parseObject(true)
+    skip('newline')
+    const after = peek()
+    if (after.kind !== 'eof') {
+      throw new ParseError(`unexpected token after closing brace: ${after.kind}`, after.line, after.col)
+    }
+    return result
   }
   return parseObject(false)
 }
