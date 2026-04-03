@@ -459,7 +459,7 @@ function isFileNotFoundError(e: unknown): boolean {
   return msg.includes('not found') || msg.includes('no such file') || msg.includes('enoent')
 }
 
-function loadSingleInclude(candidate: string, opts: ResolveOptions): ResObj {
+function loadSingleInclude(candidate: string, opts: ResolveOptions): ResObj | undefined {
   const { readFileSync, includeStack = [], env } = opts
 
   if (includeStack.includes(candidate)) {
@@ -470,7 +470,7 @@ function loadSingleInclude(candidate: string, opts: ResolveOptions): ResObj {
   try {
     content = readFileSync(candidate)
   } catch (e: unknown) {
-    if (isFileNotFoundError(e)) return makeResObj()
+    if (isFileNotFoundError(e)) return undefined
     throw e
   }
 
@@ -500,9 +500,9 @@ function loadInclude(includePath: string, required: boolean, opts: ResolveOption
   const hasExplicitExt = absPath.endsWith('.conf') || absPath.endsWith('.json') || absPath.endsWith('.properties')
 
   if (hasExplicitExt) {
-    // Explicit extension: load only that file (first-match on bare path)
+    // Explicit extension: load only that exact file
     const result = loadSingleInclude(absPath, opts)
-    if (result.fields.size > 0) return result
+    if (result !== undefined) return result
     if (required) {
       throw new ResolveError(`required include file not found: ${includePath}`, includePath, 0, 0)
     }
@@ -512,20 +512,20 @@ function loadInclude(includePath: string, required: boolean, opts: ResolveOption
   // No extension: try bare path first, then merge all found extensions
   // Probe order: .properties, .json, .conf (last wins via deepMerge)
   const barePath = loadSingleInclude(absPath, opts)
-  if (barePath.fields.size > 0) return barePath
+  if (barePath !== undefined) return barePath
 
   const merged = makeResObj()
-  let found = false
+  let foundAny = false
   const probeExts = ['.properties', '.json', '.conf']
   for (const ext of probeExts) {
-    const result = loadSingleInclude(`${absPath}${ext}`, opts)
-    if (result.fields.size > 0) {
-      deepMergeResObjInto(merged, result)
-      found = true
+    const obj = loadSingleInclude(`${absPath}${ext}`, opts)
+    if (obj !== undefined) {
+      deepMergeResObjInto(merged, obj)
+      foundAny = true
     }
   }
 
-  if (!found && required) {
+  if (!foundAny && required) {
     throw new ResolveError(`required include file not found: ${includePath}`, includePath, 0, 0)
   }
   return merged
@@ -620,7 +620,7 @@ async function astToResolverValueAsync(ast: AstNode, opts: ResolveOptions): Prom
   }
 }
 
-async function loadSingleIncludeAsync(candidate: string, opts: ResolveOptions): Promise<ResObj> {
+async function loadSingleIncludeAsync(candidate: string, opts: ResolveOptions): Promise<ResObj | undefined> {
   const { readFile, readFileSync, includeStack = [], env } = opts
   const read = readFile
     ? async (p: string) => readFile(p)
@@ -634,7 +634,7 @@ async function loadSingleIncludeAsync(candidate: string, opts: ResolveOptions): 
   try {
     content = await read(candidate)
   } catch (e: unknown) {
-    if (isFileNotFoundError(e)) return makeResObj()
+    if (isFileNotFoundError(e)) return undefined
     throw e
   }
 
@@ -665,8 +665,9 @@ async function loadIncludeAsync(includePath: string, required: boolean, opts: Re
   const hasExplicitExt = absPath.endsWith('.conf') || absPath.endsWith('.json') || absPath.endsWith('.properties')
 
   if (hasExplicitExt) {
+    // Explicit extension: load only that exact file
     const result = await loadSingleIncludeAsync(absPath, opts)
-    if (result.fields.size > 0) return result
+    if (result !== undefined) return result
     if (required) {
       throw new ResolveError(`required include file not found: ${includePath}`, includePath, 0, 0)
     }
@@ -675,20 +676,20 @@ async function loadIncludeAsync(includePath: string, required: boolean, opts: Re
 
   // No extension: try bare path first, then merge all found extensions
   const barePath = await loadSingleIncludeAsync(absPath, opts)
-  if (barePath.fields.size > 0) return barePath
+  if (barePath !== undefined) return barePath
 
   const merged = makeResObj()
-  let found = false
+  let foundAny = false
   const probeExts = ['.properties', '.json', '.conf']
   for (const ext of probeExts) {
-    const result = await loadSingleIncludeAsync(`${absPath}${ext}`, opts)
-    if (result.fields.size > 0) {
-      deepMergeResObjInto(merged, result)
-      found = true
+    const obj = await loadSingleIncludeAsync(`${absPath}${ext}`, opts)
+    if (obj !== undefined) {
+      deepMergeResObjInto(merged, obj)
+      foundAny = true
     }
   }
 
-  if (!found && required) {
+  if (!foundAny && required) {
     throw new ResolveError(`required include file not found: ${includePath}`, includePath, 0, 0)
   }
   return merged
