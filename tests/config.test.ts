@@ -199,4 +199,9 @@ describe('Config - quoted path segments', () => {
     const cfg = parse('"a\\\\b" = 2')
     expect(cfg.getNumber('"a\\\\b"')).toBe(2)
   })
+
+  it('should throw on unterminated quoted path segment', () => {
+    const cfg = parse('a = 1')
+    expect(() => cfg.has('"unterminated')).toThrow(/unterminated/)
+  })
 })

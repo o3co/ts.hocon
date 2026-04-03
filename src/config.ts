@@ -112,8 +112,8 @@ function splitConfigPath(path: string): string[] {
         segment += ch
         i++
       }
+      if (!closed) throw new ConfigError(`unterminated quoted path segment: ${path}`, path)
       segments.push(segment)
-      if (!closed) break
       if (i < path.length && path[i] === '.') i++
     } else {
       const dot = path.indexOf('.', i)
