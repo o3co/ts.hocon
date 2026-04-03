@@ -410,4 +410,25 @@ describe('parseAsync — required include error paths', () => {
       },
     })).rejects.toThrow(/EACCES/)
   })
+
+  it('silently ignores custom readFile errors without .code for missing files', async () => {
+    // Custom readFile may throw plain Error without .code property
+    const cfg = await parseAsync('include "missing"\na = 1', {
+      baseDir: '/nowhere',
+      readFile: async (p: string) => {
+        throw new Error(`File not found: ${p}`)
+      },
+    })
+    expect(cfg.getNumber('a')).toBe(1) // include silently ignored
+  })
+
+  it('silently ignores custom sync readFileSync errors without .code for missing files', () => {
+    const cfg = parse('include "missing"\na = 1', {
+      baseDir: '/nowhere',
+      readFileSync: (p: string) => {
+        throw new Error(`no such file or directory: ${p}`)
+      },
+    })
+    expect(cfg.getNumber('a')).toBe(1)
+  })
 })

@@ -436,6 +436,15 @@ function parseSubstPath(raw: string): string[] {
   return segments
 }
 
+function isFileNotFoundError(e: unknown): boolean {
+  if (!(e instanceof Error)) return false
+  const code = (e as NodeJS.ErrnoException).code
+  if (code === 'ENOENT' || code === 'MODULE_NOT_FOUND') return true
+  // Fallback for custom readFile implementations that don't set .code
+  const msg = e.message.toLowerCase()
+  return msg.includes('not found') || msg.includes('no such file') || msg.includes('enoent')
+}
+
 function loadInclude(includePath: string, required: boolean, opts: ResolveOptions): ResObj {
   const { baseDir, readFileSync, includeStack = [], env } = opts
   const absPath = baseDir
@@ -457,8 +466,7 @@ function loadInclude(includePath: string, required: boolean, opts: ResolveOption
     try {
       content = readFileSync(candidate)
     } catch (e: unknown) {
-      if (e instanceof Error && (e as NodeJS.ErrnoException).code === 'ENOENT') continue
-      if (e instanceof Error && (e as NodeJS.ErrnoException).code === 'MODULE_NOT_FOUND') continue
+      if (isFileNotFoundError(e)) continue
       throw e
     }
 
@@ -596,8 +604,7 @@ async function loadIncludeAsync(includePath: string, required: boolean, opts: Re
     try {
       content = await read(candidate)
     } catch (e: unknown) {
-      if (e instanceof Error && (e as NodeJS.ErrnoException).code === 'ENOENT') continue
-      if (e instanceof Error && (e as NodeJS.ErrnoException).code === 'MODULE_NOT_FOUND') continue
+      if (isFileNotFoundError(e)) continue
       throw e
     }
 
