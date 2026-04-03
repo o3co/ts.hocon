@@ -19,6 +19,15 @@ jobs:
         run: |
           TAG="${GITHUB_REF#refs/tags/v}"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+          # Skip pre-release versions (e.g., 1.0.0-beta.1)
+          if echo "$TAG" | grep -q '-'; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Skipping docs deploy for pre-release v$TAG"
+            exit 0
+          fi
+
+          # Skip patch releases (e.g., 1.0.1)
           PATCH=$(echo "$TAG" | cut -d. -f3)
           if [ "$PATCH" != "0" ]; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
@@ -85,6 +94,9 @@ jobs:
           </html>
           REDIRECT
 
+          # Note: root redirect always points to the version being deployed.
+          # If an older tag is pushed after a newer one, the redirect will
+          # temporarily point to the older version until the next deploy.
           git add -A
-          git commit -m "docs: deploy API docs for v${VERSION}"
+          git diff --cached --quiet && echo "No changes to commit" || git commit -m "docs: deploy API docs for v${VERSION}"
           git push origin HEAD:gh-pages --force
