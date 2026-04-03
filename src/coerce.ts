@@ -96,5 +96,6 @@ export function parseBytes(value: string, outputUnit: ByteUnit = 'B'): number {
   const bytes = num * mult
   const divisor = OUTPUT_BYTE_UNITS[outputUnit]
   if (divisor === undefined) return NaN
-  return bytes / divisor
+  const result = bytes / divisor
+  return outputUnit === 'B' ? Math.round(result) : result
 }
