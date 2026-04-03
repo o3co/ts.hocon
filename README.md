@@ -102,8 +102,8 @@ parseFileAsync(path: string, opts?: ParseOptions): Promise<Config>
 | `getBoolean(path)` | `boolean` | missing, wrong type |
 | `getConfig(path)` | `Config` | missing, not an object |
 | `getList(path)` | `unknown[]` | missing, not an array |
-| `getDuration(path, unit?)` | `number` | Duration value. Input: `"30s"`, `"5m"`, etc. Default unit: `ms`. |
-| `getBytes(path, unit?)` | `number` | Byte size value. Input: `"512MB"`, `"1GiB"`, etc. Default unit: `B`. |
+| `getDuration(path, unit?)` | `number` | missing, not a string, or invalid duration format |
+| `getBytes(path, unit?)` | `number` | missing, not a string, or invalid byte size format |
 | `has(path)` | `boolean` | — |
 | `keys()` | `string[]` | — |
 | `withFallback(fallback)` | `Config` | — |

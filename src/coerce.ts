@@ -40,7 +40,7 @@ export function parseDuration(value: string, outputUnit: DurationUnit = 'ms'): n
   if (i === 0) return NaN
   const num = Number(trimmed.slice(0, i))
   if (Number.isNaN(num)) return NaN
-  const unit = trimmed.slice(i).trim()
+  const unit = trimmed.slice(i).trim().toLowerCase()
   const mult = DURATION_UNITS[unit]
   if (mult === undefined) return NaN
   const ms = num * mult
@@ -80,7 +80,12 @@ export function parseBytes(value: string, outputUnit: ByteUnit = 'B'): number {
   const num = Number(trimmed.slice(0, i))
   if (Number.isNaN(num)) return NaN
   const unit = trimmed.slice(i).trim()
-  const mult = BYTE_UNITS[unit]
+  // Try exact match first (preserves KB vs KiB distinction)
+  let mult = BYTE_UNITS[unit]
+  // Try lowercase for long-form names (megabytes, Megabytes, MEGABYTES)
+  if (mult === undefined) {
+    mult = BYTE_UNITS[unit.toLowerCase()]
+  }
   if (mult === undefined) return NaN
   const bytes = num * mult
   const divisor = OUTPUT_BYTE_UNITS[outputUnit]
