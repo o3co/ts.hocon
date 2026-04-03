@@ -67,7 +67,7 @@ describe('parseAsync()', () => {
       baseDir: '/config',
       readFile: async (p: string) => {
         const content = files[p]
-        if (!content) throw new Error(`File not found: ${p}`)
+        if (content === undefined) throw new Error(`File not found: ${p}`)
         return content
       },
     })
@@ -84,7 +84,7 @@ describe('parseAsync()', () => {
       baseDir: '/config',
       readFile: async (p: string) => {
         const content = files[p]
-        if (!content) throw new Error(`File not found: ${p}`)
+        if (content === undefined) throw new Error(`File not found: ${p}`)
         return content
       },
     })
@@ -160,7 +160,7 @@ describe('parseFileAsync()', () => {
     const c = await parseFileAsync('/vfs/main.conf', {
       readFile: async (p: string) => {
         const content = files[p]
-        if (!content) throw new Error(`File not found: ${p}`)
+        if (content === undefined) throw new Error(`File not found: ${p}`)
         return content
       },
     })
@@ -391,7 +391,7 @@ describe('parseAsync — .properties include', () => {
       baseDir: '/config',
       readFile: async (path: string) => {
         const content = files[path]
-        if (!content) throw Object.assign(new Error(`ENOENT: ${path}`), { code: 'ENOENT' })
+        if (content === undefined) throw Object.assign(new Error(`ENOENT: ${path}`), { code: 'ENOENT' })
         return content
       },
     })
@@ -462,7 +462,7 @@ describe('parseAsync — .properties extension probing', () => {
       baseDir: '/config',
       readFile: async (path: string) => {
         const content = files[path]
-        if (!content) throw Object.assign(new Error(`ENOENT: ${path}`), { code: 'ENOENT' })
+        if (content === undefined) throw Object.assign(new Error(`ENOENT: ${path}`), { code: 'ENOENT' })
         return content
       },
     })
