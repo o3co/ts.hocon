@@ -138,4 +138,12 @@ describe('tokenize', () => {
   it('throws ParseError on unterminated substitution', () => {
     expect(() => tokenize('${foo')).toThrow(ParseError)
   })
+
+  it('should error on unterminated triple-quoted string', () => {
+    expect(() => tokenize('a = """unterminated')).toThrow(/unterminated/)
+  })
+
+  it('should error on unterminated triple-quoted string with newlines', () => {
+    expect(() => tokenize('a = """line1\nline2')).toThrow(/unterminated/)
+  })
 })
