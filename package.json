@@ -50,5 +50,9 @@
     "type": "git",
     "url": "https://github.com/o3co/ts.hocon"
   },
+  "license": "Apache-2.0",
+  "engines": { "node": ">=18" },
+  "homepage": "https://github.com/o3co/ts.hocon#readme",
+  "bugs": "https://github.com/o3co/ts.hocon/issues",
   "packageManager": "pnpm@10.30.2"
 }

@@ -203,8 +203,12 @@ Supported byte units: `B`, `KB`/`KiB`, `MB`/`MiB`, `GB`/`GiB`, `TB`/`TiB` (and l
 Tested against the [Lightbend official test suite](https://github.com/lightbend/config/tree/main/config/src/test/resources): **13/13 test groups pass**.
 
 Not supported in v0.1.0:
+
 - `include url(...)`
 - `include classpath(...)`
+
+Supported since v0.2.0 (P1):
+
 - `.properties` file parsing
 
 ## Performance
