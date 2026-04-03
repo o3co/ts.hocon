@@ -44,6 +44,40 @@ describe('parseAsync()', () => {
     const c = await parseAsync('host = "localhost"')
     expect(c.getString('host')).toBe('localhost')
   })
+
+  it('resolves includes using async readFile', async () => {
+    const files: Record<string, string> = {
+      '/config/base.conf': 'base = 1',
+    }
+    const cfg = await parseAsync('include "base.conf"\napp = 2', {
+      baseDir: '/config',
+      readFile: async (p: string) => {
+        const content = files[p]
+        if (!content) throw new Error(`File not found: ${p}`)
+        return content
+      },
+    })
+    expect(cfg.getNumber('base')).toBe(1)
+    expect(cfg.getNumber('app')).toBe(2)
+  })
+
+  it('resolves nested includes asynchronously', async () => {
+    const files: Record<string, string> = {
+      '/config/a.conf': 'include "b.conf"\na = 1',
+      '/config/b.conf': 'b = 2',
+    }
+    const cfg = await parseAsync('include "a.conf"\nroot = 3', {
+      baseDir: '/config',
+      readFile: async (p: string) => {
+        const content = files[p]
+        if (!content) throw new Error(`File not found: ${p}`)
+        return content
+      },
+    })
+    expect(cfg.getNumber('a')).toBe(1)
+    expect(cfg.getNumber('b')).toBe(2)
+    expect(cfg.getNumber('root')).toBe(3)
+  })
 })
 
 describe('parseFile()', () => {
@@ -102,5 +136,21 @@ describe('parseFileAsync()', () => {
       baseDir: os.tmpdir(),
     })
     expect(c.getString('key')).toBe('async-reader')
+  })
+
+  it('resolves includes in file using async readFile', async () => {
+    const files: Record<string, string> = {
+      '/vfs/main.conf': 'include "sub.conf"\nmain = 1',
+      '/vfs/sub.conf': 'sub = 2',
+    }
+    const c = await parseFileAsync('/vfs/main.conf', {
+      readFile: async (p: string) => {
+        const content = files[p]
+        if (!content) throw new Error(`File not found: ${p}`)
+        return content
+      },
+    })
+    expect(c.getNumber('main')).toBe(1)
+    expect(c.getNumber('sub')).toBe(2)
   })
 })

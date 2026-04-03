@@ -51,6 +51,7 @@ export type ResolveOptions = {
   env: Record<string, string>
   baseDir: string | undefined
   readFileSync: (filePath: string) => string
+  readFile?: (filePath: string) => Promise<string>
   includeStack?: string[]
 }
 
@@ -60,6 +61,15 @@ export function resolve(ast: AstNode, opts: ResolveOptions): HoconValue {
   // Pass 1
   const root = buildResObj(ast, opts)
   // Pass 2
+  const resolving = new Set<string>()
+  const resolvedCache = new Map<string, HoconValue>()
+  return resolveResObj(root, root, resolving, resolvedCache, opts)
+}
+
+export async function resolveAsync(ast: AstNode, opts: ResolveOptions): Promise<HoconValue> {
+  // Pass 1 (async — awaits file reads for includes)
+  const root = await buildResObjAsync(ast, opts)
+  // Pass 2 (sync — no I/O needed for substitution resolution)
   const resolving = new Set<string>()
   const resolvedCache = new Map<string, HoconValue>()
   return resolveResObj(root, root, resolving, resolvedCache, opts)
@@ -459,5 +469,138 @@ function loadInclude(includePath: string, opts: ResolveOptions): ResObj {
   }
 
   // Missing includes are silently ignored per HOCON spec
+  return makeResObj()
+}
+
+// ---- Async Pass 1 helpers (mirror sync versions but await file reads) ----
+
+async function buildResObjAsync(ast: AstNode, opts: ResolveOptions): Promise<ResObj> {
+  if (ast.kind !== 'object') {
+    throw new ResolveError('root AST must be an object', '', ast.pos.line, ast.pos.col)
+  }
+  const obj = makeResObj()
+  for (const field of ast.fields) {
+    await applyFieldAsync(obj, field, opts)
+  }
+  return obj
+}
+
+async function applyFieldAsync(obj: ResObj, field: AstField, opts: ResolveOptions): Promise<void> {
+  if (field.key.length === 0 && field.value.kind === 'include') {
+    const included = await loadIncludeAsync(field.value.path, opts)
+    deepMergeResObjInto(obj, included)
+    return
+  }
+
+  const [head, ...tail] = field.key
+  if (!head) return
+
+  if (tail.length > 0) {
+    const syntheticAst: AstNode = {
+      kind: 'object',
+      fields: [{ key: tail, value: field.value, append: field.append, pos: field.pos }],
+      pos: field.pos,
+    }
+    await applyFieldAsync(obj, { key: [head], value: syntheticAst, append: false, pos: field.pos }, opts)
+    return
+  }
+
+  if (field.append) {
+    const existing: ResolverValue = obj.fields.get(head) ?? ({ kind: 'array', items: [] } satisfies HoconValue)
+    obj.priorValues.set(head, existing)
+    obj.fields.set(head, {
+      _kind: 'append-placeholder',
+      existing,
+      elem: await astToResolverValueAsync(field.value, opts),
+    })
+    return
+  }
+
+  const existing = obj.fields.get(head)
+  const newVal = await astToResolverValueAsync(field.value, opts)
+
+  if (existing !== undefined) {
+    obj.priorValues.set(head, existing)
+  }
+
+  if (existing !== undefined && isResObj(existing) && isResObj(newVal)) {
+    deepMergeResObjInto(existing, newVal)
+    return
+  }
+
+  obj.fields.set(head, newVal)
+}
+
+async function astToResolverValueAsync(ast: AstNode, opts: ResolveOptions): Promise<ResolverValue> {
+  switch (ast.kind) {
+    case 'scalar':
+      return ast._separator
+        ? { kind: 'scalar', value: ast.value, _separator: true }
+        : { kind: 'scalar', value: ast.value }
+    case 'array': {
+      const items = []
+      for (const i of ast.items) {
+        items.push(await astToResolverValueAsync(i, opts) as HoconValue)
+      }
+      return { kind: 'array', items }
+    }
+    case 'object':
+      return await buildResObjAsync(ast, opts)
+    case 'subst':
+      return { _kind: 'subst-placeholder', path: ast.path, optional: ast.optional, line: ast.pos.line, col: ast.pos.col }
+    case 'concat': {
+      const nodes = []
+      for (const n of ast.nodes) {
+        nodes.push(await astToResolverValueAsync(n, opts))
+      }
+      return { _kind: 'concat-placeholder', nodes }
+    }
+    case 'include':
+      return { kind: 'scalar', value: null }
+  }
+}
+
+async function loadIncludeAsync(includePath: string, opts: ResolveOptions): Promise<ResObj> {
+  const { baseDir, readFile, readFileSync, includeStack = [], env } = opts
+  const absPath = baseDir
+    ? nodePath.resolve(baseDir, includePath)
+    : nodePath.resolve(includePath)
+
+  if (includeStack.includes(absPath)) {
+    throw new ResolveError(`circular include: ${absPath}`, absPath, 0, 0)
+  }
+
+  const candidates = [absPath]
+  if (!absPath.endsWith('.conf') && !absPath.endsWith('.json') && !absPath.endsWith('.properties')) {
+    candidates.push(absPath + '.conf', absPath + '.json')
+  }
+
+  // Prefer async readFile if available, fall back to sync
+  const read = readFile
+    ? async (p: string) => readFile(p)
+    : async (p: string) => readFileSync(p)
+
+  for (const candidate of candidates) {
+    let content: string
+    try {
+      content = await read(candidate)
+    } catch {
+      continue
+    }
+
+    if (includeStack.includes(candidate)) {
+      throw new ResolveError(`circular include: ${candidate}`, candidate, 0, 0)
+    }
+
+    const ast = parseTokens(tokenize(content))
+    return buildResObjAsync(ast, {
+      env,
+      baseDir: nodePath.dirname(candidate),
+      readFileSync,
+      readFile,
+      includeStack: [...includeStack, candidate],
+    })
+  }
+
   return makeResObj()
 }
