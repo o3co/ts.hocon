@@ -229,4 +229,12 @@ describe('parseTokens', () => {
   it('should error on stray } after braced root', () => {
     expect(() => parseTokens(tokenize('{ a = 1 } }'))).toThrow()
   })
+
+  it('should error on include url() with "not supported" message', () => {
+    expect(() => parseTokens(tokenize('include url("http://example.com")'))).toThrow(/not supported/)
+  })
+
+  it('should error on include classpath() with "not supported" message', () => {
+    expect(() => parseTokens(tokenize('include classpath("reference.conf")'))).toThrow(/not supported/)
+  })
 })

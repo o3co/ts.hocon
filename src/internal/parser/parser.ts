@@ -146,6 +146,10 @@ export function parseTokens(tokens: Token[]): AstNode {
       path = advance().value
       // Skip closing ) and anything else on this line
       while (peek().kind !== 'newline' && peek().kind !== 'rbrace' && peek().kind !== 'eof') advance()
+    } else if (t.kind === 'unquoted' && (t.value === 'url' || t.value.startsWith('url('))) {
+      throw new ParseError('include url(...) is not supported', t.line, t.col)
+    } else if (t.kind === 'unquoted' && (t.value === 'classpath' || t.value.startsWith('classpath('))) {
+      throw new ParseError('include classpath(...) is not supported', t.line, t.col)
     } else {
       throw new ParseError(`expected include path, got ${t.kind}`, t.line, t.col)
     }
