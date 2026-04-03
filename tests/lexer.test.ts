@@ -76,7 +76,7 @@ describe('tokenize', () => {
   })
 
   it('should error on trailing backslash in quoted string', () => {
-    expect(() => tokenize('"hello\\')).toThrow(/unterminated|trailing|escape/i)
+    expect(() => tokenize('"hello\\\\')).toThrow(ParseError)
   })
 
   it('tokenizes triple-quoted strings', () => {

@@ -60,7 +60,7 @@ describe('parseAsync()', () => {
   })
 
   it('resolves includes using async readFile', async () => {
-    const files: Record<string, string> = {
+    const files: Record<string, string | undefined> = {
       '/config/base.conf': 'base = 1',
     }
     const cfg = await parseAsync('include "base.conf"\napp = 2', {
@@ -76,7 +76,7 @@ describe('parseAsync()', () => {
   })
 
   it('resolves nested includes asynchronously', async () => {
-    const files: Record<string, string> = {
+    const files: Record<string, string | undefined> = {
       '/config/a.conf': 'include "b.conf"\na = 1',
       '/config/b.conf': 'b = 2',
     }
@@ -153,7 +153,7 @@ describe('parseFileAsync()', () => {
   })
 
   it('resolves includes in file using async readFile', async () => {
-    const files: Record<string, string> = {
+    const files: Record<string, string | undefined> = {
       '/vfs/main.conf': 'include "sub.conf"\nmain = 1',
       '/vfs/sub.conf': 'sub = 2',
     }
@@ -243,7 +243,7 @@ describe('resolveAsync() — astToResolverValueAsync branches', () => {
 describe('resolveAsync() — loadIncludeAsync branches', () => {
   it('probes .conf extension when include has no extension', async () => {
     // Include "base" (no extension) → should try base.conf
-    const files: Record<string, string> = {
+    const files: Record<string, string | undefined> = {
       '/cfg/base.conf': 'probed = true',
     }
     const v = await resolveAsyncStr('include "base"\napp = 1', {
@@ -272,7 +272,7 @@ describe('resolveAsync() — loadIncludeAsync branches', () => {
   })
 
   it('detects circular include (direct self-reference)', async () => {
-    const files: Record<string, string> = {
+    const files: Record<string, string | undefined> = {
       '/cfg/self.conf': 'include "self.conf"\nval = 1',
     }
     await expect(
@@ -289,7 +289,7 @@ describe('resolveAsync() — loadIncludeAsync branches', () => {
 
   it('falls back to sync readFileSync when no async readFile provided', async () => {
     // loadIncludeAsync without readFile option — uses sync fallback
-    const files: Record<string, string> = {
+    const files: Record<string, string | undefined> = {
       '/cfg/sync.conf': 'synced = 99',
     }
     const v = await resolveAsyncStr('include "sync.conf"\nlocal = 1', {
@@ -309,7 +309,7 @@ describe('resolveAsync() — loadIncludeAsync branches', () => {
   it('detects circular include via extension-probed path (async)', async () => {
     // "base" (no ext) resolves to base.conf, which then includes "base" again.
     // The second pass: absPath=/cfg/base not in stack, but candidate /cfg/base.conf IS → line 598
-    const files: Record<string, string> = {
+    const files: Record<string, string | undefined> = {
       '/cfg/base.conf': 'include "base"\nval = 1',
     }
     await expect(
@@ -328,7 +328,7 @@ describe('resolveAsync() — loadIncludeAsync branches', () => {
 describe('resolve() — loadInclude sync branches', () => {
   it('detects circular include via extension-probed path (sync)', () => {
     // Mirrors the async test: "base" probes to base.conf, then base.conf re-includes "base"
-    const files: Record<string, string> = {
+    const files: Record<string, string | undefined> = {
       '/cfg/base.conf': 'include "base"\nval = 1',
     }
     expect(() =>
@@ -352,7 +352,7 @@ describe('resolve() — loadInclude sync branches', () => {
   })
 
   it('propagates parse errors from included files during sync probing', () => {
-    const files: Record<string, string> = {
+    const files: Record<string, string | undefined> = {
       '/config/broken.conf': '{ invalid = }',  // syntax error
     }
     expect(() => parse('include "broken"', {
@@ -368,7 +368,7 @@ describe('resolve() — loadInclude sync branches', () => {
 
 describe('resolveAsync() — parse error propagation in include probing', () => {
   it('propagates parse errors from included files during async probing', async () => {
-    const files: Record<string, string> = {
+    const files: Record<string, string | undefined> = {
       '/config/broken.conf': '{ invalid = }',  // syntax error
     }
     await expect(parseAsync('include "broken"', {
@@ -384,7 +384,7 @@ describe('resolveAsync() — parse error propagation in include probing', () => 
 
 describe('parseAsync — .properties include', () => {
   it('should include .properties file with string values and nested keys', async () => {
-    const files: Record<string, string> = {
+    const files: Record<string, string | undefined> = {
       '/config/app.properties': 'server.host=localhost\nserver.port=8080\ndebug=true',
     }
     const cfg = await parseAsync('include "app.properties"\napp = 1', {
@@ -455,7 +455,7 @@ describe('parseAsync — required include error paths', () => {
 
 describe('parseAsync — .properties extension probing', () => {
   it('should probe .properties extension during include resolution', async () => {
-    const files: Record<string, string> = {
+    const files: Record<string, string | undefined> = {
       '/config/app.properties': 'key=from-properties',
     }
     const cfg = await parseAsync('include "app"\nother = 1', {
