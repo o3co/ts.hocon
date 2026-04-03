@@ -205,3 +205,76 @@ describe('Config - quoted path segments', () => {
     expect(() => cfg.has('"unterminated')).toThrow(/unterminated/)
   })
 })
+
+describe('getDuration', () => {
+  it('parses seconds to ms', () => {
+    const c = parse('timeout = "30s"')
+    expect(c.getDuration('timeout')).toBe(30_000)
+  })
+
+  it('parses minutes to ms', () => {
+    const c = parse('ttl = "5m"')
+    expect(c.getDuration('ttl')).toBe(300_000)
+  })
+
+  it('parses hours to ms', () => {
+    const c = parse('expiry = "2h"')
+    expect(c.getDuration('expiry')).toBe(7_200_000)
+  })
+
+  it('parses days to ms', () => {
+    const c = parse('retention = "7d"')
+    expect(c.getDuration('retention')).toBe(604_800_000)
+  })
+
+  it('parses milliseconds', () => {
+    const c = parse('delay = "100ms"')
+    expect(c.getDuration('delay')).toBe(100)
+  })
+
+  it('parses nanoseconds to ms', () => {
+    const c = parse('tick = "5000000ns"')
+    expect(c.getDuration('tick')).toBe(5)
+  })
+
+  it('parses microseconds to ms', () => {
+    const c = parse('tick = "5000us"')
+    expect(c.getDuration('tick')).toBe(5)
+  })
+
+  it('supports long unit names', () => {
+    const c = parse('timeout = "30 seconds"')
+    expect(c.getDuration('timeout')).toBe(30_000)
+  })
+
+  it('supports fractional values', () => {
+    const c = parse('timeout = "1.5s"')
+    expect(c.getDuration('timeout')).toBe(1_500)
+  })
+
+  it('returns in requested unit', () => {
+    const c = parse('timeout = "30s"')
+    expect(c.getDuration('timeout', 's')).toBe(30)
+    expect(c.getDuration('timeout', 'm')).toBeCloseTo(0.5)
+  })
+
+  it('throws on missing path', () => {
+    const c = parse('a = 1')
+    expect(() => c.getDuration('missing')).toThrow(ConfigError)
+  })
+
+  it('throws on non-string value', () => {
+    const c = parse('a = 123')
+    expect(() => c.getDuration('a')).toThrow(ConfigError)
+  })
+
+  it('throws on unknown unit', () => {
+    const c = parse('a = "30x"')
+    expect(() => c.getDuration('a')).toThrow(ConfigError)
+  })
+
+  it('throws on no number', () => {
+    const c = parse('a = "seconds"')
+    expect(() => c.getDuration('a')).toThrow(ConfigError)
+  })
+})

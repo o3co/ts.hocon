@@ -1,4 +1,5 @@
-import { coerceBoolean, coerceNumber } from './coerce.js'
+import { coerceBoolean, coerceNumber, parseDuration } from './coerce.js'
+import type { DurationUnit } from './coerce.js'
 import { ConfigError } from './errors.js'
 import type { HoconValue } from './value.js'
 
@@ -35,6 +36,14 @@ export class Config {
       if (coerced !== undefined) return coerced
     }
     throw new ConfigError(`expected boolean at ${path}, got ${typeof v}`, path)
+  }
+
+  getDuration(path: string, unit?: DurationUnit): number {
+    const v = this.requireScalar(path)
+    if (typeof v !== 'string') throw new ConfigError(`expected duration string at ${path}, got ${typeof v}`, path)
+    const result = parseDuration(v, unit)
+    if (Number.isNaN(result)) throw new ConfigError(`invalid duration at ${path}: ${JSON.stringify(v)}`, path)
+    return result
   }
 
   getConfig(path: string): Config {
