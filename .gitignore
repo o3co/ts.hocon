@@ -26,3 +26,4 @@ docs/superpowers/
 
 # Fetched testdata (from xx.hocon)
 tests/lightbend/testdata/expected/
+.xx-hocon-version
