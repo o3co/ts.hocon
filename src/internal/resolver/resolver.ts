@@ -308,8 +308,11 @@ function resolveSubst(
       // Delayed merge in substitution context: if the resolved value is an object
       // and there's a prior value for the root segment that also resolves to an object,
       // deep merge them (prior as base, current on top).
-      if (result !== undefined && result.kind === 'object') {
-        const rootSeg = parseSubstPath(s.path)[0] ?? ''
+      // Only for single-segment paths — multi-segment paths (e.g. ${a.b}) would
+      // incorrectly merge the prior of "a" into the resolved value of "a.b".
+      const segments = parseSubstPath(s.path)
+      if (segments.length === 1 && result !== undefined && result.kind === 'object') {
+        const rootSeg = segments[0] ?? ''
         const prior = scope.priorValues.get(rootSeg) ?? root.priorValues.get(rootSeg)
         if (prior !== undefined) {
           const priorResolved = resolveVal(prior, scope, root, resolving, resolvedCache, opts)
