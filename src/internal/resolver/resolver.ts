@@ -212,7 +212,7 @@ function deepMergeResObjInto(dst: ResObj, src: ResObj): void {
 function relativizeSubstPaths(val: ResolverValue, prefix: string, prefixSegmentCount: number): void {
   if (isSubst(val)) {
     val.path = `${prefix}.${val.path}`
-    val.prefixLen = prefixSegmentCount
+    val.prefixLen += prefixSegmentCount
     return
   }
   if (isConcat(val)) {
