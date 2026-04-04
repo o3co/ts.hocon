@@ -524,4 +524,12 @@ describe('segmentsToKey', () => {
     expect(segmentsToKey(['a\\b', 'c'])).toBe('"a\\\\b".c')
     expect(parseSubstPath(segmentsToKey(['a\\b', 'c']))).toEqual(['a\\b', 'c'])
   })
+  it('quotes segments with whitespace', () => {
+    expect(segmentsToKey([' a ', 'b'])).toBe('" a ".b')
+    expect(parseSubstPath(segmentsToKey([' a ', 'b']))).toEqual([' a ', 'b'])
+  })
+  it('preserves unknown escape sequences in parseSubstPath', () => {
+    // \n inside quotes should be preserved as literal \n, not treated as escape
+    expect(parseSubstPath('"a\\nb"')).toEqual(['a\\nb'])
+  })
 })

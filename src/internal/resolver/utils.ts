@@ -24,7 +24,7 @@ export function parseSubstPath(raw: string): string[] {
       i++ // skip opening quote
       let seg = ''
       while (i < raw.length && raw[i] !== '"') {
-        if (raw[i] === '\\' && i + 1 < raw.length) {
+        if (raw[i] === '\\' && i + 1 < raw.length && (raw[i + 1] === '"' || raw[i + 1] === '\\')) {
           seg += raw[i + 1]
           i += 2
         } else {
@@ -58,7 +58,7 @@ export function parseSubstPath(raw: string): string[] {
 export function segmentsToKey(segments: string[]): string {
   return segments
     .map(s => {
-      if (s === '' || s.includes('.') || s.includes('"') || s.includes('\\')) {
+      if (s === '' || /[^a-zA-Z0-9\-_]/.test(s)) {
         return `"${s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
       }
       return s
