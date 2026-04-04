@@ -16,7 +16,7 @@ import {
   deepMergeHoconValues,
   lookupPath,
   lookupResObj,
-  parseSubstPath,
+  segmentsToKey,
 } from './utils.js'
 
 export class SubstitutionResolver {
@@ -89,31 +89,36 @@ export class SubstitutionResolver {
     return hv
   }
 
+  private segmentsEqual(a: string[], b: string[]): boolean {
+    return a.length === b.length && a.every((seg, i) => seg === b[i])
+  }
+
   private resolveSubst(
     s: SubstPlaceholder,
     scope: ResObj,
   ): HoconValue | undefined {
-    if (this.cache.has(s.path)) return this.cache.get(s.path)!
+    const key = segmentsToKey(s.segments)
 
-    if (this.resolving.has(s.path)) {
+    if (this.cache.has(key)) return this.cache.get(key)!
+
+    if (this.resolving.has(key)) {
       // Cycle detected: try prior value for self-referential substitutions.
-      const segments = parseSubstPath(s.path)
       let prior: ResolverValue | undefined
       if (s.prefixLen > 0) {
-        const leafSeg = segments[segments.length - 1] ?? ''
+        const leafSeg = s.segments[s.segments.length - 1] ?? ''
         const parentScope = lookupResObj(
           this.root,
-          segments.slice(0, segments.length - 1),
+          s.segments.slice(0, s.segments.length - 1),
         )
         prior = parentScope?.priorValues.get(leafSeg)
       } else {
-        const rootSeg = segments[0] ?? ''
+        const rootSeg = s.segments[0] ?? ''
         prior =
           scope.priorValues.get(rootSeg) ?? this.root.priorValues.get(rootSeg)
       }
       if (prior !== undefined) {
         // Clone the resolving set so that resolving the prior value can re-resolve
-        // other paths currently in the set, while s.path (still present in the clone)
+        // other paths currently in the set, while key (still present in the clone)
         // continues to guard against infinite recursion on the same path.
         const saved = this.resolving
         this.resolving = new Set(saved)
@@ -125,45 +130,44 @@ export class SubstitutionResolver {
       }
       if (s.optional) return undefined
       throw new ResolveError(
-        `circular substitution: ${s.path}`,
-        s.path,
+        `circular substitution: ${key}`,
+        key,
         s.line,
         s.col,
       )
     }
 
-    this.resolving.add(s.path)
+    this.resolving.add(key)
     try {
-      const found = lookupPath(this.root, parseSubstPath(s.path))
+      const found = lookupPath(this.root, s.segments)
       if (found !== undefined) {
         // Only fall back to prior value for actual self-referential substitutions
         // (e.g. b=${b}), not for any substitution found during lookup.
         if (isSubst(found) || isConcat(found)) {
           const isSelfRef = isSubst(found)
-            ? found.path === s.path
+            ? this.segmentsEqual(found.segments, s.segments)
             : isConcat(found) &&
               found.nodes.some(
-                (n: ResolverValue) => isSubst(n) && n.path === s.path,
+                (n: ResolverValue) => isSubst(n) && this.segmentsEqual(n.segments, s.segments),
               )
           if (isSelfRef) {
-            const selfSegments = parseSubstPath(s.path)
             let prior: ResolverValue | undefined
             if (s.prefixLen > 0) {
-              const leafSeg = selfSegments[selfSegments.length - 1] ?? ''
+              const leafSeg = s.segments[s.segments.length - 1] ?? ''
               const parentScope = lookupResObj(
                 this.root,
-                selfSegments.slice(0, selfSegments.length - 1),
+                s.segments.slice(0, s.segments.length - 1),
               )
               prior = parentScope?.priorValues.get(leafSeg)
             } else {
-              const rootSeg = selfSegments[0] ?? ''
+              const rootSeg = s.segments[0] ?? ''
               prior =
                 scope.priorValues.get(rootSeg) ??
                 this.root.priorValues.get(rootSeg)
             }
             if (prior !== undefined) {
               const result = this.resolveVal(prior, scope)
-              if (result !== undefined) this.cache.set(s.path, result)
+              if (result !== undefined) this.cache.set(key, result)
               return result
             }
           }
@@ -175,20 +179,19 @@ export class SubstitutionResolver {
         // For non-relativized paths: only single-segment (e.g. ${a}), not multi-segment
         // (e.g. ${a.b}) which would incorrectly merge the prior of 'a'.
         // For relativized paths: effective segment count (after prefix) must be 1.
-        const segments = parseSubstPath(s.path)
-        const effectiveLen = segments.length - s.prefixLen
+        const effectiveLen = s.segments.length - s.prefixLen
         if (
           effectiveLen === 1 &&
           result !== undefined &&
           result.kind === 'object'
         ) {
-          const leafSeg = segments[segments.length - 1] ?? ''
+          const leafSeg = s.segments[s.segments.length - 1] ?? ''
           // Find the prior value: for relativized paths, walk from root to the parent scope
           let prior: ResolverValue | undefined
           if (s.prefixLen > 0) {
             const parentScope = lookupResObj(
               this.root,
-              segments.slice(0, segments.length - 1),
+              s.segments.slice(0, s.segments.length - 1),
             )
             prior = parentScope?.priorValues.get(leafSeg)
           } else {
@@ -209,31 +212,31 @@ export class SubstitutionResolver {
             }
           }
         }
-        if (result !== undefined) this.cache.set(s.path, result)
+        if (result !== undefined) this.cache.set(key, result)
         return result
       }
 
       // Env var fallback — also try the original (non-relativized) path
       const envVal =
-        this.opts.env[s.path] ??
+        this.opts.env[segmentsToKey(s.segments)] ??
         (s.prefixLen > 0
-          ? this.opts.env[parseSubstPath(s.path).slice(s.prefixLen).join('.')]
+          ? this.opts.env[segmentsToKey(s.segments.slice(s.prefixLen))]
           : undefined)
       if (envVal !== undefined) {
         const result: HoconValue = { kind: 'scalar', value: envVal }
-        this.cache.set(s.path, result)
+        this.cache.set(key, result)
         return result
       }
 
       if (s.optional) return undefined
       throw new ResolveError(
-        `could not resolve substitution: \${${s.path}}`,
-        s.path,
+        `could not resolve substitution: \${${key}}`,
+        key,
         s.line,
         s.col,
       )
     } finally {
-      this.resolving.delete(s.path)
+      this.resolving.delete(key)
     }
   }
 

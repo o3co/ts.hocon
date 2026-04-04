@@ -435,6 +435,25 @@ describe('Resolver - include substitution relativization', () => {
     if (foo?.kind !== 'object') throw new Error('expected foo to be object')
     expect(foo.fields.get('y')).toEqual({ kind: 'scalar', value: 1 })
   })
+
+  it('relativizes substitution paths with quoted keys containing dots', () => {
+    const v = resolveStr('"a.b" { include "inner.conf" }', {}, {
+      '/inner.conf': 'x = 1\ny = ${x}',
+    })
+    const ab = obj(v).get('a.b')
+    if (ab?.kind !== 'object') throw new Error('expected "a.b" to be object')
+    expect(ab.fields.get('x')).toEqual({ kind: 'scalar', value: 1 })
+    expect(ab.fields.get('y')).toEqual({ kind: 'scalar', value: 1 })
+  })
+
+  it('env var fallback with quoted-key prefix', () => {
+    const v = resolveStr('"a.b" { include "inner.conf" }', { MY_VAR: 'ok' }, {
+      '/inner.conf': 'val = ${MY_VAR}',
+    })
+    const ab = obj(v).get('a.b')
+    if (ab?.kind !== 'object') throw new Error('expected "a.b" to be object')
+    expect(ab.fields.get('val')).toEqual({ kind: 'scalar', value: 'ok' })
+  })
 })
 
 describe('include merge-all probing', () => {
