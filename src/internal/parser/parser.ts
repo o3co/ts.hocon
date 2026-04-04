@@ -48,7 +48,7 @@ class Parser {
     return this.parseObject(false)
   }
 
-  private peek(): Token { return this.tokens[this.pos] ?? EOF_TOKEN }
+  private peek(offset = 0): Token { return this.tokens[this.pos + offset] ?? EOF_TOKEN }
   private advance(): Token {
     const t = this.tokens[this.pos]
     if (this.pos < this.tokens.length) this.pos++
@@ -172,7 +172,7 @@ class Parser {
 
       // Reject bare `required` without a following `(`: e.g. `include required "file.conf"`
       if (t.value === 'required') {
-        const next = this.tokens[this.pos + 1] ?? { kind: 'eof', value: '' }
+        const next = this.peek(1)
         if (next.kind !== 'unquoted' || !next.value.startsWith('(')) {
           throw new ParseError('include required must be followed by (', t.line, t.col)
         }
