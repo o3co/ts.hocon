@@ -5,61 +5,21 @@ import type { AstNode, AstField } from '../parser/ast.js'
 import { tokenize } from '../lexer/lexer.js'
 import { parseTokens } from '../parser/parser.js'
 import { propertiesToHoconValue } from '../properties/properties.js'
+import {
+  type SubstPlaceholder,
+  type AppendPlaceholder,
+  type ResObj,
+  type ResolverValue,
+  type ResolveOptions,
+  separatorValues,
+  isSubst,
+  isConcat,
+  isAppend,
+  isResObj,
+  makeResObj,
+} from './types.js'
 
-// ---- Internal placeholder types (not exported) ----
-type SubstPlaceholder = {
-  _kind: 'subst-placeholder'
-  path: string
-  optional: boolean
-  line: number
-  col: number
-  prefixLen: number  // 0 for normal, >0 for relativized (number of prefix segments)
-}
-type ConcatPlaceholder = {
-  _kind: 'concat-placeholder'
-  nodes: ResolverValue[]
-}
-type AppendPlaceholder = {
-  _kind: 'append-placeholder'
-  existing: ResolverValue
-  elem: ResolverValue
-}
-type ResObj = {
-  _kind: 'res-obj'
-  fields: Map<string, ResolverValue>
-  priorValues: Map<string, ResolverValue>
-}
-
-type ResolverValue = HoconValue | SubstPlaceholder | ConcatPlaceholder | AppendPlaceholder | ResObj
-
-// Track parser-inserted separator whitespace values without leaking _separator
-// into the public HoconValue type. Uses WeakSet so values can be GC'd normally.
-const separatorValues = new WeakSet<HoconValue>()
-
-function isSubst(v: ResolverValue): v is SubstPlaceholder {
-  return (v as SubstPlaceholder)._kind === 'subst-placeholder'
-}
-function isConcat(v: ResolverValue): v is ConcatPlaceholder {
-  return (v as ConcatPlaceholder)._kind === 'concat-placeholder'
-}
-function isAppend(v: ResolverValue): v is AppendPlaceholder {
-  return (v as AppendPlaceholder)._kind === 'append-placeholder'
-}
-function isResObj(v: ResolverValue): v is ResObj {
-  return (v as ResObj)._kind === 'res-obj'
-}
-
-function makeResObj(): ResObj {
-  return { _kind: 'res-obj', fields: new Map(), priorValues: new Map() }
-}
-
-export type ResolveOptions = {
-  env: Record<string, string>
-  baseDir: string | undefined
-  readFileSync: (filePath: string) => string
-  readFile?: (filePath: string) => Promise<string>
-  includeStack?: string[]
-}
+export type { ResolveOptions } from './types.js'
 
 // ---- Public entry point ----
 
