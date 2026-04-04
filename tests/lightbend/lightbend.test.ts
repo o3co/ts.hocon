@@ -21,7 +21,7 @@ describe('Lightbend HOCON equiv tests', () => {
     if (!existsSync(jsonPath)) continue
 
     const expected = JSON.parse(readFileSync(jsonPath, 'utf-8'))
-    const entries = readdirSync(dir)
+    const entries = readdirSync(dir).sort()
 
     for (const entry of entries) {
       if (!entry.endsWith('.conf')) continue
@@ -41,8 +41,7 @@ describe('Lightbend HOCON equiv tests', () => {
 describe('Lightbend HOCON suite tests (expected JSON)', () => {
   const expectedDir = join(dataDir, 'expected')
   if (!existsSync(expectedDir)) {
-    it.skip('expected JSON not found — run `make testdata` first', () => {})
-    return
+    throw new Error(`Missing expected JSON fixtures at ${expectedDir}. Run \`make testdata\` first.`)
   }
 
   // Known failures — skip these with reasons
@@ -54,12 +53,17 @@ describe('Lightbend HOCON suite tests (expected JSON)', () => {
     'test10-expected.json',        // nested include substitution scope
   ])
 
-  const entries = readdirSync(expectedDir)
+  const entries = readdirSync(expectedDir).sort()
   for (const entry of entries) {
     if (!entry.endsWith('-expected.json') || entry.includes('-expected-error')) continue
-    if (skip.has(entry)) continue
 
     const confName = entry.replace('-expected.json', '.conf')
+
+    if (skip.has(entry)) {
+      it.skip(`${confName} (known failure)`, () => {})
+      continue
+    }
+
     const confPath = join(dataDir, confName)
     if (!existsSync(confPath)) continue
 
@@ -78,9 +82,11 @@ describe('Lightbend HOCON suite tests (expected JSON)', () => {
 
 describe('Lightbend HOCON suite tests (expected errors)', () => {
   const expectedDir = join(dataDir, 'expected')
-  if (!existsSync(expectedDir)) return
+  if (!existsSync(expectedDir)) {
+    throw new Error(`Missing expected JSON fixtures at ${expectedDir}. Run \`make testdata\` first.`)
+  }
 
-  const entries = readdirSync(expectedDir)
+  const entries = readdirSync(expectedDir).sort()
   for (const entry of entries) {
     if (!entry.endsWith('-expected-error.json')) continue
 
