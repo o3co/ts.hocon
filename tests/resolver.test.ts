@@ -398,6 +398,44 @@ describe('Resolver - include depth limit', () => {
   })
 })
 
+describe('Resolver - include substitution relativization', () => {
+  it('relativizes substitution paths in nested include', () => {
+    const v = resolveStr('bar { nested { include "inner.conf" } }', {}, {
+      '/inner.conf': 'x = { q: 10 }\ny = 5\na = ${x}\na = { c: 3 }',
+    })
+    const bar = obj(v).get('bar')
+    if (bar?.kind !== 'object') throw new Error('expected bar to be object')
+    const nested = bar.fields.get('nested')
+    if (nested?.kind !== 'object') throw new Error('expected nested to be object')
+    // x should resolve locally within bar.nested scope
+    expect(nested.fields.get('x')).toEqual({ kind: 'object', fields: new Map([['q', { kind: 'scalar', value: 10 }]]) })
+    expect(nested.fields.get('y')).toEqual({ kind: 'scalar', value: 5 })
+    // a = ${x} then a = { c: 3 } → delayed merge: {q:10, c:3}
+    const a = nested.fields.get('a')
+    if (a?.kind !== 'object') throw new Error('expected a to be object')
+    expect(a.fields.get('q')).toEqual({ kind: 'scalar', value: 10 })
+    expect(a.fields.get('c')).toEqual({ kind: 'scalar', value: 3 })
+  })
+
+  it('relativizes env var fallback with original path', () => {
+    const v = resolveStr('outer { include "inner.conf" }', { MY_VAR: 'hello' }, {
+      '/inner.conf': 'val = ${MY_VAR}',
+    })
+    const outer = obj(v).get('outer')
+    if (outer?.kind !== 'object') throw new Error('expected outer to be object')
+    expect(outer.fields.get('val')).toEqual({ kind: 'scalar', value: 'hello' })
+  })
+
+  it('relativizes substitution paths at single nesting level', () => {
+    const v = resolveStr('foo { include "inner.conf" }', {}, {
+      '/inner.conf': 'x = 1\ny = ${x}',
+    })
+    const foo = obj(v).get('foo')
+    if (foo?.kind !== 'object') throw new Error('expected foo to be object')
+    expect(foo.fields.get('y')).toEqual({ kind: 'scalar', value: 1 })
+  })
+})
+
 describe('include merge-all probing', () => {
   it('merges all found extensions when path has no extension', () => {
     const files: Record<string, string> = {
