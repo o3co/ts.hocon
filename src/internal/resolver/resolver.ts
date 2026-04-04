@@ -206,6 +206,20 @@ function resolveResObj(
   for (const [key, val] of obj.fields) {
     const resolved = resolveVal(val, obj, root, resolving, resolvedCache, opts)
     if (resolved !== undefined) {
+      // Delayed merge: if both current and prior resolve to objects, deep merge
+      if (resolved.kind === 'object') {
+        const prior = obj.priorValues.get(key)
+        if (prior !== undefined) {
+          const priorResolved = resolveVal(prior, obj, root, resolving, resolvedCache, opts)
+          if (priorResolved !== undefined && priorResolved.kind === 'object') {
+            result.set(key, deepMergeHoconValues(
+              priorResolved as HoconValue & { kind: 'object' },
+              resolved as HoconValue & { kind: 'object' },
+            ))
+            continue
+          }
+        }
+      }
       result.set(key, resolved)
     } else {
       // Unresolved optional substitution: fall back to prior value per HOCON spec
@@ -272,18 +286,44 @@ function resolveSubst(
   try {
     const found = lookupPath(root, parseSubstPath(s.path))
     if (found !== undefined) {
-      // If the found value is still a subst/concat placeholder pointing at itself,
-      // use the prior value (self-referential overwrite case).
+      // Only fall back to prior value for actual self-referential substitutions
+      // (e.g. b=${b}), not for any substitution found during lookup.
       if (isSubst(found) || isConcat(found)) {
-        const rootSeg = parseSubstPath(s.path)[0] ?? ''
-        const prior = scope.priorValues.get(rootSeg) ?? root.priorValues.get(rootSeg)
-        if (prior !== undefined) {
-          const result = resolveVal(prior, scope, root, resolving, resolvedCache, opts)
-          if (result !== undefined) resolvedCache.set(s.path, result)
-          return result
+        const isSelfRef = isSubst(found)
+          ? found.path === s.path
+          : isConcat(found) && found.nodes.some(
+              (n: ResolverValue) => isSubst(n) && n.path === s.path
+            )
+        if (isSelfRef) {
+          const rootSeg = parseSubstPath(s.path)[0] ?? ''
+          const prior = scope.priorValues.get(rootSeg) ?? root.priorValues.get(rootSeg)
+          if (prior !== undefined) {
+            const result = resolveVal(prior, scope, root, resolving, resolvedCache, opts)
+            if (result !== undefined) resolvedCache.set(s.path, result)
+            return result
+          }
         }
       }
-      const result = resolveVal(found, scope, root, resolving, resolvedCache, opts)
+      let result = resolveVal(found, scope, root, resolving, resolvedCache, opts)
+      // Delayed merge in substitution context: if the resolved value is an object
+      // and there's a prior value for the root segment that also resolves to an object,
+      // deep merge them (prior as base, current on top).
+      // Only for single-segment paths — multi-segment paths (e.g. ${a.b}) would
+      // incorrectly merge the prior of "a" into the resolved value of "a.b".
+      const segments = parseSubstPath(s.path)
+      if (segments.length === 1 && result !== undefined && result.kind === 'object') {
+        const rootSeg = segments[0] ?? ''
+        const prior = scope.priorValues.get(rootSeg) ?? root.priorValues.get(rootSeg)
+        if (prior !== undefined) {
+          const priorResolved = resolveVal(prior, scope, root, resolving, resolvedCache, opts)
+          if (priorResolved !== undefined && priorResolved.kind === 'object') {
+            result = deepMergeHoconValues(
+              priorResolved as HoconValue & { kind: 'object' },
+              result as HoconValue & { kind: 'object' },
+            )
+          }
+        }
+      }
       if (result !== undefined) resolvedCache.set(s.path, result)
       return result
     }

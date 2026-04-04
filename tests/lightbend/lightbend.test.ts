@@ -49,7 +49,6 @@ describe('Lightbend HOCON suite tests (expected JSON)', () => {
     'file-include-expected.json',  // file include resolves extra keys (bar-file, baz) not in expected
     'test01-expected.json',        // env vars (system.path/pwd) differ per machine; also .33 parsed as number vs string, null handling
     'test02-expected.json',        // empty-string key substitution ${""."".""}  not resolved
-    'test09-expected.json',        // object merge / += substitution scope differences
     'test10-expected.json',        // nested include substitution scope
   ])
 

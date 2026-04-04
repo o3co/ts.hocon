@@ -208,6 +208,34 @@ describe('Resolver - object concatenation deep merge', () => {
   })
 })
 
+describe('Resolver - delayed merge', () => {
+  it('delayed merge: object with substitution merges fields', () => {
+    const v = resolveStr('x={q:10}\na=${x}\na={c:3}')
+    const a = obj(v).get('a')
+    if (a?.kind !== 'object') throw new Error('expected object')
+    expect(a.fields.get('q')).toEqual({ kind: 'scalar', value: 10 })
+    expect(a.fields.get('c')).toEqual({ kind: 'scalar', value: 3 })
+  })
+
+  it('last assignment wins for non-self-referential substitution', () => {
+    const v = resolveStr('x={q:10}\ny=5\nb=${x}\nb=${y}')
+    expect(obj(v).get('b')).toEqual({ kind: 'scalar', value: 5 })
+  })
+
+  it('delayed merge with nested reference (c.e=${a})', () => {
+    const v = resolveStr('x={q:10}\ny=5\na=${x}\na={c:3}\nc=${x}\nc={d:600, e:${a}, f:${b}}\nb=${x}\nb=${y}')
+    const c = obj(v).get('c')
+    if (c?.kind !== 'object') throw new Error('expected object')
+    expect(c.fields.get('q')).toEqual({ kind: 'scalar', value: 10 })
+    expect(c.fields.get('d')).toEqual({ kind: 'scalar', value: 600 })
+    const e = c.fields.get('e')
+    if (e?.kind !== 'object') throw new Error('expected object for c.e')
+    expect(e.fields.get('q')).toEqual({ kind: 'scalar', value: 10 })
+    expect(e.fields.get('c')).toEqual({ kind: 'scalar', value: 3 })
+    expect(c.fields.get('f')).toEqual({ kind: 'scalar', value: 5 })
+  })
+})
+
 describe('Resolver - include', () => {
   function resolveWithFs(input: string, files: Record<string, string>): HoconValue {
     const ast = parseTokens(tokenize(input))
