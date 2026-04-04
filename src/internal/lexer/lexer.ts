@@ -1,6 +1,15 @@
 import { ParseError } from '../../errors.js'
 import type { Token, TokenKind } from './token.js'
 
+const SINGLE_CHAR_TOKENS: Record<string, TokenKind> = {
+  '{': 'lbrace',
+  '}': 'rbrace',
+  '[': 'lbracket',
+  ']': 'rbracket',
+  ',': 'comma',
+  ':': 'colon',
+}
+
 class Lexer {
   private pos = 0
   private line = 1
@@ -42,8 +51,7 @@ class Lexer {
       }
 
       // Single-char punctuation
-      const single: Record<string, TokenKind> = { '{': 'lbrace', '}': 'rbrace', '[': 'lbracket', ']': 'rbracket', ',': 'comma', ':': 'colon' }
-      if (ch in single) { this.advance(); this.push(single[ch] as TokenKind, ch, sl, sc); continue }
+      if (ch in SINGLE_CHAR_TOKENS) { this.advance(); this.push(SINGLE_CHAR_TOKENS[ch], ch, sl, sc); continue }
 
       // = and +=
       if (ch === '=') { this.advance(); this.push('equals', '=', sl, sc); continue }
