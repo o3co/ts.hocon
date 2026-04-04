@@ -516,4 +516,12 @@ describe('segmentsToKey', () => {
       expect(parseSubstPath(segmentsToKey(segs))).toEqual(segs)
     }
   })
+  it('escapes segments containing double quotes', () => {
+    expect(segmentsToKey(['a"b', 'c'])).toBe('"a\\"b".c')
+    expect(parseSubstPath(segmentsToKey(['a"b', 'c']))).toEqual(['a"b', 'c'])
+  })
+  it('escapes segments containing backslashes', () => {
+    expect(segmentsToKey(['a\\b', 'c'])).toBe('"a\\\\b".c')
+    expect(parseSubstPath(segmentsToKey(['a\\b', 'c']))).toEqual(['a\\b', 'c'])
+  })
 })

@@ -218,7 +218,7 @@ export class SubstitutionResolver {
 
       // Env var fallback — also try the original (non-relativized) path
       const envVal =
-        this.opts.env[segmentsToKey(s.segments)] ??
+        this.opts.env[key] ??
         (s.prefixLen > 0
           ? this.opts.env[segmentsToKey(s.segments.slice(s.prefixLen))]
           : undefined)
