@@ -13,6 +13,7 @@ type SubstPlaceholder = {
   optional: boolean
   line: number
   col: number
+  prefixLen: number  // 0 for normal, >0 for relativized (number of prefix segments)
 }
 type ConcatPlaceholder = {
   _kind: 'concat-placeholder'
@@ -64,7 +65,7 @@ export type ResolveOptions = {
 
 export function resolve(ast: AstNode, opts: ResolveOptions): HoconValue {
   // Pass 1
-  const root = buildResObj(ast, opts)
+  const root = buildResObj(ast, opts, [])
   // Pass 2
   const resolving = new Set<string>()
   const resolvedCache = new Map<string, HoconValue>()
@@ -73,7 +74,7 @@ export function resolve(ast: AstNode, opts: ResolveOptions): HoconValue {
 
 export async function resolveAsync(ast: AstNode, opts: ResolveOptions): Promise<HoconValue> {
   // Pass 1 (async — awaits file reads for includes)
-  const root = await buildResObjAsync(ast, opts)
+  const root = await buildResObjAsync(ast, opts, [])
   // Pass 2 (sync — no I/O needed for substitution resolution)
   const resolving = new Set<string>()
   const resolvedCache = new Map<string, HoconValue>()
@@ -82,21 +83,26 @@ export async function resolveAsync(ast: AstNode, opts: ResolveOptions): Promise<
 
 // ---- Pass 1: structure building ----
 
-function buildResObj(ast: AstNode, opts: ResolveOptions): ResObj {
+function buildResObj(ast: AstNode, opts: ResolveOptions, pathPrefix: string[]): ResObj {
   if (ast.kind !== 'object') {
     throw new ResolveError('root AST must be an object', '', ast.pos.line, ast.pos.col)
   }
   const obj = makeResObj()
   for (const field of ast.fields) {
-    applyField(obj, field, opts)
+    applyField(obj, field, opts, pathPrefix)
   }
   return obj
 }
 
-function applyField(obj: ResObj, field: AstField, opts: ResolveOptions): void {
+function applyField(obj: ResObj, field: AstField, opts: ResolveOptions, pathPrefix: string[]): void {
   // include directive: key is empty, value is include node
   if (field.key.length === 0 && field.value.kind === 'include') {
+    // Included files are parsed at their own root (pathPrefix=[]),
+    // then relativized to the current scope's prefix.
     const included = loadInclude(field.value.path, field.value.required, opts)
+    if (pathPrefix.length > 0) {
+      relativizeResObj(included, pathPrefix.join('.'), pathPrefix.length)
+    }
     deepMergeResObjInto(obj, included)
     return
   }
@@ -111,9 +117,11 @@ function applyField(obj: ResObj, field: AstField, opts: ResolveOptions): void {
       fields: [{ key: tail, value: field.value, append: field.append, pos: field.pos }],
       pos: field.pos,
     }
-    applyField(obj, { key: [head], value: syntheticAst, append: false, pos: field.pos }, opts)
+    applyField(obj, { key: [head], value: syntheticAst, append: false, pos: field.pos }, opts, pathPrefix)
     return
   }
+
+  const childPrefix = [...pathPrefix, head]
 
   if (field.append) {
     // +=: append elem to existing array (or start from [])
@@ -122,14 +130,14 @@ function applyField(obj: ResObj, field: AstField, opts: ResolveOptions): void {
     obj.fields.set(head, {
       _kind: 'append-placeholder',
       existing,
-      elem: astToResolverValue(field.value, opts),
+      elem: astToResolverValue(field.value, opts, childPrefix),
     })
     return
   }
 
   // Normal assignment
   const existing = obj.fields.get(head)
-  const newVal = astToResolverValue(field.value, opts)
+  const newVal = astToResolverValue(field.value, opts, childPrefix)
 
   // Save prior value for self-referential substitution resolution
   if (existing !== undefined) {
@@ -146,7 +154,7 @@ function applyField(obj: ResObj, field: AstField, opts: ResolveOptions): void {
   obj.fields.set(head, newVal)
 }
 
-function astToResolverValue(ast: AstNode, opts: ResolveOptions): ResolverValue {
+function astToResolverValue(ast: AstNode, opts: ResolveOptions, pathPrefix: string[]): ResolverValue {
   switch (ast.kind) {
     case 'scalar': {
       const sv: HoconValue = { kind: 'scalar', value: ast.value }
@@ -154,15 +162,15 @@ function astToResolverValue(ast: AstNode, opts: ResolveOptions): ResolverValue {
       return sv
     }
     case 'array':
-      return { kind: 'array', items: ast.items.map(i => astToResolverValue(i, opts) as HoconValue) }
+      return { kind: 'array', items: ast.items.map(i => astToResolverValue(i, opts, pathPrefix) as HoconValue) }
     case 'object': {
-      const inner = buildResObj(ast, opts)
+      const inner = buildResObj(ast, opts, pathPrefix)
       return inner
     }
     case 'subst':
-      return { _kind: 'subst-placeholder', path: ast.path, optional: ast.optional, line: ast.pos.line, col: ast.pos.col }
+      return { _kind: 'subst-placeholder', path: ast.path, optional: ast.optional, line: ast.pos.line, col: ast.pos.col, prefixLen: 0 }
     case 'concat':
-      return { _kind: 'concat-placeholder', nodes: ast.nodes.map(n => astToResolverValue(n, opts)) }
+      return { _kind: 'concat-placeholder', nodes: ast.nodes.map(n => astToResolverValue(n, opts, pathPrefix)) }
     case 'include':
       return { kind: 'scalar', value: null } // handled by applyField; should not reach here
   }
@@ -190,6 +198,54 @@ function deepMergeResObjInto(dst: ResObj, src: ResObj): void {
       if (dstVal !== undefined) dst.priorValues.set(k, dstVal)
       dst.fields.set(k, srcVal)
     }
+  }
+  // Carry over priorValues from src that dst doesn't already have
+  for (const [k, srcPrior] of src.priorValues) {
+    if (!dst.priorValues.has(k)) {
+      dst.priorValues.set(k, srcPrior)
+    }
+  }
+}
+
+// ---- Relativize substitution paths for nested includes ----
+
+function relativizeSubstPaths(val: ResolverValue, prefix: string, prefixSegmentCount: number): void {
+  if (isSubst(val)) {
+    val.path = `${prefix}.${val.path}`
+    val.prefixLen += prefixSegmentCount
+    return
+  }
+  if (isConcat(val)) {
+    for (const node of val.nodes) {
+      relativizeSubstPaths(node, prefix, prefixSegmentCount)
+    }
+    return
+  }
+  if (isAppend(val)) {
+    relativizeSubstPaths(val.existing, prefix, prefixSegmentCount)
+    relativizeSubstPaths(val.elem, prefix, prefixSegmentCount)
+    return
+  }
+  if (isResObj(val)) {
+    relativizeResObj(val, prefix, prefixSegmentCount)
+    return
+  }
+  // HoconValue arrays may contain substitutions inside items (shouldn't happen
+  // in practice since arrays are built from astToResolverValue, but be safe)
+  const hv = val as HoconValue
+  if (hv.kind === 'array') {
+    for (const item of hv.items) {
+      relativizeSubstPaths(item as ResolverValue, prefix, prefixSegmentCount)
+    }
+  }
+}
+
+function relativizeResObj(obj: ResObj, prefix: string, prefixSegmentCount: number): void {
+  for (const val of obj.fields.values()) {
+    relativizeSubstPaths(val, prefix, prefixSegmentCount)
+  }
+  for (const val of obj.priorValues.values()) {
+    relativizeSubstPaths(val, prefix, prefixSegmentCount)
   }
 }
 
@@ -270,10 +326,16 @@ function resolveSubst(
 
   if (resolving.has(s.path)) {
     // Cycle detected: try prior value for self-referential substitutions.
-    // Look at the outermost (root) segment of the path in scope.priorValues first,
-    // then fall back to root-level priorValues.
-    const rootSeg = parseSubstPath(s.path)[0] ?? ''
-    const prior = scope.priorValues.get(rootSeg) ?? root.priorValues.get(rootSeg)
+    const segments = parseSubstPath(s.path)
+    let prior: ResolverValue | undefined
+    if (s.prefixLen > 0) {
+      const leafSeg = segments[segments.length - 1] ?? ''
+      const parentScope = lookupResObj(root, segments.slice(0, segments.length - 1))
+      prior = parentScope?.priorValues.get(leafSeg)
+    } else {
+      const rootSeg = segments[0] ?? ''
+      prior = scope.priorValues.get(rootSeg) ?? root.priorValues.get(rootSeg)
+    }
     if (prior !== undefined) {
       // Resolve prior with a fresh resolving set to avoid re-triggering the cycle check
       return resolveVal(prior, scope, root, new Set(resolving), resolvedCache, opts)
@@ -295,8 +357,16 @@ function resolveSubst(
               (n: ResolverValue) => isSubst(n) && n.path === s.path
             )
         if (isSelfRef) {
-          const rootSeg = parseSubstPath(s.path)[0] ?? ''
-          const prior = scope.priorValues.get(rootSeg) ?? root.priorValues.get(rootSeg)
+          const selfSegments = parseSubstPath(s.path)
+          let prior: ResolverValue | undefined
+          if (s.prefixLen > 0) {
+            const leafSeg = selfSegments[selfSegments.length - 1] ?? ''
+            const parentScope = lookupResObj(root, selfSegments.slice(0, selfSegments.length - 1))
+            prior = parentScope?.priorValues.get(leafSeg)
+          } else {
+            const rootSeg = selfSegments[0] ?? ''
+            prior = scope.priorValues.get(rootSeg) ?? root.priorValues.get(rootSeg)
+          }
           if (prior !== undefined) {
             const result = resolveVal(prior, scope, root, resolving, resolvedCache, opts)
             if (result !== undefined) resolvedCache.set(s.path, result)
@@ -306,14 +376,23 @@ function resolveSubst(
       }
       let result = resolveVal(found, scope, root, resolving, resolvedCache, opts)
       // Delayed merge in substitution context: if the resolved value is an object
-      // and there's a prior value for the root segment that also resolves to an object,
+      // and there's a prior value for the leaf segment that also resolves to an object,
       // deep merge them (prior as base, current on top).
-      // Only for single-segment paths — multi-segment paths (e.g. ${a.b}) would
-      // incorrectly merge the prior of "a" into the resolved value of "a.b".
+      // For non-relativized paths: only single-segment (e.g. ${a}), not multi-segment
+      // (e.g. ${a.b}) which would incorrectly merge the prior of "a".
+      // For relativized paths: effective segment count (after prefix) must be 1.
       const segments = parseSubstPath(s.path)
-      if (segments.length === 1 && result !== undefined && result.kind === 'object') {
-        const rootSeg = segments[0] ?? ''
-        const prior = scope.priorValues.get(rootSeg) ?? root.priorValues.get(rootSeg)
+      const effectiveLen = segments.length - s.prefixLen
+      if (effectiveLen === 1 && result !== undefined && result.kind === 'object') {
+        const leafSeg = segments[segments.length - 1] ?? ''
+        // Find the prior value: for relativized paths, walk from root to the parent scope
+        let prior: ResolverValue | undefined
+        if (s.prefixLen > 0) {
+          const parentScope = lookupResObj(root, segments.slice(0, segments.length - 1))
+          prior = parentScope?.priorValues.get(leafSeg)
+        } else {
+          prior = scope.priorValues.get(leafSeg) ?? root.priorValues.get(leafSeg)
+        }
         if (prior !== undefined) {
           const priorResolved = resolveVal(prior, scope, root, resolving, resolvedCache, opts)
           if (priorResolved !== undefined && priorResolved.kind === 'object') {
@@ -328,8 +407,12 @@ function resolveSubst(
       return result
     }
 
-    // Env var fallback
-    const envVal = opts.env[s.path]
+    // Env var fallback — also try the original (non-relativized) path
+    const envVal = opts.env[s.path] ?? (
+      s.prefixLen > 0
+        ? opts.env[parseSubstPath(s.path).slice(s.prefixLen).join('.')]
+        : undefined
+    )
     if (envVal !== undefined) {
       const result: HoconValue = { kind: 'scalar', value: envVal }
       resolvedCache.set(s.path, result)
@@ -424,6 +507,17 @@ function resolveAppend(
   const items: HoconValue[] = existing.kind === 'array' ? [...existing.items] : [existing]
   if (elem !== undefined) items.push(elem)
   return { kind: 'array', items }
+}
+
+/** Walk from root to find a ResObj at the given path (not the value, but the container). */
+function lookupResObj(root: ResObj, segments: string[]): ResObj | undefined {
+  let cur: ResObj = root
+  for (const seg of segments) {
+    const val = cur.fields.get(seg)
+    if (val === undefined || !isResObj(val)) return undefined
+    cur = val
+  }
+  return cur
 }
 
 function lookupPath(root: ResObj, segments: string[]): ResolverValue | undefined {
@@ -524,7 +618,7 @@ function loadSingleInclude(candidate: string, opts: ResolveOptions): ResObj | un
     baseDir: nodePath.dirname(candidate),
     readFileSync,
     includeStack: [...includeStack, candidate],
-  })
+  }, [])
 }
 
 function loadInclude(includePath: string, required: boolean, opts: ResolveOptions): ResObj {
@@ -574,20 +668,23 @@ function loadInclude(includePath: string, required: boolean, opts: ResolveOption
 
 // ---- Async Pass 1 helpers (mirror sync versions but await file reads) ----
 
-async function buildResObjAsync(ast: AstNode, opts: ResolveOptions): Promise<ResObj> {
+async function buildResObjAsync(ast: AstNode, opts: ResolveOptions, pathPrefix: string[]): Promise<ResObj> {
   if (ast.kind !== 'object') {
     throw new ResolveError('root AST must be an object', '', ast.pos.line, ast.pos.col)
   }
   const obj = makeResObj()
   for (const field of ast.fields) {
-    await applyFieldAsync(obj, field, opts)
+    await applyFieldAsync(obj, field, opts, pathPrefix)
   }
   return obj
 }
 
-async function applyFieldAsync(obj: ResObj, field: AstField, opts: ResolveOptions): Promise<void> {
+async function applyFieldAsync(obj: ResObj, field: AstField, opts: ResolveOptions, pathPrefix: string[]): Promise<void> {
   if (field.key.length === 0 && field.value.kind === 'include') {
     const included = await loadIncludeAsync(field.value.path, field.value.required, opts)
+    if (pathPrefix.length > 0) {
+      relativizeResObj(included, pathPrefix.join('.'), pathPrefix.length)
+    }
     deepMergeResObjInto(obj, included)
     return
   }
@@ -601,9 +698,11 @@ async function applyFieldAsync(obj: ResObj, field: AstField, opts: ResolveOption
       fields: [{ key: tail, value: field.value, append: field.append, pos: field.pos }],
       pos: field.pos,
     }
-    await applyFieldAsync(obj, { key: [head], value: syntheticAst, append: false, pos: field.pos }, opts)
+    await applyFieldAsync(obj, { key: [head], value: syntheticAst, append: false, pos: field.pos }, opts, pathPrefix)
     return
   }
+
+  const childPrefix = [...pathPrefix, head]
 
   if (field.append) {
     const existing: ResolverValue = obj.fields.get(head) ?? ({ kind: 'array', items: [] } satisfies HoconValue)
@@ -611,13 +710,13 @@ async function applyFieldAsync(obj: ResObj, field: AstField, opts: ResolveOption
     obj.fields.set(head, {
       _kind: 'append-placeholder',
       existing,
-      elem: await astToResolverValueAsync(field.value, opts),
+      elem: await astToResolverValueAsync(field.value, opts, childPrefix),
     })
     return
   }
 
   const existing = obj.fields.get(head)
-  const newVal = await astToResolverValueAsync(field.value, opts)
+  const newVal = await astToResolverValueAsync(field.value, opts, childPrefix)
 
   if (existing !== undefined) {
     obj.priorValues.set(head, existing)
@@ -631,7 +730,7 @@ async function applyFieldAsync(obj: ResObj, field: AstField, opts: ResolveOption
   obj.fields.set(head, newVal)
 }
 
-async function astToResolverValueAsync(ast: AstNode, opts: ResolveOptions): Promise<ResolverValue> {
+async function astToResolverValueAsync(ast: AstNode, opts: ResolveOptions, pathPrefix: string[]): Promise<ResolverValue> {
   switch (ast.kind) {
     case 'scalar': {
       const sv: HoconValue = { kind: 'scalar', value: ast.value }
@@ -641,18 +740,18 @@ async function astToResolverValueAsync(ast: AstNode, opts: ResolveOptions): Prom
     case 'array': {
       const items = []
       for (const i of ast.items) {
-        items.push(await astToResolverValueAsync(i, opts) as HoconValue)
+        items.push(await astToResolverValueAsync(i, opts, pathPrefix) as HoconValue)
       }
       return { kind: 'array', items }
     }
     case 'object':
-      return await buildResObjAsync(ast, opts)
+      return await buildResObjAsync(ast, opts, pathPrefix)
     case 'subst':
-      return { _kind: 'subst-placeholder', path: ast.path, optional: ast.optional, line: ast.pos.line, col: ast.pos.col }
+      return { _kind: 'subst-placeholder', path: ast.path, optional: ast.optional, line: ast.pos.line, col: ast.pos.col, prefixLen: 0 }
     case 'concat': {
       const nodes = []
       for (const n of ast.nodes) {
-        nodes.push(await astToResolverValueAsync(n, opts))
+        nodes.push(await astToResolverValueAsync(n, opts, pathPrefix))
       }
       return { _kind: 'concat-placeholder', nodes }
     }
@@ -690,7 +789,7 @@ async function loadSingleIncludeAsync(candidate: string, opts: ResolveOptions): 
     readFileSync,
     readFile,
     includeStack: [...includeStack, candidate],
-  })
+  }, [])
 }
 
 async function loadIncludeAsync(includePath: string, required: boolean, opts: ResolveOptions): Promise<ResObj> {
