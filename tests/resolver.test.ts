@@ -4,6 +4,7 @@ import { ResolveError } from '../src/errors.js'
 import { tokenize } from '../src/internal/lexer/lexer.js'
 import { parseTokens } from '../src/internal/parser/parser.js'
 import { resolve } from '../src/internal/resolver/resolver.js'
+import { parseSubstPath, segmentsToKey } from '../src/internal/resolver/utils.js'
 import type { HoconValue } from '../src/value.js'
 
 function resolveStr(input: string, env: Record<string, string> = {}, files: Record<string, string> = {}): HoconValue {
@@ -474,5 +475,26 @@ describe('include merge-all probing', () => {
     const fields = obj(v)
     expect(fields.get('only_json')).toEqual({ kind: 'scalar', value: true })
     expect(fields.has('only_conf')).toBe(false)
+  })
+})
+
+describe('segmentsToKey', () => {
+  it('joins simple segments with dots', () => {
+    expect(segmentsToKey(['a', 'b', 'c'])).toBe('a.b.c')
+  })
+  it('quotes segments containing dots', () => {
+    expect(segmentsToKey(['a.b', 'c'])).toBe('"a.b".c')
+  })
+  it('quotes empty-string segments', () => {
+    expect(segmentsToKey(['', 'foo'])).toBe('"".foo')
+  })
+  it('handles single segment', () => {
+    expect(segmentsToKey(['x'])).toBe('x')
+  })
+  it('roundtrips with parseSubstPath', () => {
+    const cases = [['a', 'b'], ['a.b', 'c'], ['', 'x', ''], ['a.b.c', 'd.e']]
+    for (const segs of cases) {
+      expect(parseSubstPath(segmentsToKey(segs))).toEqual(segs)
+    }
   })
 })

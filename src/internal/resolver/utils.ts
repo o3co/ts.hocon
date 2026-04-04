@@ -50,6 +50,12 @@ export function parseSubstPath(raw: string): string[] {
   return segments
 }
 
+export function segmentsToKey(segments: string[]): string {
+  return segments
+    .map(s => (s === '' || s.includes('.') || s.includes('"')) ? `"${s}"` : s)
+    .join('.')
+}
+
 export function lookupPath(root: ResObj, segments: string[]): ResolverValue | undefined {
   const [head, ...tail] = segments
   if (head === undefined || head === '') {
