@@ -23,3 +23,6 @@ docs/
 
 # Superpowers (development process artifacts)
 docs/superpowers/
+
+# Fetched testdata (from xx.hocon)
+tests/lightbend/testdata/expected/
