@@ -1,10 +1,6 @@
-import * as nodePath from 'node:path'
 import { ResolveError } from '../../errors.js'
 import type { HoconValue } from '../../value.js'
 import type { AstNode, AstField } from '../parser/ast.js'
-import { tokenize } from '../lexer/lexer.js'
-import { parseTokens } from '../parser/parser.js'
-import { propertiesToHoconValue } from '../properties/properties.js'
 import {
   type SubstPlaceholder,
   type AppendPlaceholder,
@@ -19,14 +15,13 @@ import {
   makeResObj,
 } from './types.js'
 import {
-  parseSubstPath,
-  lookupPath,
-  lookupResObj,
   deepMergeHoconValues,
   deepMergeResObjInto,
-  hoconValueToResObj,
-  isFileNotFoundError,
+  lookupPath,
+  lookupResObj,
+  parseSubstPath,
 } from './utils.js'
+import { IncludeLoader } from './include-loader.js'
 
 export type { ResolveOptions } from './types.js'
 
@@ -56,19 +51,23 @@ function buildResObj(ast: AstNode, opts: ResolveOptions, pathPrefix: string[]): 
   if (ast.kind !== 'object') {
     throw new ResolveError('root AST must be an object', '', ast.pos.line, ast.pos.col)
   }
+  const loader = new IncludeLoader(opts)
+  loader.onBuildResObj = (a, o) => buildResObj(a, o, [])
+  // onBuildResObjAsync not needed for sync path but set a stub to satisfy the type
+  loader.onBuildResObjAsync = async (a, o) => buildResObjAsync(a, o, [])
   const obj = makeResObj()
   for (const field of ast.fields) {
-    applyField(obj, field, opts, pathPrefix)
+    applyField(obj, field, opts, pathPrefix, loader)
   }
   return obj
 }
 
-function applyField(obj: ResObj, field: AstField, opts: ResolveOptions, pathPrefix: string[]): void {
+function applyField(obj: ResObj, field: AstField, opts: ResolveOptions, pathPrefix: string[], loader: IncludeLoader): void {
   // include directive: key is empty, value is include node
   if (field.key.length === 0 && field.value.kind === 'include') {
     // Included files are parsed at their own root (pathPrefix=[]),
     // then relativized to the current scope's prefix.
-    const included = loadInclude(field.value.path, field.value.required, opts)
+    const included = loader.load(field.value.path, field.value.required)
     if (pathPrefix.length > 0) {
       relativizeResObj(included, pathPrefix.join('.'), pathPrefix.length)
     }
@@ -86,7 +85,7 @@ function applyField(obj: ResObj, field: AstField, opts: ResolveOptions, pathPref
       fields: [{ key: tail, value: field.value, append: field.append, pos: field.pos }],
       pos: field.pos,
     }
-    applyField(obj, { key: [head], value: syntheticAst, append: false, pos: field.pos }, opts, pathPrefix)
+    applyField(obj, { key: [head], value: syntheticAst, append: false, pos: field.pos }, opts, pathPrefix, loader)
     return
   }
 
@@ -431,95 +430,25 @@ function resolveAppend(
   return { kind: 'array', items }
 }
 
-function loadSingleInclude(candidate: string, opts: ResolveOptions): ResObj | undefined {
-  const { readFileSync, includeStack = [], env } = opts
-
-  if (includeStack.includes(candidate)) {
-    throw new ResolveError(`circular include: ${candidate}`, candidate, 0, 0)
-  }
-
-  let content: string
-  try {
-    content = readFileSync(candidate)
-  } catch (e: unknown) {
-    if (isFileNotFoundError(e)) return undefined
-    throw e
-  }
-
-  if (candidate.endsWith('.properties')) {
-    return hoconValueToResObj(propertiesToHoconValue(content))
-  }
-
-  const ast = parseTokens(tokenize(content))
-  return buildResObj(ast, {
-    env,
-    baseDir: nodePath.dirname(candidate),
-    readFileSync,
-    includeStack: [...includeStack, candidate],
-  }, [])
-}
-
-function loadInclude(includePath: string, required: boolean, opts: ResolveOptions): ResObj {
-  const { baseDir, includeStack = [] } = opts
-  const absPath = baseDir
-    ? nodePath.resolve(baseDir, includePath)
-    : nodePath.resolve(includePath)
-
-  if (includeStack.includes(absPath)) {
-    throw new ResolveError(`circular include: ${absPath}`, absPath, 0, 0)
-  }
-
-  if (includeStack.length >= 50) {
-    throw new ResolveError(`include depth limit exceeded (max 50)`, includePath, 0, 0)
-  }
-
-  const hasExplicitExt = absPath.endsWith('.conf') || absPath.endsWith('.json') || absPath.endsWith('.properties')
-
-  if (hasExplicitExt) {
-    // Explicit extension: load only that exact file
-    const result = loadSingleInclude(absPath, opts)
-    if (result !== undefined) return result
-    if (required) {
-      throw new ResolveError(`required include file not found: ${includePath}`, includePath, 0, 0)
-    }
-    return makeResObj()
-  }
-
-  // No extension: merge all found extensions
-  // Probe order: .properties, .json, .conf (last wins via deepMerge)
-  const merged = makeResObj()
-  let foundAny = false
-  const probeExts = ['.properties', '.json', '.conf']
-  for (const ext of probeExts) {
-    const obj = loadSingleInclude(`${absPath}${ext}`, opts)
-    if (obj !== undefined) {
-      deepMergeResObjInto(merged, obj)
-      foundAny = true
-    }
-  }
-
-  if (!foundAny && required) {
-    throw new ResolveError(`required include file not found: ${includePath}`, includePath, 0, 0)
-  }
-  return merged
-}
-
 // ---- Async Pass 1 helpers (mirror sync versions but await file reads) ----
 
 async function buildResObjAsync(ast: AstNode, opts: ResolveOptions, pathPrefix: string[]): Promise<ResObj> {
   if (ast.kind !== 'object') {
     throw new ResolveError('root AST must be an object', '', ast.pos.line, ast.pos.col)
   }
+  const loader = new IncludeLoader(opts)
+  loader.onBuildResObj = (a, o) => buildResObj(a, o, [])
+  loader.onBuildResObjAsync = async (a, o) => buildResObjAsync(a, o, [])
   const obj = makeResObj()
   for (const field of ast.fields) {
-    await applyFieldAsync(obj, field, opts, pathPrefix)
+    await applyFieldAsync(obj, field, opts, pathPrefix, loader)
   }
   return obj
 }
 
-async function applyFieldAsync(obj: ResObj, field: AstField, opts: ResolveOptions, pathPrefix: string[]): Promise<void> {
+async function applyFieldAsync(obj: ResObj, field: AstField, opts: ResolveOptions, pathPrefix: string[], loader: IncludeLoader): Promise<void> {
   if (field.key.length === 0 && field.value.kind === 'include') {
-    const included = await loadIncludeAsync(field.value.path, field.value.required, opts)
+    const included = await loader.loadAsync(field.value.path, field.value.required)
     if (pathPrefix.length > 0) {
       relativizeResObj(included, pathPrefix.join('.'), pathPrefix.length)
     }
@@ -536,7 +465,7 @@ async function applyFieldAsync(obj: ResObj, field: AstField, opts: ResolveOption
       fields: [{ key: tail, value: field.value, append: field.append, pos: field.pos }],
       pos: field.pos,
     }
-    await applyFieldAsync(obj, { key: [head], value: syntheticAst, append: false, pos: field.pos }, opts, pathPrefix)
+    await applyFieldAsync(obj, { key: [head], value: syntheticAst, append: false, pos: field.pos }, opts, pathPrefix, loader)
     return
   }
 
@@ -596,80 +525,4 @@ async function astToResolverValueAsync(ast: AstNode, opts: ResolveOptions, pathP
     case 'include':
       return { kind: 'scalar', value: null }
   }
-}
-
-async function loadSingleIncludeAsync(candidate: string, opts: ResolveOptions): Promise<ResObj | undefined> {
-  const { readFile, readFileSync, includeStack = [], env } = opts
-  const read = readFile
-    ? async (p: string) => readFile(p)
-    : async (p: string) => readFileSync(p)
-
-  if (includeStack.includes(candidate)) {
-    throw new ResolveError(`circular include: ${candidate}`, candidate, 0, 0)
-  }
-
-  let content: string
-  try {
-    content = await read(candidate)
-  } catch (e: unknown) {
-    if (isFileNotFoundError(e)) return undefined
-    throw e
-  }
-
-  if (candidate.endsWith('.properties')) {
-    return hoconValueToResObj(propertiesToHoconValue(content))
-  }
-
-  const ast = parseTokens(tokenize(content))
-  return buildResObjAsync(ast, {
-    env,
-    baseDir: nodePath.dirname(candidate),
-    readFileSync,
-    readFile,
-    includeStack: [...includeStack, candidate],
-  }, [])
-}
-
-async function loadIncludeAsync(includePath: string, required: boolean, opts: ResolveOptions): Promise<ResObj> {
-  const { baseDir, includeStack = [] } = opts
-  const absPath = baseDir
-    ? nodePath.resolve(baseDir, includePath)
-    : nodePath.resolve(includePath)
-
-  if (includeStack.includes(absPath)) {
-    throw new ResolveError(`circular include: ${absPath}`, absPath, 0, 0)
-  }
-
-  if (includeStack.length >= 50) {
-    throw new ResolveError(`include depth limit exceeded (max 50)`, includePath, 0, 0)
-  }
-
-  const hasExplicitExt = absPath.endsWith('.conf') || absPath.endsWith('.json') || absPath.endsWith('.properties')
-
-  if (hasExplicitExt) {
-    // Explicit extension: load only that exact file
-    const result = await loadSingleIncludeAsync(absPath, opts)
-    if (result !== undefined) return result
-    if (required) {
-      throw new ResolveError(`required include file not found: ${includePath}`, includePath, 0, 0)
-    }
-    return makeResObj()
-  }
-
-  // No extension: merge all found extensions
-  const merged = makeResObj()
-  let foundAny = false
-  const probeExts = ['.properties', '.json', '.conf']
-  for (const ext of probeExts) {
-    const obj = await loadSingleIncludeAsync(`${absPath}${ext}`, opts)
-    if (obj !== undefined) {
-      deepMergeResObjInto(merged, obj)
-      foundAny = true
-    }
-  }
-
-  if (!foundAny && required) {
-    throw new ResolveError(`required include file not found: ${includePath}`, includePath, 0, 0)
-  }
-  return merged
 }
