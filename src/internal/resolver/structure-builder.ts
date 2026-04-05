@@ -169,7 +169,7 @@ export class StructureBuilder {
   private astToResolverValue(ast: AstNode, pathPrefix: string[]): ResolverValue {
     switch (ast.kind) {
       case 'scalar': {
-        const sv: HoconValue = { kind: 'scalar', value: ast.value }
+        const sv: HoconValue = { kind: 'scalar', raw: ast.raw, valueType: ast.valueType }
         if (ast._separator) separatorValues.add(sv)
         return sv
       }
@@ -184,14 +184,14 @@ export class StructureBuilder {
       case 'concat':
         return { _kind: 'concat-placeholder', nodes: ast.nodes.map(n => this.astToResolverValue(n, pathPrefix)) }
       case 'include':
-        return { kind: 'scalar', value: null } // handled by applyField; should not reach here
+        return { kind: 'scalar', raw: 'null', valueType: 'null' } // handled by applyField; should not reach here
     }
   }
 
   private async astToResolverValueAsync(ast: AstNode, pathPrefix: string[]): Promise<ResolverValue> {
     switch (ast.kind) {
       case 'scalar': {
-        const sv: HoconValue = { kind: 'scalar', value: ast.value }
+        const sv: HoconValue = { kind: 'scalar', raw: ast.raw, valueType: ast.valueType }
         if (ast._separator) separatorValues.add(sv)
         return sv
       }
@@ -214,7 +214,7 @@ export class StructureBuilder {
         return { _kind: 'concat-placeholder', nodes }
       }
       case 'include':
-        return { kind: 'scalar', value: null }
+        return { kind: 'scalar', raw: 'null', valueType: 'null' }
     }
   }
 

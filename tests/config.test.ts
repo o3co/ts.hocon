@@ -11,12 +11,12 @@ function makeConfig(obj: Record<string, HoconValue>): Config {
 
 describe('Config', () => {
   it('get() returns value at path', () => {
-    const c = makeConfig({ host: { kind: 'scalar', value: 'localhost' } })
+    const c = makeConfig({ host: { kind: 'scalar', raw: 'localhost', valueType: 'string' } })
     expect(c.get('host')).toBe('localhost')
   })
 
   it('get() returns nested value at dot-path', () => {
-    const inner = new Map([['host', { kind: 'scalar', value: 'localhost' } satisfies HoconValue]])
+    const inner = new Map([['host', { kind: 'scalar', raw: 'localhost', valueType: 'string' } satisfies HoconValue]])
     const c = new Config({ kind: 'object', fields: new Map([['server', { kind: 'object', fields: inner }]]) })
     expect(c.get('server.host')).toBe('localhost')
   })
@@ -27,101 +27,101 @@ describe('Config', () => {
   })
 
   it('getString() returns string value', () => {
-    const c = makeConfig({ host: { kind: 'scalar', value: 'localhost' } })
+    const c = makeConfig({ host: { kind: 'scalar', raw: 'localhost', valueType: 'string' } })
     expect(c.getString('host')).toBe('localhost')
   })
 
-  it('getString() throws ConfigError for non-string', () => {
-    const c = makeConfig({ port: { kind: 'scalar', value: 8080 } })
-    expect(() => c.getString('port')).toThrow(ConfigError)
+  it('getString() returns raw for any valueType (Lightbend compatible)', () => {
+    const c = makeConfig({ port: { kind: 'scalar', raw: '8080', valueType: 'number' } })
+    expect(c.getString('port')).toBe('8080')
   })
 
   it('getNumber() returns number value', () => {
-    const c = makeConfig({ port: { kind: 'scalar', value: 8080 } })
+    const c = makeConfig({ port: { kind: 'scalar', raw: '8080', valueType: 'number' } })
     expect(c.getNumber('port')).toBe(8080)
   })
 
   it('getNumber() coerces numeric string to number', () => {
-    const c = makeConfig({ port: { kind: 'scalar', value: '9999' } })
+    const c = makeConfig({ port: { kind: 'scalar', raw: '9999', valueType: 'string' } })
     expect(c.getNumber('port')).toBe(9999)
   })
 
   it('getNumber() throws ConfigError for non-numeric string', () => {
-    const c = makeConfig({ host: { kind: 'scalar', value: 'localhost' } })
+    const c = makeConfig({ host: { kind: 'scalar', raw: 'localhost', valueType: 'string' } })
     expect(() => c.getNumber('host')).toThrow(ConfigError)
   })
 
   it('getNumber() throws ConfigError for non-number/non-string', () => {
-    const c = makeConfig({ flag: { kind: 'scalar', value: true } })
+    const c = makeConfig({ flag: { kind: 'scalar', raw: 'true', valueType: 'boolean' } })
     expect(() => c.getNumber('flag')).toThrow(ConfigError)
   })
 
   it('getNumber() rejects hex strings', () => {
-    const c = makeConfig({ val: { kind: 'scalar', value: '0xff' } })
+    const c = makeConfig({ val: { kind: 'scalar', raw: '0xff', valueType: 'string' } })
     expect(() => c.getNumber('val')).toThrow(ConfigError)
   })
 
   it('getNumber() rejects Infinity', () => {
-    const c = makeConfig({ val: { kind: 'scalar', value: 'Infinity' } })
+    const c = makeConfig({ val: { kind: 'scalar', raw: 'Infinity', valueType: 'string' } })
     expect(() => c.getNumber('val')).toThrow(ConfigError)
   })
 
   it('getNumber() rejects whitespace-only string', () => {
-    const c = makeConfig({ val: { kind: 'scalar', value: '   ' } })
+    const c = makeConfig({ val: { kind: 'scalar', raw: '   ', valueType: 'string' } })
     expect(() => c.getNumber('val')).toThrow(ConfigError)
   })
 
   it('getBoolean() returns boolean value', () => {
-    const c = makeConfig({ debug: { kind: 'scalar', value: true } })
+    const c = makeConfig({ debug: { kind: 'scalar', raw: 'true', valueType: 'boolean' } })
     expect(c.getBoolean('debug')).toBe(true)
   })
 
   it('getBoolean() coerces string "true" to true', () => {
-    const c = makeConfig({ debug: { kind: 'scalar', value: 'true' } })
+    const c = makeConfig({ debug: { kind: 'scalar', raw: 'true', valueType: 'string' } })
     expect(c.getBoolean('debug')).toBe(true)
   })
 
   it('getBoolean() coerces string "false" to false', () => {
-    const c = makeConfig({ debug: { kind: 'scalar', value: 'false' } })
+    const c = makeConfig({ debug: { kind: 'scalar', raw: 'false', valueType: 'string' } })
     expect(c.getBoolean('debug')).toBe(false)
   })
 
   it('getBoolean() coerces string "yes" to true', () => {
-    const c = makeConfig({ val: { kind: 'scalar', value: 'yes' } })
+    const c = makeConfig({ val: { kind: 'scalar', raw: 'yes', valueType: 'string' } })
     expect(c.getBoolean('val')).toBe(true)
   })
 
   it('getBoolean() coerces string "no" to false', () => {
-    const c = makeConfig({ val: { kind: 'scalar', value: 'no' } })
+    const c = makeConfig({ val: { kind: 'scalar', raw: 'no', valueType: 'string' } })
     expect(c.getBoolean('val')).toBe(false)
   })
 
   it('getBoolean() coerces string "on" to true', () => {
-    const c = makeConfig({ val: { kind: 'scalar', value: 'on' } })
+    const c = makeConfig({ val: { kind: 'scalar', raw: 'on', valueType: 'string' } })
     expect(c.getBoolean('val')).toBe(true)
   })
 
   it('getBoolean() coerces string "off" to false', () => {
-    const c = makeConfig({ val: { kind: 'scalar', value: 'off' } })
+    const c = makeConfig({ val: { kind: 'scalar', raw: 'off', valueType: 'string' } })
     expect(c.getBoolean('val')).toBe(false)
   })
 
   it('getBoolean() is case-insensitive', () => {
-    const c1 = makeConfig({ val: { kind: 'scalar', value: 'TRUE' } })
+    const c1 = makeConfig({ val: { kind: 'scalar', raw: 'TRUE', valueType: 'string' } })
     expect(c1.getBoolean('val')).toBe(true)
-    const c2 = makeConfig({ val: { kind: 'scalar', value: 'Yes' } })
+    const c2 = makeConfig({ val: { kind: 'scalar', raw: 'Yes', valueType: 'string' } })
     expect(c2.getBoolean('val')).toBe(true)
-    const c3 = makeConfig({ val: { kind: 'scalar', value: 'OFF' } })
+    const c3 = makeConfig({ val: { kind: 'scalar', raw: 'OFF', valueType: 'string' } })
     expect(c3.getBoolean('val')).toBe(false)
   })
 
   it('getBoolean() throws ConfigError for non-boolean string', () => {
-    const c = makeConfig({ val: { kind: 'scalar', value: 'maybe' } })
+    const c = makeConfig({ val: { kind: 'scalar', raw: 'maybe', valueType: 'string' } })
     expect(() => c.getBoolean('val')).toThrow(ConfigError)
   })
 
   it('getConfig() returns sub-config', () => {
-    const inner = new Map([['host', { kind: 'scalar', value: 'localhost' } satisfies HoconValue]])
+    const inner = new Map([['host', { kind: 'scalar', raw: 'localhost', valueType: 'string' } satisfies HoconValue]])
     const c = new Config({ kind: 'object', fields: new Map([['server', { kind: 'object', fields: inner }]]) })
     const sub = c.getConfig('server')
     expect(sub).toBeInstanceOf(Config)
@@ -129,18 +129,18 @@ describe('Config', () => {
   })
 
   it('getList() returns array as unknown[]', () => {
-    const items: HoconValue[] = [{ kind: 'scalar', value: 1 }, { kind: 'scalar', value: 2 }]
+    const items: HoconValue[] = [{ kind: 'scalar', raw: '1', valueType: 'number' }, { kind: 'scalar', raw: '2', valueType: 'number' }]
     const c = makeConfig({ list: { kind: 'array', items } })
     expect(c.getList('list')).toEqual([1, 2])
   })
 
   it('has() returns true for existing key', () => {
-    const c = makeConfig({ host: { kind: 'scalar', value: 'localhost' } })
+    const c = makeConfig({ host: { kind: 'scalar', raw: 'localhost', valueType: 'string' } })
     expect(c.has('host')).toBe(true)
   })
 
   it('has() returns true for null value', () => {
-    const c = makeConfig({ x: { kind: 'scalar', value: null } })
+    const c = makeConfig({ x: { kind: 'scalar', raw: 'null', valueType: 'null' } })
     expect(c.has('x')).toBe(true)
   })
 
@@ -150,22 +150,51 @@ describe('Config', () => {
   })
 
   it('keys() returns top-level keys in order', () => {
-    const c = new Config({ kind: 'object', fields: new Map([['b', { kind: 'scalar', value: 2 }], ['a', { kind: 'scalar', value: 1 }]]) })
+    const c = new Config({ kind: 'object', fields: new Map([['b', { kind: 'scalar', raw: '2', valueType: 'number' }], ['a', { kind: 'scalar', raw: '1', valueType: 'number' }]]) })
     expect(c.keys()).toEqual(['b', 'a'])
   })
 
   it('withFallback() receiver wins', () => {
-    const c1 = makeConfig({ host: { kind: 'scalar', value: 'prod' } })
-    const c2 = makeConfig({ host: { kind: 'scalar', value: 'dev' }, port: { kind: 'scalar', value: 8080 } })
+    const c1 = makeConfig({ host: { kind: 'scalar', raw: 'prod', valueType: 'string' } })
+    const c2 = makeConfig({ host: { kind: 'scalar', raw: 'dev', valueType: 'string' }, port: { kind: 'scalar', raw: '8080', valueType: 'number' } })
     const merged = c1.withFallback(c2)
     expect(merged.getString('host')).toBe('prod')
     expect(merged.getNumber('port')).toBe(8080)
   })
 
   it('toObject() converts to plain JS object recursively', () => {
-    const inner = new Map([['host', { kind: 'scalar', value: 'localhost' } satisfies HoconValue]])
+    const inner = new Map([['host', { kind: 'scalar', raw: 'localhost', valueType: 'string' } satisfies HoconValue]])
     const c = new Config({ kind: 'object', fields: new Map([['server', { kind: 'object', fields: inner }]]) })
     expect(c.toObject()).toEqual({ server: { host: 'localhost' } })
+  })
+})
+
+describe('Config - scalar type preservation (Lightbend compatible)', () => {
+  it('getString() returns raw text for number values', () => {
+    const config = parse('port = 8080')
+    expect(config.getString('port')).toBe('8080')
+  })
+
+  it('getString() returns raw text for boolean values', () => {
+    const config = parse('enabled = true')
+    expect(config.getString('enabled')).toBe('true')
+  })
+
+  it('.33 is preserved as string, not converted to number', () => {
+    const config = parse('val = .33')
+    expect(config.getString('val')).toBe('.33')
+    expect(config.toObject()).toEqual({ val: '.33' })
+  })
+
+  it('0100 raw string is preserved via getString', () => {
+    const config = parse('val = 0100')
+    expect(config.getString('val')).toBe('0100')
+    expect(config.getNumber('val')).toBe(100)
+  })
+
+  it('toObject() outputs numbers for number-typed values', () => {
+    const config = parse('port = 8080\npi = 3.14\nneg = -1')
+    expect(config.toObject()).toEqual({ port: 8080, pi: 3.14, neg: -1 })
   })
 })
 
@@ -263,7 +292,7 @@ describe('getDuration', () => {
     expect(() => c.getDuration('missing')).toThrow(ConfigError)
   })
 
-  it('throws on non-string value', () => {
+  it('throws on invalid duration', () => {
     const c = parse('a = 123')
     expect(() => c.getDuration('a')).toThrow(ConfigError)
   })
@@ -341,7 +370,7 @@ describe('getBytes', () => {
     expect(() => c.getBytes('missing')).toThrow(ConfigError)
   })
 
-  it('throws on non-string value', () => {
+  it('throws on invalid byte size', () => {
     const c = parse('a = 123')
     expect(() => c.getBytes('a')).toThrow(ConfigError)
   })

@@ -67,9 +67,12 @@ describe('parseTokens', () => {
     const node = parse('a = true\nb = false\nc = null')
     if (node.kind === 'object') {
       const vals = node.fields.map(f => f.value)
-      expect(vals[0]!.kind === 'scalar' && vals[0]!.value).toBe(true)
-      expect(vals[1]!.kind === 'scalar' && vals[1]!.value).toBe(false)
-      expect(vals[2]!.kind === 'scalar' && vals[2]!.value).toBe(null)
+      expect(vals[0]!.kind === 'scalar' && vals[0]!.raw).toBe('true')
+      expect(vals[0]!.kind === 'scalar' && vals[0]!.valueType).toBe('boolean')
+      expect(vals[1]!.kind === 'scalar' && vals[1]!.raw).toBe('false')
+      expect(vals[1]!.kind === 'scalar' && vals[1]!.valueType).toBe('boolean')
+      expect(vals[2]!.kind === 'scalar' && vals[2]!.raw).toBe('null')
+      expect(vals[2]!.kind === 'scalar' && vals[2]!.valueType).toBe('null')
     }
   })
 
@@ -77,7 +80,8 @@ describe('parseTokens', () => {
     const node = parse('port = 8080')
     if (node.kind === 'object') {
       const val = node.fields[0]!.value
-      expect(val.kind === 'scalar' && val.value).toBe(8080)
+      expect(val.kind === 'scalar' && val.raw).toBe('8080')
+      expect(val.kind === 'scalar' && val.valueType).toBe('number')
     }
   })
 
@@ -85,7 +89,8 @@ describe('parseTokens', () => {
     const node = parse('ratio = 1.5')
     if (node.kind === 'object') {
       const val = node.fields[0]!.value
-      expect(val.kind === 'scalar' && val.value).toBe(1.5)
+      expect(val.kind === 'scalar' && val.raw).toBe('1.5')
+      expect(val.kind === 'scalar' && val.valueType).toBe('number')
     }
   })
 

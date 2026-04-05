@@ -178,8 +178,8 @@ describe('resolveAsync() — applyFieldAsync branches', () => {
     const server = v.fields.get('server')
     expect(server?.kind).toBe('object')
     if (server?.kind === 'object') {
-      expect(server.fields.get('host')).toEqual({ kind: 'scalar', value: 'localhost' })
-      expect(server.fields.get('port')).toEqual({ kind: 'scalar', value: 8080 })
+      expect(server.fields.get('host')).toEqual({ kind: 'scalar', raw: 'localhost', valueType: 'string' })
+      expect(server.fields.get('port')).toEqual({ kind: 'scalar', raw: '8080', valueType: 'number' })
     }
   })
 
@@ -189,7 +189,7 @@ describe('resolveAsync() — applyFieldAsync branches', () => {
     const items = v.fields.get('items')
     expect(items?.kind).toBe('array')
     if (items?.kind === 'array') {
-      expect(items.items.map(i => (i as { kind: 'scalar'; value: unknown }).value)).toEqual([1, 2, 3])
+      expect(items.items.map(i => (i as { kind: 'scalar'; raw: string }).raw)).toEqual(['1', '2', '3'])
     }
   })
 
@@ -199,8 +199,8 @@ describe('resolveAsync() — applyFieldAsync branches', () => {
     const db = v.fields.get('db')
     expect(db?.kind).toBe('object')
     if (db?.kind === 'object') {
-      expect(db.fields.get('host')).toEqual({ kind: 'scalar', value: 'a' })
-      expect(db.fields.get('port')).toEqual({ kind: 'scalar', value: 5432 })
+      expect(db.fields.get('host')).toEqual({ kind: 'scalar', raw: 'a', valueType: 'string' })
+      expect(db.fields.get('port')).toEqual({ kind: 'scalar', raw: '5432', valueType: 'number' })
     }
   })
 })
@@ -230,13 +230,13 @@ describe('resolveAsync() — astToResolverValueAsync branches', () => {
   it('handles substitution nodes', async () => {
     const v = await resolveAsyncStr('base = 10\nderived = ${base}')
     if (v.kind !== 'object') throw new Error('expected object')
-    expect(v.fields.get('derived')).toEqual({ kind: 'scalar', value: 10 })
+    expect(v.fields.get('derived')).toEqual({ kind: 'scalar', raw: '10', valueType: 'number' })
   })
 
   it('handles concat nodes', async () => {
     const v = await resolveAsyncStr('prefix = "hello"\nfull = ${prefix}" world"')
     if (v.kind !== 'object') throw new Error('expected object')
-    expect(v.fields.get('full')).toEqual({ kind: 'scalar', value: 'hello world' })
+    expect(v.fields.get('full')).toEqual({ kind: 'scalar', raw: 'hello world', valueType: 'string' })
   })
 })
 
@@ -255,8 +255,8 @@ describe('resolveAsync() — loadIncludeAsync branches', () => {
       },
     })
     if (v.kind !== 'object') throw new Error('expected object')
-    expect(v.fields.get('probed')).toEqual({ kind: 'scalar', value: true })
-    expect(v.fields.get('app')).toEqual({ kind: 'scalar', value: 1 })
+    expect(v.fields.get('probed')).toEqual({ kind: 'scalar', raw: 'true', valueType: 'boolean' })
+    expect(v.fields.get('app')).toEqual({ kind: 'scalar', raw: '1', valueType: 'number' })
   })
 
   it('silently ignores missing optional includes', async () => {
@@ -266,7 +266,7 @@ describe('resolveAsync() — loadIncludeAsync branches', () => {
       readFile: async (_p: string) => { throw Object.assign(new Error('ENOENT: not found'), { code: 'ENOENT' }) },
     })
     if (v.kind !== 'object') throw new Error('expected object')
-    expect(v.fields.get('app')).toEqual({ kind: 'scalar', value: 42 })
+    expect(v.fields.get('app')).toEqual({ kind: 'scalar', raw: '42', valueType: 'number' })
     // nonexistent include is silently ignored
     expect(v.fields.get('missing')).toBeUndefined()
   })
@@ -302,8 +302,8 @@ describe('resolveAsync() — loadIncludeAsync branches', () => {
       // no readFile provided — exercises sync fallback path in loadIncludeAsync
     })
     if (v.kind !== 'object') throw new Error('expected object')
-    expect(v.fields.get('synced')).toEqual({ kind: 'scalar', value: 99 })
-    expect(v.fields.get('local')).toEqual({ kind: 'scalar', value: 1 })
+    expect(v.fields.get('synced')).toEqual({ kind: 'scalar', raw: '99', valueType: 'number' })
+    expect(v.fields.get('local')).toEqual({ kind: 'scalar', raw: '1', valueType: 'number' })
   })
 
   it('detects circular include via extension-probed path (async)', async () => {

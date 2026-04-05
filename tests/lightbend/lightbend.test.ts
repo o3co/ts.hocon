@@ -47,7 +47,7 @@ describe('Lightbend HOCON suite tests (expected JSON)', () => {
   // Known failures — skip these with reasons
   const skip = new Set([
     'file-include-expected.json',  // file include resolves extra keys (bar-file, baz) not in expected
-    'test01-expected.json',        // env vars (system.path/pwd) differ per machine; also .33 parsed as number vs string, null handling
+    'test01-expected.json',        // env vars (system.path/pwd) differ per machine; key ordering; null handling; arrays.firstElementNotASubst
     'test02-expected.json',        // empty-string key substitution ${""."".""}  not resolved
     // 'test10-expected.json',     // FIXED: nested include substitution scope (relativize)
   ])
