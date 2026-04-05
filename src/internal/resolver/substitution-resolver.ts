@@ -216,11 +216,12 @@ export class SubstitutionResolver {
         return result
       }
 
-      // Env var fallback — also try the original (non-relativized) path
+      // Env var fallback — use raw dot-join (no quoting) to match Lightbend behavior
+      const envKey = s.segments.join('.')
       const envVal =
-        this.opts.env[key] ??
+        this.opts.env[envKey] ??
         (s.prefixLen > 0
-          ? this.opts.env[segmentsToKey(s.segments.slice(s.prefixLen))]
+          ? this.opts.env[s.segments.slice(s.prefixLen).join('.')]
           : undefined)
       if (envVal !== undefined) {
         const result: HoconValue = { kind: 'scalar', value: envVal }
