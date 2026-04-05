@@ -4,6 +4,7 @@ import { ResolveError } from '../src/errors.js'
 import { tokenize } from '../src/internal/lexer/lexer.js'
 import { parseTokens } from '../src/internal/parser/parser.js'
 import { resolve } from '../src/internal/resolver/resolver.js'
+import { parseSubstPath, segmentsToKey } from '../src/internal/resolver/utils.js'
 import type { HoconValue } from '../src/value.js'
 
 function resolveStr(input: string, env: Record<string, string> = {}, files: Record<string, string> = {}): HoconValue {
@@ -434,6 +435,25 @@ describe('Resolver - include substitution relativization', () => {
     if (foo?.kind !== 'object') throw new Error('expected foo to be object')
     expect(foo.fields.get('y')).toEqual({ kind: 'scalar', value: 1 })
   })
+
+  it('relativizes substitution paths with quoted keys containing dots', () => {
+    const v = resolveStr('"a.b" { include "inner.conf" }', {}, {
+      '/inner.conf': 'x = 1\ny = ${x}',
+    })
+    const ab = obj(v).get('a.b')
+    if (ab?.kind !== 'object') throw new Error('expected "a.b" to be object')
+    expect(ab.fields.get('x')).toEqual({ kind: 'scalar', value: 1 })
+    expect(ab.fields.get('y')).toEqual({ kind: 'scalar', value: 1 })
+  })
+
+  it('env var fallback with quoted-key prefix', () => {
+    const v = resolveStr('"a.b" { include "inner.conf" }', { MY_VAR: 'ok' }, {
+      '/inner.conf': 'val = ${MY_VAR}',
+    })
+    const ab = obj(v).get('a.b')
+    if (ab?.kind !== 'object') throw new Error('expected "a.b" to be object')
+    expect(ab.fields.get('val')).toEqual({ kind: 'scalar', value: 'ok' })
+  })
 })
 
 describe('include merge-all probing', () => {
@@ -474,5 +494,42 @@ describe('include merge-all probing', () => {
     const fields = obj(v)
     expect(fields.get('only_json')).toEqual({ kind: 'scalar', value: true })
     expect(fields.has('only_conf')).toBe(false)
+  })
+})
+
+describe('segmentsToKey', () => {
+  it('joins simple segments with dots', () => {
+    expect(segmentsToKey(['a', 'b', 'c'])).toBe('a.b.c')
+  })
+  it('quotes segments containing dots', () => {
+    expect(segmentsToKey(['a.b', 'c'])).toBe('"a.b".c')
+  })
+  it('quotes empty-string segments', () => {
+    expect(segmentsToKey(['', 'foo'])).toBe('"".foo')
+  })
+  it('handles single segment', () => {
+    expect(segmentsToKey(['x'])).toBe('x')
+  })
+  it('roundtrips with parseSubstPath', () => {
+    const cases = [['a', 'b'], ['a.b', 'c'], ['', 'x', ''], ['a.b.c', 'd.e']]
+    for (const segs of cases) {
+      expect(parseSubstPath(segmentsToKey(segs))).toEqual(segs)
+    }
+  })
+  it('escapes segments containing double quotes', () => {
+    expect(segmentsToKey(['a"b', 'c'])).toBe('"a\\"b".c')
+    expect(parseSubstPath(segmentsToKey(['a"b', 'c']))).toEqual(['a"b', 'c'])
+  })
+  it('escapes segments containing backslashes', () => {
+    expect(segmentsToKey(['a\\b', 'c'])).toBe('"a\\\\b".c')
+    expect(parseSubstPath(segmentsToKey(['a\\b', 'c']))).toEqual(['a\\b', 'c'])
+  })
+  it('quotes segments with whitespace', () => {
+    expect(segmentsToKey([' a ', 'b'])).toBe('" a ".b')
+    expect(parseSubstPath(segmentsToKey([' a ', 'b']))).toEqual([' a ', 'b'])
+  })
+  it('preserves unknown escape sequences in parseSubstPath', () => {
+    // \n inside quotes should be preserved as literal \n, not treated as escape
+    expect(parseSubstPath('"a\\nb"')).toEqual(['a\\nb'])
   })
 })

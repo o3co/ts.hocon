@@ -3,7 +3,7 @@ import type { HoconValue } from '../../value.js'
 // ---- Internal placeholder types ----
 export type SubstPlaceholder = {
   _kind: 'subst-placeholder'
-  path: string
+  segments: string[]
   optional: boolean
   line: number
   col: number

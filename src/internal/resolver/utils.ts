@@ -24,8 +24,13 @@ export function parseSubstPath(raw: string): string[] {
       i++ // skip opening quote
       let seg = ''
       while (i < raw.length && raw[i] !== '"') {
-        seg += raw[i]
-        i++
+        if (raw[i] === '\\' && i + 1 < raw.length && (raw[i + 1] === '"' || raw[i + 1] === '\\')) {
+          seg += raw[i + 1]
+          i += 2
+        } else {
+          seg += raw[i]
+          i++
+        }
       }
       if (i < raw.length) i++ // skip closing quote
       segments.push(seg)
@@ -48,6 +53,17 @@ export function parseSubstPath(raw: string): string[] {
     }
   }
   return segments
+}
+
+export function segmentsToKey(segments: string[]): string {
+  return segments
+    .map(s => {
+      if (s === '' || /[^a-zA-Z0-9\-_]/.test(s)) {
+        return `"${s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
+      }
+      return s
+    })
+    .join('.')
 }
 
 export function lookupPath(root: ResObj, segments: string[]): ResolverValue | undefined {

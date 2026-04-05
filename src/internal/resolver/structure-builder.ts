@@ -14,6 +14,7 @@ import {
 } from './types.js'
 import {
   deepMergeResObjInto,
+  parseSubstPath,
 } from './utils.js'
 import { IncludeLoader } from './include-loader.js'
 
@@ -61,7 +62,7 @@ export class StructureBuilder {
       // then relativized to the current scope's prefix.
       const included = this.loader.load(field.value.path, field.value.required)
       if (pathPrefix.length > 0) {
-        this.relativizeResObj(included, pathPrefix.join('.'), pathPrefix.length)
+        this.relativizeResObj(included, pathPrefix)
       }
       deepMergeResObjInto(obj, included)
       return
@@ -118,7 +119,7 @@ export class StructureBuilder {
     if (field.key.length === 0 && field.value.kind === 'include') {
       const included = await this.loader.loadAsync(field.value.path, field.value.required)
       if (pathPrefix.length > 0) {
-        this.relativizeResObj(included, pathPrefix.join('.'), pathPrefix.length)
+        this.relativizeResObj(included, pathPrefix)
       }
       deepMergeResObjInto(obj, included)
       return
@@ -179,7 +180,7 @@ export class StructureBuilder {
         return inner
       }
       case 'subst':
-        return { _kind: 'subst-placeholder', path: ast.path, optional: ast.optional, line: ast.pos.line, col: ast.pos.col, prefixLen: 0 }
+        return { _kind: 'subst-placeholder', segments: parseSubstPath(ast.path), optional: ast.optional, line: ast.pos.line, col: ast.pos.col, prefixLen: 0 }
       case 'concat':
         return { _kind: 'concat-placeholder', nodes: ast.nodes.map(n => this.astToResolverValue(n, pathPrefix)) }
       case 'include':
@@ -204,7 +205,7 @@ export class StructureBuilder {
       case 'object':
         return await this.buildAsync(ast, pathPrefix)
       case 'subst':
-        return { _kind: 'subst-placeholder', path: ast.path, optional: ast.optional, line: ast.pos.line, col: ast.pos.col, prefixLen: 0 }
+        return { _kind: 'subst-placeholder', segments: parseSubstPath(ast.path), optional: ast.optional, line: ast.pos.line, col: ast.pos.col, prefixLen: 0 }
       case 'concat': {
         const nodes = []
         for (const n of ast.nodes) {
@@ -219,25 +220,25 @@ export class StructureBuilder {
 
   // ---- Relativize substitution paths for nested includes ----
 
-  private relativizeSubstPaths(val: ResolverValue, prefix: string, prefixSegmentCount: number): void {
+  private relativizeSubstPaths(val: ResolverValue, prefixSegments: string[]): void {
     if (isSubst(val)) {
-      val.path = `${prefix}.${val.path}`
-      val.prefixLen += prefixSegmentCount
+      val.segments = [...prefixSegments, ...val.segments]
+      val.prefixLen += prefixSegments.length
       return
     }
     if (isConcat(val)) {
       for (const node of val.nodes) {
-        this.relativizeSubstPaths(node, prefix, prefixSegmentCount)
+        this.relativizeSubstPaths(node, prefixSegments)
       }
       return
     }
     if (isAppend(val)) {
-      this.relativizeSubstPaths(val.existing, prefix, prefixSegmentCount)
-      this.relativizeSubstPaths(val.elem, prefix, prefixSegmentCount)
+      this.relativizeSubstPaths(val.existing, prefixSegments)
+      this.relativizeSubstPaths(val.elem, prefixSegments)
       return
     }
     if (isResObj(val)) {
-      this.relativizeResObj(val, prefix, prefixSegmentCount)
+      this.relativizeResObj(val, prefixSegments)
       return
     }
     // HoconValue arrays may contain substitutions inside items (shouldn't happen
@@ -245,17 +246,17 @@ export class StructureBuilder {
     const hv = val as HoconValue
     if (hv.kind === 'array') {
       for (const item of hv.items) {
-        this.relativizeSubstPaths(item as ResolverValue, prefix, prefixSegmentCount)
+        this.relativizeSubstPaths(item as ResolverValue, prefixSegments)
       }
     }
   }
 
-  private relativizeResObj(obj: ResObj, prefix: string, prefixSegmentCount: number): void {
+  private relativizeResObj(obj: ResObj, prefixSegments: string[]): void {
     for (const val of obj.fields.values()) {
-      this.relativizeSubstPaths(val, prefix, prefixSegmentCount)
+      this.relativizeSubstPaths(val, prefixSegments)
     }
     for (const val of obj.priorValues.values()) {
-      this.relativizeSubstPaths(val, prefix, prefixSegmentCount)
+      this.relativizeSubstPaths(val, prefixSegments)
     }
   }
 }
