@@ -169,6 +169,35 @@ describe('Config', () => {
   })
 })
 
+describe('Config - scalar type preservation (Lightbend compatible)', () => {
+  it('getString() returns raw text for number values', () => {
+    const config = parse('port = 8080')
+    expect(config.getString('port')).toBe('8080')
+  })
+
+  it('getString() returns raw text for boolean values', () => {
+    const config = parse('enabled = true')
+    expect(config.getString('enabled')).toBe('true')
+  })
+
+  it('.33 is preserved as string, not converted to number', () => {
+    const config = parse('val = .33')
+    expect(config.getString('val')).toBe('.33')
+    expect(config.toObject()).toEqual({ val: '.33' })
+  })
+
+  it('0100 raw string is preserved via getString', () => {
+    const config = parse('val = 0100')
+    expect(config.getString('val')).toBe('0100')
+    expect(config.getNumber('val')).toBe(100)
+  })
+
+  it('toObject() outputs numbers for number-typed values', () => {
+    const config = parse('port = 8080\npi = 3.14\nneg = -1')
+    expect(config.toObject()).toEqual({ port: 8080, pi: 3.14, neg: -1 })
+  })
+})
+
 describe('Config - quoted path segments', () => {
   it('should access keys containing dots via quoted path', () => {
     const cfg = parse('"a.b" = 1')
