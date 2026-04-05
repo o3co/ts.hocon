@@ -1,10 +1,10 @@
+import { DECIMAL_NUMBER_RE } from '../../coerce.js'
 import { ParseError } from '../../errors.js'
 import type { ScalarValueType } from '../../value.js'
 import type { Token } from '../lexer/token.js'
 import type { AstNode, AstField, Pos } from './ast.js'
 
 const EOF_TOKEN: Token = { kind: 'eof', value: '', line: 0, col: 0, isQuoted: false, precedingSpace: false }
-const DECIMAL_NUMBER_RE = /^-?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/
 
 class Parser {
   private pos = 0

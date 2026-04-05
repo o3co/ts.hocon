@@ -1,3 +1,5 @@
+export const DECIMAL_NUMBER_RE = /^-?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/
+
 const TRUTHY = new Set(['true', 'yes', 'on'])
 const FALSY = new Set(['false', 'no', 'off'])
 
@@ -9,7 +11,7 @@ export function coerceBoolean(value: string): boolean | undefined {
 }
 
 export function coerceNumber(value: string): number | undefined {
-  if (!/^-?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/.test(value)) return undefined
+  if (!DECIMAL_NUMBER_RE.test(value)) return undefined
   return Number(value)
 }
 
