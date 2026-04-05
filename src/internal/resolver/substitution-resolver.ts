@@ -82,7 +82,7 @@ export class SubstitutionResolver {
         items: hv.items.map(
           (item: HoconValue) =>
             this.resolveVal(item as ResolverValue, scope) ??
-            ({ kind: 'scalar', value: null } satisfies HoconValue),
+            ({ kind: 'scalar', raw: 'null', valueType: 'null' } satisfies HoconValue),
         ),
       }
     }
@@ -224,7 +224,7 @@ export class SubstitutionResolver {
           ? this.opts.env[s.segments.slice(s.prefixLen).join('.')]
           : undefined)
       if (envVal !== undefined) {
-        const result: HoconValue = { kind: 'scalar', value: envVal }
+        const result: HoconValue = { kind: 'scalar', raw: envVal, valueType: 'string' }
         this.cache.set(key, result)
         return result
       }
@@ -246,7 +246,7 @@ export class SubstitutionResolver {
       .map((n) => this.resolveVal(n, scope))
       .filter((v): v is HoconValue => v !== undefined)
 
-    if (resolved.length === 0) return { kind: 'scalar', value: null }
+    if (resolved.length === 0) return { kind: 'scalar', raw: 'null', valueType: 'null' }
     if (resolved.length === 1) return resolved[0]!
 
     // Object concatenation: if all non-separator elements are objects, deep-merge them.
@@ -282,9 +282,9 @@ export class SubstitutionResolver {
 
     // String concatenation
     const str = resolved
-      .map((v) => (v.kind === 'scalar' ? String(v.value) : JSON.stringify(v)))
+      .map((v) => (v.kind === 'scalar' ? v.raw : JSON.stringify(v)))
       .join('')
-    return { kind: 'scalar', value: str }
+    return { kind: 'scalar', raw: str, valueType: 'string' }
   }
 
   private resolveAppend(a: AppendPlaceholder, scope: ResObj): HoconValue {

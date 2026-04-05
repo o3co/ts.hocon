@@ -1,7 +1,7 @@
 import { coerceBoolean, coerceNumber, parseBytes, parseDuration } from './coerce.js'
 import type { ByteUnit, DurationUnit } from './coerce.js'
 import { ConfigError } from './errors.js'
-import type { HoconValue } from './value.js'
+import type { HoconValue, ScalarValueType } from './value.js'
 
 export class Config {
   constructor(private readonly root: HoconValue & { kind: 'object' }) {}
@@ -14,43 +14,34 @@ export class Config {
 
   getString(path: string): string {
     const v = this.requireScalar(path)
-    if (typeof v !== 'string') throw new ConfigError(`expected string at ${path}, got ${typeof v}`, path)
-    return v
+    return v.raw
   }
 
   getNumber(path: string): number {
     const v = this.requireScalar(path)
-    if (typeof v === 'number') return v
-    if (typeof v === 'string') {
-      const coerced = coerceNumber(v)
-      if (coerced !== undefined) return coerced
-    }
-    throw new ConfigError(`expected number at ${path}, got ${typeof v}`, path)
+    const coerced = coerceNumber(v.raw)
+    if (coerced !== undefined) return coerced
+    throw new ConfigError(`expected number at ${path}, got ${v.valueType}`, path)
   }
 
   getBoolean(path: string): boolean {
     const v = this.requireScalar(path)
-    if (typeof v === 'boolean') return v
-    if (typeof v === 'string') {
-      const coerced = coerceBoolean(v)
-      if (coerced !== undefined) return coerced
-    }
-    throw new ConfigError(`expected boolean at ${path}, got ${typeof v}`, path)
+    const coerced = coerceBoolean(v.raw)
+    if (coerced !== undefined) return coerced
+    throw new ConfigError(`expected boolean at ${path}, got ${v.valueType}`, path)
   }
 
   getDuration(path: string, unit?: DurationUnit): number {
     const v = this.requireScalar(path)
-    if (typeof v !== 'string') throw new ConfigError(`expected duration string at ${path}, got ${typeof v}`, path)
-    const result = parseDuration(v, unit)
-    if (Number.isNaN(result)) throw new ConfigError(`invalid duration at ${path}: ${JSON.stringify(v)}`, path)
+    const result = parseDuration(v.raw, unit)
+    if (Number.isNaN(result)) throw new ConfigError(`invalid duration at ${path}: ${JSON.stringify(v.raw)}`, path)
     return result
   }
 
   getBytes(path: string, unit?: ByteUnit): number {
     const v = this.requireScalar(path)
-    if (typeof v !== 'string') throw new ConfigError(`expected byte size string at ${path}, got ${typeof v}`, path)
-    const result = parseBytes(v, unit)
-    if (Number.isNaN(result)) throw new ConfigError(`invalid byte size at ${path}: ${JSON.stringify(v)}`, path)
+    const result = parseBytes(v.raw, unit)
+    if (Number.isNaN(result)) throw new ConfigError(`invalid byte size at ${path}: ${JSON.stringify(v.raw)}`, path)
     return result
   }
 
@@ -97,11 +88,11 @@ export class Config {
     return current
   }
 
-  private requireScalar(path: string): string | number | boolean | null {
+  private requireScalar(path: string): { raw: string; valueType: ScalarValueType } {
     const v = this.lookupNode(path)
     if (v === undefined) throw new ConfigError(`path not found: ${path}`, path)
     if (v.kind !== 'scalar') throw new ConfigError(`expected scalar at ${path}, got ${v.kind}`, path)
-    return v.value
+    return v
   }
 }
 
@@ -145,9 +136,18 @@ function splitConfigPath(path: string): string[] {
   return segments
 }
 
+function scalarToJs(raw: string, valueType: ScalarValueType): unknown {
+  switch (valueType) {
+    case 'null': return null
+    case 'boolean': return raw === 'true'
+    case 'number': return Number(raw)
+    case 'string': return raw
+  }
+}
+
 function hoconToJs(v: HoconValue): unknown {
   switch (v.kind) {
-    case 'scalar': return v.value
+    case 'scalar': return scalarToJs(v.raw, v.valueType)
     case 'array': return v.items.map(hoconToJs)
     case 'object': {
       const obj: Record<string, unknown> = {}

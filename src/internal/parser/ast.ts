@@ -1,9 +1,11 @@
+import type { ScalarValueType } from '../../value.js'
+
 export type Pos = { line: number; col: number; file?: string }
 
 export type AstNode =
   | { kind: 'object'; fields: AstField[]; pos: Pos }
   | { kind: 'array'; items: AstNode[]; pos: Pos }
-  | { kind: 'scalar'; value: string | number | boolean | null; pos: Pos; _separator?: boolean }
+  | { kind: 'scalar'; raw: string; valueType: ScalarValueType; pos: Pos; _separator?: boolean }
   | { kind: 'concat'; nodes: AstNode[]; pos: Pos }
   | { kind: 'subst'; path: string; optional: boolean; pos: Pos }
   | { kind: 'include'; path: string; required: boolean; pos: Pos }

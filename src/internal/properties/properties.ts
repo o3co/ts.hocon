@@ -57,7 +57,7 @@ function recordToHoconValue(obj: Record<string, unknown>): HoconValue & { kind: 
   const fields = new Map<string, HoconValue>()
   for (const [key, val] of Object.entries(obj)) {
     if (typeof val === 'string') {
-      fields.set(key, { kind: 'scalar', value: val })
+      fields.set(key, { kind: 'scalar', raw: val, valueType: 'string' })
     } else if (val !== null && typeof val === 'object') {
       fields.set(key, recordToHoconValue(val as Record<string, unknown>))
     }

@@ -29,12 +29,12 @@ function obj(v: HoconValue): Map<string, HoconValue> {
 describe('Resolver - Pass 1 (structure)', () => {
   it('resolves simple string value', () => {
     const v = resolveStr('host = "localhost"')
-    expect(obj(v).get('host')).toEqual({ kind: 'scalar', value: 'localhost' })
+    expect(obj(v).get('host')).toEqual({ kind: 'scalar', raw: 'localhost', valueType: 'string' })
   })
 
   it('resolves number value', () => {
     const v = resolveStr('port = 8080')
-    expect(obj(v).get('port')).toEqual({ kind: 'scalar', value: 8080 })
+    expect(obj(v).get('port')).toEqual({ kind: 'scalar', raw: '8080', valueType: 'number' })
   })
 
   it('resolves nested objects', () => {
@@ -54,7 +54,7 @@ describe('Resolver - Pass 1 (structure)', () => {
 
   it('last value wins for scalar keys', () => {
     const v = resolveStr('x = 1\nx = 2')
-    expect(obj(v).get('x')).toEqual({ kind: 'scalar', value: 2 })
+    expect(obj(v).get('x')).toEqual({ kind: 'scalar', raw: '2', valueType: 'number' })
   })
 
   it('resolves arrays', () => {
@@ -86,17 +86,17 @@ describe('Resolver - Pass 1 (structure)', () => {
 describe('Resolver - Pass 2 (substitutions)', () => {
   it('resolves ${path} substitution', () => {
     const v = resolveStr('host = "localhost"\nurl = ${host}')
-    expect(obj(v).get('url')).toEqual({ kind: 'scalar', value: 'localhost' })
+    expect(obj(v).get('url')).toEqual({ kind: 'scalar', raw: 'localhost', valueType: 'string' })
   })
 
   it('resolves nested path substitution', () => {
     const v = resolveStr('server { host = "x" }\nhost = ${server.host}')
-    expect(obj(v).get('host')).toEqual({ kind: 'scalar', value: 'x' })
+    expect(obj(v).get('host')).toEqual({ kind: 'scalar', raw: 'x', valueType: 'string' })
   })
 
   it('resolves ${?path} optional substitution (path exists)', () => {
     const v = resolveStr('a = 1\nb = ${?a}')
-    expect(obj(v).get('b')).toEqual({ kind: 'scalar', value: 1 })
+    expect(obj(v).get('b')).toEqual({ kind: 'scalar', raw: '1', valueType: 'number' })
   })
 
   it('drops field for ${?path} optional substitution (path missing)', () => {
@@ -106,19 +106,19 @@ describe('Resolver - Pass 2 (substitutions)', () => {
 
   it('falls back to prior value when ${?path} is unresolved', () => {
     const v = resolveStr('port = 50051\nport = ${?GRPC_PORT}')
-    expect(obj(v).get('port')).toEqual({ kind: 'scalar', value: 50051 })
+    expect(obj(v).get('port')).toEqual({ kind: 'scalar', raw: '50051', valueType: 'number' })
   })
 
   it('uses env var when ${?path} resolves', () => {
     const v = resolveStr('port = 50051\nport = ${?GRPC_PORT}', { GRPC_PORT: '9090' })
-    expect(obj(v).get('port')).toEqual({ kind: 'scalar', value: '9090' })
+    expect(obj(v).get('port')).toEqual({ kind: 'scalar', raw: '9090', valueType: 'string' })
   })
 
   it('falls back to prior value for nested ${?path}', () => {
     const v = resolveStr('server { port = 8080 }\nserver { port = ${?SERVER_PORT} }')
     const server = obj(v).get('server')
     if (server?.kind === 'object') {
-      expect(server.fields.get('port')).toEqual({ kind: 'scalar', value: 8080 })
+      expect(server.fields.get('port')).toEqual({ kind: 'scalar', raw: '8080', valueType: 'number' })
     }
   })
 
@@ -128,20 +128,20 @@ describe('Resolver - Pass 2 (substitutions)', () => {
 
   it('falls back to env for unresolved substitution', () => {
     const v = resolveStr('b = ${MY_VAR}', { MY_VAR: 'hello' })
-    expect(obj(v).get('b')).toEqual({ kind: 'scalar', value: 'hello' })
+    expect(obj(v).get('b')).toEqual({ kind: 'scalar', raw: 'hello', valueType: 'string' })
   })
 
   it('resolves self-referential substitution', () => {
     const v = resolveStr('path = "/usr"\npath = ${path}:/extra')
     // concat resolves: "/usr" + ":/extra" = "/usr:/extra"
     const result = obj(v).get('path')
-    if (result?.kind === 'scalar') expect(String(result.value)).toContain('/usr')
+    if (result?.kind === 'scalar') expect(result.raw).toContain('/usr')
   })
 
   it('resolves string concat with substitution', () => {
     const v = resolveStr('host = "localhost"\nurl = "http://"${host}')
     const result = obj(v).get('url')
-    expect(result?.kind === 'scalar' && result.value).toBe('http://localhost')
+    expect(result?.kind === 'scalar' && result.raw).toBe('http://localhost')
   })
 
   it('throws ResolveError on circular substitution', () => {
@@ -150,7 +150,7 @@ describe('Resolver - Pass 2 (substitutions)', () => {
 
   it('resolves forward-reference substitution', () => {
     const v = resolveStr('url = $' + '{host}\nhost = "localhost"')
-    expect(obj(v).get('url')).toEqual({ kind: 'scalar', value: 'localhost' })
+    expect(obj(v).get('url')).toEqual({ kind: 'scalar', raw: 'localhost', valueType: 'string' })
   })
 })
 
@@ -161,8 +161,8 @@ describe('Resolver - object concatenation deep merge', () => {
     if (a?.kind !== 'object') throw new Error('expected object')
     const x = a.fields.get('x')
     if (x?.kind !== 'object') throw new Error('expected object')
-    const entries = Object.fromEntries([...x.fields.entries()].map(([k, v]) => [k, v.kind === 'scalar' ? v.value : v]))
-    expect(entries).toEqual({ y: 1, z: 2 })
+    const entries = Object.fromEntries([...x.fields.entries()].map(([k, v]) => [k, v.kind === 'scalar' ? v.raw : v]))
+    expect(entries).toEqual({ y: '1', z: '2' })
   })
 
   it('should recursively deep-merge nested objects', () => {
@@ -173,8 +173,8 @@ describe('Resolver - object concatenation deep merge', () => {
     if (x?.kind !== 'object') throw new Error('expected object')
     const y = x.fields.get('y')
     if (y?.kind !== 'object') throw new Error('expected object')
-    const entries = Object.fromEntries([...y.fields.entries()].map(([k, v]) => [k, v.kind === 'scalar' ? v.value : v]))
-    expect(entries).toEqual({ deep: 1, other: 2 })
+    const entries = Object.fromEntries([...y.fields.entries()].map(([k, v]) => [k, v.kind === 'scalar' ? v.raw : v]))
+    expect(entries).toEqual({ deep: '1', other: '2' })
   })
 
   it('should NOT deep-merge when explicit empty string separates objects', () => {
@@ -197,15 +197,15 @@ describe('Resolver - object concatenation deep merge', () => {
     const a = obj(v).get('a')
     if (a?.kind !== 'object') throw new Error('expected object')
     const x = a.fields.get('x')
-    expect(x).toEqual({ kind: 'scalar', value: 1 })
+    expect(x).toEqual({ kind: 'scalar', raw: '1', valueType: 'number' })
     const y = a.fields.get('y')
-    expect(y).toEqual({ kind: 'scalar', value: 2 })
+    expect(y).toEqual({ kind: 'scalar', raw: '2', valueType: 'number' })
     const z = a.fields.get('z')
-    expect(z).toEqual({ kind: 'scalar', value: 3 })
+    expect(z).toEqual({ kind: 'scalar', raw: '3', valueType: 'number' })
     const nested = a.fields.get('nested')
     if (nested?.kind !== 'object') throw new Error('expected object')
-    const entries = Object.fromEntries([...nested.fields.entries()].map(([k, v]) => [k, v.kind === 'scalar' ? v.value : v]))
-    expect(entries).toEqual({ a: 1, b: 2, c: 3 })
+    const entries = Object.fromEntries([...nested.fields.entries()].map(([k, v]) => [k, v.kind === 'scalar' ? v.raw : v]))
+    expect(entries).toEqual({ a: '1', b: '2', c: '3' })
   })
 })
 
@@ -214,26 +214,26 @@ describe('Resolver - delayed merge', () => {
     const v = resolveStr('x={q:10}\na=${x}\na={c:3}')
     const a = obj(v).get('a')
     if (a?.kind !== 'object') throw new Error('expected object')
-    expect(a.fields.get('q')).toEqual({ kind: 'scalar', value: 10 })
-    expect(a.fields.get('c')).toEqual({ kind: 'scalar', value: 3 })
+    expect(a.fields.get('q')).toEqual({ kind: 'scalar', raw: '10', valueType: 'number' })
+    expect(a.fields.get('c')).toEqual({ kind: 'scalar', raw: '3', valueType: 'number' })
   })
 
   it('last assignment wins for non-self-referential substitution', () => {
     const v = resolveStr('x={q:10}\ny=5\nb=${x}\nb=${y}')
-    expect(obj(v).get('b')).toEqual({ kind: 'scalar', value: 5 })
+    expect(obj(v).get('b')).toEqual({ kind: 'scalar', raw: '5', valueType: 'number' })
   })
 
   it('delayed merge with nested reference (c.e=${a})', () => {
     const v = resolveStr('x={q:10}\ny=5\na=${x}\na={c:3}\nc=${x}\nc={d:600, e:${a}, f:${b}}\nb=${x}\nb=${y}')
     const c = obj(v).get('c')
     if (c?.kind !== 'object') throw new Error('expected object')
-    expect(c.fields.get('q')).toEqual({ kind: 'scalar', value: 10 })
-    expect(c.fields.get('d')).toEqual({ kind: 'scalar', value: 600 })
+    expect(c.fields.get('q')).toEqual({ kind: 'scalar', raw: '10', valueType: 'number' })
+    expect(c.fields.get('d')).toEqual({ kind: 'scalar', raw: '600', valueType: 'number' })
     const e = c.fields.get('e')
     if (e?.kind !== 'object') throw new Error('expected object for c.e')
-    expect(e.fields.get('q')).toEqual({ kind: 'scalar', value: 10 })
-    expect(e.fields.get('c')).toEqual({ kind: 'scalar', value: 3 })
-    expect(c.fields.get('f')).toEqual({ kind: 'scalar', value: 5 })
+    expect(e.fields.get('q')).toEqual({ kind: 'scalar', raw: '10', valueType: 'number' })
+    expect(e.fields.get('c')).toEqual({ kind: 'scalar', raw: '3', valueType: 'number' })
+    expect(c.fields.get('f')).toEqual({ kind: 'scalar', raw: '5', valueType: 'number' })
   })
 })
 
@@ -255,8 +255,8 @@ describe('Resolver - include', () => {
     const v = resolveWithFs('include "other.conf"\nport = 8080', {
       'other.conf': 'host = "localhost"',
     })
-    expect(obj(v).get('host')).toEqual({ kind: 'scalar', value: 'localhost' })
-    expect(obj(v).get('port')).toEqual({ kind: 'scalar', value: 8080 })
+    expect(obj(v).get('host')).toEqual({ kind: 'scalar', raw: 'localhost', valueType: 'string' })
+    expect(obj(v).get('port')).toEqual({ kind: 'scalar', raw: '8080', valueType: 'number' })
   })
 
   it('throws ResolveError on circular include', () => {
@@ -275,7 +275,7 @@ describe('Resolver - resolveConcat edge cases', () => {
     // resolveConcat returns null scalar for empty resolved list
     const v = resolveStr('x = ${?missing1}${?missing2}')
     const x = obj(v).get('x')
-    expect(x).toEqual({ kind: 'scalar', value: null })
+    expect(x).toEqual({ kind: 'scalar', raw: 'null', valueType: 'null' })
   })
 
   it('concatenates arrays from substitution in concat context', () => {
@@ -300,7 +300,7 @@ describe('Resolver - parseSubstPath quoted segments', () => {
   it('resolves substitution with quoted path containing dots', () => {
     // ${"a.b"} should treat "a.b" as a single key, not split at dot
     const v = resolveStr('"a.b" = 42\nx = ${"a.b"}')
-    expect(obj(v).get('x')).toEqual({ kind: 'scalar', value: 42 })
+    expect(obj(v).get('x')).toEqual({ kind: 'scalar', raw: '42', valueType: 'number' })
   })
 
   it('resolves substitution with dot-starting path (empty segment)', () => {
@@ -316,13 +316,13 @@ describe('Resolver - include .conf extension probing (sync)', () => {
     const v = resolveStr('include "base"\nlocal = 1', {}, {
       '/base.conf': 'probed = true',
     })
-    expect(obj(v).get('probed')).toEqual({ kind: 'scalar', value: true })
-    expect(obj(v).get('local')).toEqual({ kind: 'scalar', value: 1 })
+    expect(obj(v).get('probed')).toEqual({ kind: 'scalar', raw: 'true', valueType: 'boolean' })
+    expect(obj(v).get('local')).toEqual({ kind: 'scalar', raw: '1', valueType: 'number' })
   })
 
   it('silently ignores include when no candidates found', () => {
     const v = resolveStr('include "ghost"\nlocal = 7', {}, {})
-    expect(obj(v).get('local')).toEqual({ kind: 'scalar', value: 7 })
+    expect(obj(v).get('local')).toEqual({ kind: 'scalar', raw: '7', valueType: 'number' })
     expect(obj(v).get('ghost')).toBeUndefined()
   })
 })
@@ -349,7 +349,7 @@ describe('Resolver - include required()', () => {
 
   it('silently ignores missing non-required include and preserves other keys', () => {
     const v = resolveWithFs('include "nonexistent.conf"\na = 1', {})
-    expect(obj(v).get('a')).toEqual({ kind: 'scalar', value: 1 })
+    expect(obj(v).get('a')).toEqual({ kind: 'scalar', raw: '1', valueType: 'number' })
   })
 })
 
@@ -374,7 +374,7 @@ describe('Resolver - ENOENT narrowing in loadInclude', () => {
       baseDir: '/fake',
       readFileSync: () => { throw enoent },
     })
-    expect(obj(v).get('a')).toEqual({ kind: 'scalar', value: 1 })
+    expect(obj(v).get('a')).toEqual({ kind: 'scalar', raw: '1', valueType: 'number' })
   })
 })
 
@@ -409,13 +409,13 @@ describe('Resolver - include substitution relativization', () => {
     const nested = bar.fields.get('nested')
     if (nested?.kind !== 'object') throw new Error('expected nested to be object')
     // x should resolve locally within bar.nested scope
-    expect(nested.fields.get('x')).toEqual({ kind: 'object', fields: new Map([['q', { kind: 'scalar', value: 10 }]]) })
-    expect(nested.fields.get('y')).toEqual({ kind: 'scalar', value: 5 })
+    expect(nested.fields.get('x')).toEqual({ kind: 'object', fields: new Map([['q', { kind: 'scalar', raw: '10', valueType: 'number' }]]) })
+    expect(nested.fields.get('y')).toEqual({ kind: 'scalar', raw: '5', valueType: 'number' })
     // a = ${x} then a = { c: 3 } → delayed merge: {q:10, c:3}
     const a = nested.fields.get('a')
     if (a?.kind !== 'object') throw new Error('expected a to be object')
-    expect(a.fields.get('q')).toEqual({ kind: 'scalar', value: 10 })
-    expect(a.fields.get('c')).toEqual({ kind: 'scalar', value: 3 })
+    expect(a.fields.get('q')).toEqual({ kind: 'scalar', raw: '10', valueType: 'number' })
+    expect(a.fields.get('c')).toEqual({ kind: 'scalar', raw: '3', valueType: 'number' })
   })
 
   it('relativizes env var fallback with original path', () => {
@@ -424,7 +424,7 @@ describe('Resolver - include substitution relativization', () => {
     })
     const outer = obj(v).get('outer')
     if (outer?.kind !== 'object') throw new Error('expected outer to be object')
-    expect(outer.fields.get('val')).toEqual({ kind: 'scalar', value: 'hello' })
+    expect(outer.fields.get('val')).toEqual({ kind: 'scalar', raw: 'hello', valueType: 'string' })
   })
 
   it('relativizes substitution paths at single nesting level', () => {
@@ -433,7 +433,7 @@ describe('Resolver - include substitution relativization', () => {
     })
     const foo = obj(v).get('foo')
     if (foo?.kind !== 'object') throw new Error('expected foo to be object')
-    expect(foo.fields.get('y')).toEqual({ kind: 'scalar', value: 1 })
+    expect(foo.fields.get('y')).toEqual({ kind: 'scalar', raw: '1', valueType: 'number' })
   })
 
   it('relativizes substitution paths with quoted keys containing dots', () => {
@@ -442,8 +442,8 @@ describe('Resolver - include substitution relativization', () => {
     })
     const ab = obj(v).get('a.b')
     if (ab?.kind !== 'object') throw new Error('expected "a.b" to be object')
-    expect(ab.fields.get('x')).toEqual({ kind: 'scalar', value: 1 })
-    expect(ab.fields.get('y')).toEqual({ kind: 'scalar', value: 1 })
+    expect(ab.fields.get('x')).toEqual({ kind: 'scalar', raw: '1', valueType: 'number' })
+    expect(ab.fields.get('y')).toEqual({ kind: 'scalar', raw: '1', valueType: 'number' })
   })
 
   it('env var fallback with quoted-key prefix', () => {
@@ -452,7 +452,7 @@ describe('Resolver - include substitution relativization', () => {
     })
     const ab = obj(v).get('a.b')
     if (ab?.kind !== 'object') throw new Error('expected "a.b" to be object')
-    expect(ab.fields.get('val')).toEqual({ kind: 'scalar', value: 'ok' })
+    expect(ab.fields.get('val')).toEqual({ kind: 'scalar', raw: 'ok', valueType: 'string' })
   })
 })
 
@@ -464,10 +464,10 @@ describe('include merge-all probing', () => {
     }
     const v = resolveStr('include "merge-probe"', {}, files)
     const fields = obj(v)
-    expect(fields.get('from_json')).toEqual({ kind: 'scalar', value: true })
-    expect(fields.get('from_conf')).toEqual({ kind: 'scalar', value: true })
+    expect(fields.get('from_json')).toEqual({ kind: 'scalar', raw: 'true', valueType: 'boolean' })
+    expect(fields.get('from_conf')).toEqual({ kind: 'scalar', raw: 'true', valueType: 'boolean' })
     // .conf is loaded last (probe order: .properties, .json, .conf) so it wins
-    expect(fields.get('shared')).toEqual({ kind: 'scalar', value: 'conf' })
+    expect(fields.get('shared')).toEqual({ kind: 'scalar', raw: 'conf', valueType: 'string' })
   })
 
   it('merges .properties, .json, and .conf in correct order', () => {
@@ -478,10 +478,10 @@ describe('include merge-all probing', () => {
     }
     const v = resolveStr('include "all-three"', {}, files)
     const fields = obj(v)
-    expect(fields.get('from_props')).toEqual({ kind: 'scalar', value: 'propval' })
-    expect(fields.get('from_json')).toEqual({ kind: 'scalar', value: true })
-    expect(fields.get('from_conf')).toEqual({ kind: 'scalar', value: true })
-    expect(fields.get('shared')).toEqual({ kind: 'scalar', value: 'conf' })
+    expect(fields.get('from_props')).toEqual({ kind: 'scalar', raw: 'propval', valueType: 'string' })
+    expect(fields.get('from_json')).toEqual({ kind: 'scalar', raw: 'true', valueType: 'boolean' })
+    expect(fields.get('from_conf')).toEqual({ kind: 'scalar', raw: 'true', valueType: 'boolean' })
+    expect(fields.get('shared')).toEqual({ kind: 'scalar', raw: 'conf', valueType: 'string' })
   })
 
   it('still loads single explicit extension without merging', () => {
@@ -492,7 +492,7 @@ describe('include merge-all probing', () => {
     // Explicit .json extension — should only load that file
     const v = resolveStr('include "single.json"', {}, files)
     const fields = obj(v)
-    expect(fields.get('only_json')).toEqual({ kind: 'scalar', value: true })
+    expect(fields.get('only_json')).toEqual({ kind: 'scalar', raw: 'true', valueType: 'boolean' })
     expect(fields.has('only_conf')).toBe(false)
   })
 })

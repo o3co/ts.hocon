@@ -1,4 +1,5 @@
 import { ParseError } from '../../errors.js'
+import type { ScalarValueType } from '../../value.js'
 import type { Token } from '../lexer/token.js'
 import type { AstNode, AstField, Pos } from './ast.js'
 
@@ -252,20 +253,20 @@ class Parser {
         node = { kind: 'subst', path: t.value, optional: t.kind === 'opt_subst', pos: { line: t.line, col: t.col } }
       } else if (t.kind === 'string' || t.kind === 'triple_string') {
         this.advance()
-        node = { kind: 'scalar', value: t.value, pos: { line: t.line, col: t.col } }
+        node = { kind: 'scalar', raw: t.value, valueType: 'string', pos: { line: t.line, col: t.col } }
       } else if (t.kind === 'unquoted') {
         this.advance()
-        node = { kind: 'scalar', value: this.parseScalarValue(t.value), pos: { line: t.line, col: t.col } }
+        node = { kind: 'scalar', raw: t.value, valueType: this.scalarValueType(t.value), pos: { line: t.line, col: t.col } }
       } else if ((t.kind === 'colon' || t.kind === 'equals') && parts.length > 0) {
         // In value concat context, colon/equals after at least one part are plain string chars
         // e.g.  url = ${host}:/path  or  x = ${a}=b
         this.advance()
-        node = { kind: 'scalar', value: t.value, pos: { line: t.line, col: t.col } }
+        node = { kind: 'scalar', raw: t.value, valueType: 'string', pos: { line: t.line, col: t.col } }
       } else {
         break
       }
       if (hadSpace) {
-        parts.push({ kind: 'scalar', value: ' ', pos: { line: t.line, col: t.col }, _separator: true })
+        parts.push({ kind: 'scalar', raw: ' ', valueType: 'string', pos: { line: t.line, col: t.col }, _separator: true })
       }
       parts.push(node)
     }
@@ -294,13 +295,15 @@ class Parser {
     return { kind: 'array', items, pos: p }
   }
 
-  private parseScalarValue(raw: string): string | number | boolean | null {
-    if (raw === 'true') return true
-    if (raw === 'false') return false
-    if (raw === 'null') return null
-    const n = Number(raw)
-    if (!isNaN(n) && raw.trim() !== '') return n
-    return raw
+  private scalarValueType(raw: string): ScalarValueType {
+    if (raw === 'true' || raw === 'false') return 'boolean'
+    if (raw === 'null') return 'null'
+    const ch = raw.charCodeAt(0)
+    // Lightbend-aligned: only tokens starting with 0-9 or '-' are numbers
+    if ((ch >= 0x30 && ch <= 0x39) || ch === 0x2D) {
+      if (!Number.isNaN(Number(raw))) return 'number'
+    }
+    return 'string'
   }
 }
 
