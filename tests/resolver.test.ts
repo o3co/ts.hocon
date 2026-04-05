@@ -533,3 +533,76 @@ describe('segmentsToKey', () => {
     expect(parseSubstPath('"a\\nb"')).toEqual(['a\\nb'])
   })
 })
+
+describe('include file() resolution', () => {
+  // file() includes resolve relative to CWD (via nodePath.resolve), not the including file's dir.
+  // Bare includes resolve relative to the including file's dir (baseDir).
+  function resolveWithBaseDir(input: string, baseDir: string, files: Record<string, string>): HoconValue {
+    const ast = parseTokens(tokenize(input))
+    return resolve(ast, {
+      env: {},
+      baseDir,
+      readFileSync: (p: string) => {
+        const content = files[p]
+        if (content !== undefined) return content
+        throw Object.assign(new Error(`ENOENT: ${p}`), { code: 'ENOENT' })
+      },
+    })
+  }
+
+  it('include file() resolves relative to CWD, not including file dir', () => {
+    // CWD-resolved absolute paths for file() includes.
+    // nodePath.resolve('bar-file.conf') => <CWD>/bar-file.conf
+    const cwd = process.cwd()
+    const files: Record<string, string> = {
+      '/root/sub/foo.conf': 'foo=42\ninclude "bar.conf"\ninclude file("bar-file.conf")',
+      '/root/sub/bar.conf': 'bar=43',
+      '/root/sub/bar-file.conf': 'bar-file=44',
+      // file("bar-file.conf") resolves to CWD/bar-file.conf
+      [`${cwd}/bar-file.conf`]: 'bar-file-cwd=99',
+    }
+    const input = 'base=41\ninclude "sub/foo.conf"'
+    const v = resolveWithBaseDir(input, '/root', files)
+    const fields = obj(v)
+    // file() resolved to CWD/bar-file.conf
+    expect(fields.get('bar-file-cwd')).toEqual({ kind: 'scalar', raw: '99', valueType: 'number' })
+    // sub/bar-file.conf should NOT be loaded (that would be the old broken behavior)
+    expect(fields.has('bar-file')).toBe(false)
+    expect(fields.get('base')).toEqual({ kind: 'scalar', raw: '41', valueType: 'number' })
+    expect(fields.get('foo')).toEqual({ kind: 'scalar', raw: '42', valueType: 'number' })
+    expect(fields.get('bar')).toEqual({ kind: 'scalar', raw: '43', valueType: 'number' })
+  })
+
+  it('include file() with absolute path resolves as-is', () => {
+    const files: Record<string, string> = {
+      '/absolute/target.conf': 'abs=100',
+    }
+    const input = 'base=1\ninclude file("/absolute/target.conf")'
+    const v = resolveWithBaseDir(input, '/root', files)
+    const fields = obj(v)
+    expect(fields.get('abs')).toEqual({ kind: 'scalar', raw: '100', valueType: 'number' })
+  })
+
+  it('include file() silently skips missing files (non-required)', () => {
+    const files: Record<string, string> = {
+      '/root/sub/foo.conf': 'foo=42\ninclude file("nonexistent.conf")',
+    }
+    const input = 'base=41\ninclude "sub/foo.conf"'
+    const v = resolveWithBaseDir(input, '/root', files)
+    const fields = obj(v)
+    expect(fields.get('base')).toEqual({ kind: 'scalar', raw: '41', valueType: 'number' })
+    expect(fields.get('foo')).toEqual({ kind: 'scalar', raw: '42', valueType: 'number' })
+  })
+
+  it('bare include still resolves relative to including file dir', () => {
+    const files: Record<string, string> = {
+      '/root/sub/foo.conf': 'foo=42\ninclude "bar.conf"',
+      '/root/sub/bar.conf': 'bar=43',
+    }
+    const input = 'include "sub/foo.conf"'
+    const v = resolveWithBaseDir(input, '/root', files)
+    const fields = obj(v)
+    expect(fields.get('foo')).toEqual({ kind: 'scalar', raw: '42', valueType: 'number' })
+    expect(fields.get('bar')).toEqual({ kind: 'scalar', raw: '43', valueType: 'number' })
+  })
+})
