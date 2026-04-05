@@ -12,6 +12,10 @@ A full [Lightbend HOCON](https://github.com/lightbend/config/blob/main/HOCON.md)
 
 [日本語](README.ja.md)
 
+> **Library stance:** ts.hocon is a HOCON config loader — its purpose is reading `.hocon` config files and providing typed access via the Config API (`getString`, `getNumber`, `getBoolean`, `getDuration`, `getBytes`, `toObject`). It is not a low-level parser API. Internal types like `HoconValue` may change between minor versions.
+>
+> **Cross-language conformance:** This implementation is tested against shared expected-JSON fixtures from [o3co/xx.hocon](https://github.com/o3co/xx.hocon) alongside [go.hocon](https://github.com/o3co/go.hocon) and [rs.hocon](https://github.com/o3co/rs.hocon) to ensure all three implementations meet the same Lightbend HOCON specification.
+
 ---
 
 ## Quick Start
