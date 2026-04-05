@@ -4,6 +4,7 @@ import type { Token } from '../lexer/token.js'
 import type { AstNode, AstField, Pos } from './ast.js'
 
 const EOF_TOKEN: Token = { kind: 'eof', value: '', line: 0, col: 0, isQuoted: false, precedingSpace: false }
+const DECIMAL_NUMBER_RE = /^-?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/
 
 class Parser {
   private pos = 0
@@ -301,7 +302,7 @@ class Parser {
     // Number detection: first char must be 0-9 or - (Lightbend-aligned)
     // Use strict decimal regex matching coerceNumber to ensure consistency
     if (raw.length > 0 && (raw.charCodeAt(0) >= 0x30 && raw.charCodeAt(0) <= 0x39 || raw.charCodeAt(0) === 0x2d)) {
-      if (/^-?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/.test(raw)) return 'number'
+      if (DECIMAL_NUMBER_RE.test(raw)) return 'number'
     }
     return 'string'
   }

@@ -33,6 +33,9 @@ export class Config {
 
   getDuration(path: string, unit?: DurationUnit): number {
     const v = this.requireScalar(path)
+    if (v.valueType !== 'string' && v.valueType !== 'number') {
+      throw new ConfigError(`expected duration at ${path}, got ${v.valueType}`, path)
+    }
     const result = parseDuration(v.raw, unit)
     if (Number.isNaN(result)) throw new ConfigError(`invalid duration at ${path}: ${JSON.stringify(v.raw)}`, path)
     return result
@@ -40,6 +43,9 @@ export class Config {
 
   getBytes(path: string, unit?: ByteUnit): number {
     const v = this.requireScalar(path)
+    if (v.valueType !== 'string' && v.valueType !== 'number') {
+      throw new ConfigError(`expected byte size at ${path}, got ${v.valueType}`, path)
+    }
     const result = parseBytes(v.raw, unit)
     if (Number.isNaN(result)) throw new ConfigError(`invalid byte size at ${path}: ${JSON.stringify(v.raw)}`, path)
     return result
