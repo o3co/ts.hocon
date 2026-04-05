@@ -298,10 +298,10 @@ class Parser {
   private scalarValueType(raw: string): ScalarValueType {
     if (raw === 'true' || raw === 'false') return 'boolean'
     if (raw === 'null') return 'null'
-    const ch = raw.charCodeAt(0)
-    // Lightbend-aligned: only tokens starting with 0-9 or '-' are numbers
-    if ((ch >= 0x30 && ch <= 0x39) || ch === 0x2D) {
-      if (!Number.isNaN(Number(raw))) return 'number'
+    // Number detection: first char must be 0-9 or - (Lightbend-aligned)
+    // Use strict decimal regex matching coerceNumber to ensure consistency
+    if (raw.length > 0 && (raw.charCodeAt(0) >= 0x30 && raw.charCodeAt(0) <= 0x39 || raw.charCodeAt(0) === 0x2d)) {
+      if (/^-?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/.test(raw)) return 'number'
     }
     return 'string'
   }
