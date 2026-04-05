@@ -60,7 +60,7 @@ export class StructureBuilder {
     if (field.key.length === 0 && field.value.kind === 'include') {
       // Included files are parsed at their own root (pathPrefix=[]),
       // then relativized to the current scope's prefix.
-      const included = this.loader.load(field.value.path, field.value.required)
+      const included = this.loader.load(field.value.path, field.value.required, field.value.isFile)
       if (pathPrefix.length > 0) {
         this.relativizeResObj(included, pathPrefix)
       }
@@ -117,7 +117,7 @@ export class StructureBuilder {
 
   private async applyFieldAsync(obj: ResObj, field: AstField, pathPrefix: string[]): Promise<void> {
     if (field.key.length === 0 && field.value.kind === 'include') {
-      const included = await this.loader.loadAsync(field.value.path, field.value.required)
+      const included = await this.loader.loadAsync(field.value.path, field.value.required, field.value.isFile)
       if (pathPrefix.length > 0) {
         this.relativizeResObj(included, pathPrefix)
       }

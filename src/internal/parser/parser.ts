@@ -165,6 +165,7 @@ class Parser {
     const t = this.peek()
     let path: string
     let required = false
+    let isFile = false
 
     if (t.kind === 'unquoted' && (t.value === 'required(' || t.value === 'required' ||
         t.value.startsWith('required('))) {
@@ -189,11 +190,18 @@ class Parser {
       if (innerPrefix.startsWith('url') || innerPrefix.startsWith('classpath')) {
         throw new ParseError('include url(...) and classpath(...) are not supported', t.line, t.col)
       }
-      // Case 2 (with space): next token starts with url/classpath
+      // Detect file() inside required(): "required(file(" as single token or "file(" as next token
+      if (innerPrefix.startsWith('file')) {
+        isFile = true
+      }
+      // Case 2 (with space): next token starts with url/classpath/file
       const next = this.peek()
       if (next.kind === 'unquoted' && (next.value === 'url' || next.value.startsWith('url(') ||
           next.value === 'classpath' || next.value.startsWith('classpath('))) {
         throw new ParseError('include url(...) and classpath(...) are not supported', next.line, next.col)
+      }
+      if (next.kind === 'unquoted' && (next.value === 'file(' || next.value === 'file' || next.value.startsWith('file('))) {
+        isFile = true
       }
 
       // Skip tokens until we find the quoted path string
@@ -207,6 +215,7 @@ class Parser {
       path = this.advance().value
     } else if (t.kind === 'unquoted' && (t.value === 'file(' || t.value === 'file')) {
       // include file("path")
+      isFile = true
       this.advance()
       // Skip tokens until we find the quoted path string
       while (this.peek().kind !== 'string' && this.peek().kind !== 'eof') this.advance()
@@ -224,7 +233,7 @@ class Parser {
 
     return {
       key: [],
-      value: { kind: 'include', path, required, pos: p },
+      value: { kind: 'include', path, required, ...(isFile ? { isFile: true } : {}), pos: p },
       append: false,
       pos: p,
     }
