@@ -27,14 +27,21 @@ export class IncludeLoader {
     this.opts = opts
   }
 
-  load(includePath: string, required: boolean, isFile?: boolean): ResObj {
-    const { baseDir, includeStack = [] } = this.opts
-    // file() includes resolve relative to CWD (or as absolute paths),
-    // NOT relative to the including file's directory.
-    // Bare includes resolve relative to the including file's directory (baseDir).
-    const absPath = isFile
+  /**
+   * Resolve an include path to an absolute path.
+   * - file() includes resolve relative to CWD (or as absolute paths),
+   *   NOT relative to the including file's directory.
+   * - Bare includes resolve relative to the including file's directory (baseDir).
+   */
+  private resolveIncludePath(includePath: string, baseDir: string | undefined, isFile: boolean): string {
+    return isFile
       ? nodePath.resolve(includePath)
       : (baseDir ? nodePath.resolve(baseDir, includePath) : nodePath.resolve(includePath))
+  }
+
+  load(includePath: string, required: boolean, isFile?: boolean): ResObj {
+    const { baseDir, includeStack = [] } = this.opts
+    const absPath = this.resolveIncludePath(includePath, baseDir, !!isFile)
 
     if (includeStack.includes(absPath)) {
       throw new ResolveError(`circular include: ${absPath}`, absPath, 0, 0)
@@ -76,9 +83,7 @@ export class IncludeLoader {
 
   async loadAsync(includePath: string, required: boolean, isFile?: boolean): Promise<ResObj> {
     const { baseDir, includeStack = [] } = this.opts
-    const absPath = isFile
-      ? nodePath.resolve(includePath)
-      : (baseDir ? nodePath.resolve(baseDir, includePath) : nodePath.resolve(includePath))
+    const absPath = this.resolveIncludePath(includePath, baseDir, !!isFile)
 
     if (includeStack.includes(absPath)) {
       throw new ResolveError(`circular include: ${absPath}`, absPath, 0, 0)

@@ -1,4 +1,5 @@
 // tests/resolver.test.ts
+import * as nodePath from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { ResolveError } from '../src/errors.js'
 import { tokenize } from '../src/internal/lexer/lexer.js'
@@ -559,7 +560,7 @@ describe('include file() resolution', () => {
       '/root/sub/bar.conf': 'bar=43',
       '/root/sub/bar-file.conf': 'bar-file=44',
       // file("bar-file.conf") resolves to CWD/bar-file.conf
-      [`${cwd}/bar-file.conf`]: 'bar-file-cwd=99',
+      [nodePath.resolve(cwd, 'bar-file.conf')]: 'bar-file-cwd=99',
     }
     const input = 'base=41\ninclude "sub/foo.conf"'
     const v = resolveWithBaseDir(input, '/root', files)
@@ -592,6 +593,23 @@ describe('include file() resolution', () => {
     const fields = obj(v)
     expect(fields.get('base')).toEqual({ kind: 'scalar', raw: '41', valueType: 'number' })
     expect(fields.get('foo')).toEqual({ kind: 'scalar', raw: '42', valueType: 'number' })
+  })
+
+  it('include required(file()) errors when file does not exist', () => {
+    const files: Record<string, string> = {}
+    const input = 'include required(file("missing.conf"))'
+    expect(() => resolveWithBaseDir(input, '/root', files)).toThrow(/required include file not found/)
+  })
+
+  it('include required(file()) succeeds when file exists', () => {
+    const cwd = process.cwd()
+    const files: Record<string, string> = {
+      [nodePath.resolve(cwd, 'exists.conf')]: 'found=true',
+    }
+    const input = 'include required(file("exists.conf"))'
+    const v = resolveWithBaseDir(input, '/root', files)
+    const fields = obj(v)
+    expect(fields.get('found')).toEqual({ kind: 'scalar', raw: 'true', valueType: 'boolean' })
   })
 
   it('bare include still resolves relative to including file dir', () => {
