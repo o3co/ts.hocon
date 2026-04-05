@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **Scalar internal representation**: scalars now store `raw: string` + `valueType: ScalarValueType` instead of typed JS values. This eliminates type erasure (e.g., `0100` → `100`) and preserves original text. Note: `HoconValue` scalar variant changed from `{ value: string | number | boolean | null }` to `{ raw: string; valueType: ScalarValueType }`.
+- `getString()` now returns the raw text for **all** scalar types (number, boolean, null), matching Lightbend behavior. Previously it threw on non-string values.
+- `getDuration()` / `getBytes()` reject boolean and null values with a clear type error instead of a generic parse error.
+- Env var lookup uses raw dot-join instead of `segmentsToKey` (no quoting), matching Lightbend behavior.
+
+### Fixed
+
+- `.33` (no leading zero) now correctly classified as string, not number — aligned with Lightbend reference implementation.
+- Number literal detection restricted to tokens starting with `0-9` or `-`. `0xff`, `Infinity`, etc. are no longer classified as numbers.
+- Quoted-key include relativization: `${"a.b".c}` inside included files now resolves correctly.
+- Nested include prefix composition: multi-layer includes accumulate prefixes correctly.
+
+### Added
+
+- `ScalarValueType` type exported from package root.
+- Substitution path segments: `SubstPlaceholder` uses `segments: string[]` for correct quoted-key handling.
+
 ## [1.0.0] — 2026-04-04
 
 ### Added
