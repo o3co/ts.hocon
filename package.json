@@ -48,11 +48,11 @@
   },
   "devDependencies": {
     "@types/node": "^25.5.0",
-    "@vitest/coverage-v8": "^4.1.2",
+    "@vitest/coverage-v8": "4.1.2",
     "tsup": "^8.5.1",
     "typedoc": "^0.28.18",
     "typescript": "^5.9.3",
-    "vitest": "^4.1.2",
+    "vitest": "4.1.2",
     "zod": "^4.3.6"
   },
   "repository": {
@@ -65,5 +65,10 @@
   },
   "homepage": "https://o3co.github.io/ts.hocon/",
   "bugs": "https://github.com/o3co/ts.hocon/issues",
-  "packageManager": "pnpm@10.30.2"
+  "packageManager": "pnpm@10.30.2",
+  "pnpm": {
+    "overrides": {
+      "vite": "~7.3.2"
+    }
+  }
 }
