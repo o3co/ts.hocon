@@ -22,7 +22,7 @@
 npm install @o3co/ts.hocon
 ```
 
-Node.js 18 以上が必要です。
+Node.js 20 以上が必要です。
 
 ### 2. 使い方
 
