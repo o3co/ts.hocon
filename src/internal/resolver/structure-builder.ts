@@ -69,7 +69,7 @@ export class StructureBuilder {
     }
 
     const [head, ...tail] = field.key
-    if (!head) return
+    if (head === undefined) return
 
     if (tail.length > 0) {
       // Nested key: server.host = "x" → create synthetic object AST
@@ -126,7 +126,7 @@ export class StructureBuilder {
     }
 
     const [head, ...tail] = field.key
-    if (!head) return
+    if (head === undefined) return
 
     if (tail.length > 0) {
       const syntheticAst: AstNode = {
