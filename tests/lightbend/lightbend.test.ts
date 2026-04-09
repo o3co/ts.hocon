@@ -49,7 +49,7 @@ describe('Lightbend HOCON suite tests (expected JSON)', () => {
   const skip = new Set([
     // 'file-include-expected.json',  // FIXED: file() includes now resolve relative to CWD
     'test01-expected.json',        // env vars (system.path/pwd) differ per machine; key ordering; null handling; arrays.firstElementNotASubst
-    'test02-expected.json',        // empty-string key substitution ${""."".""}  not resolved
+    // 'test02-expected.json',     // FIXED: empty-string key substitution ${""."".""}  now resolved
     // 'test10-expected.json',     // FIXED: nested include substitution scope (relativize)
   ])
 
