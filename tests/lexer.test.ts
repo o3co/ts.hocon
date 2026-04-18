@@ -56,6 +56,21 @@ describe('tokenize', () => {
     expect(t.value).toBe('A')
   })
 
+  it('accepts surrogate pair \\uD83D\\uDE00 (= 😀, Java/Lightbend semantics)', () => {
+    // TypeScript strings are UTF-16, just like Java/Lightbend HOCON.
+    // A surrogate pair is two valid \uXXXX escapes; the resulting string contains the emoji.
+    const [t] = tokenize('"\\uD83D\\uDE00"')
+    expect(t.value).toBe('\uD83D\uDE00')   // same string as '😀' in JS
+    expect([...t.value][0]).toBe('😀')      // iterated as code point = emoji
+  })
+
+  it('accepts lone surrogate \\uD800 without error (Java/Lightbend semantics)', () => {
+    // A lone surrogate is ill-formed Unicode but valid in Java strings and TS strings.
+    // ts.hocon must accept it; rs.hocon rejects it due to Rust char constraints (deliberate divergence).
+    const [t] = tokenize('"\\uD800"')
+    expect(t.value).toBe('\uD800')
+  })
+
   it('throws on \\uZZZZ (invalid hex digits)', () => {
     expect(() => tokenize('"\\uZZZZ"')).toThrow(ParseError)
   })

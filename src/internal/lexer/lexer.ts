@@ -194,12 +194,11 @@ class Lexer {
               throw new ParseError('invalid unicode escape', openLine, escCol)
             }
             const code = parseInt(hex, 16)
-            // Reject surrogate codepoints (0xD800–0xDFFF) for cross-language consistency with rs.hocon.
-            // Note: Rust char::from_u32 rejects surrogates; TypeScript String.fromCharCode would accept them.
-            // We follow rs.hocon behavior: surrogates are invalid.
-            if (code >= 0xD800 && code <= 0xDFFF) {
-              throw new ParseError('invalid unicode escape', openLine, escCol)
-            }
+            // Accept all \uXXXX escapes including surrogate code units (0xD800–0xDFFF).
+            // TypeScript strings are sequences of UTF-16 code units (same as Java/Lightbend),
+            // so surrogate code units are valid string contents — paired or lone.
+            // This intentionally diverges from rs.hocon, which rejects surrogates because
+            // Rust's `char` cannot represent them. See spec "Surrogate codepoint divergence" note.
             value += String.fromCharCode(code)
             for (let i = 0; i < 4; i++) this.advance()
             break

@@ -273,7 +273,10 @@ class Parser {
         node = this.parseArray()
       } else if (t.kind === 'subst') {
         this.advance()
-        const payload = t.subst ?? { segments: [], optional: false }
+        if (!t.subst) {
+          throw new ParseError(`internal: subst token missing payload`, t.line, t.col)
+        }
+        const payload = t.subst
         node = { kind: 'subst', segments: payload.segments, optional: payload.optional, pos: { line: t.line, col: t.col } }
       } else if (t.kind === 'string' || t.kind === 'triple_string') {
         this.advance()
