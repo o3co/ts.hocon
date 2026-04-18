@@ -5,10 +5,11 @@
 import { describe, it, expect } from 'vitest'
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { parse } from '../../src/parse.js'
 
-const dataDir = new URL('./testdata/subst-tokenize', import.meta.url).pathname
-const expectedDir = new URL('./testdata/expected/subst-tokenize', import.meta.url).pathname
+const dataDir = fileURLToPath(new URL('./testdata/subst-tokenize', import.meta.url))
+const expectedDir = fileURLToPath(new URL('./testdata/expected/subst-tokenize', import.meta.url))
 
 describe('subst-tokenize conformance: success', () => {
   if (!existsSync(expectedDir)) {

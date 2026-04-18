@@ -1,7 +1,7 @@
 // tests/resolver.test.ts
 import * as nodePath from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { ResolveError } from '../src/errors.js'
+import { ParseError, ResolveError } from '../src/errors.js'
 import { tokenize } from '../src/internal/lexer/lexer.js'
 import { parseTokens } from '../src/internal/parser/parser.js'
 import { resolve } from '../src/internal/resolver/resolver.js'
@@ -306,7 +306,8 @@ describe('Resolver - quoted-segment substitution paths', () => {
 
   it('rejects substitution with dot-starting path (leading dot is now a lex error)', () => {
     // parseSubstBody now correctly rejects substitutions with a leading dot (empty segment in path)
-    expect(() => resolveStr('x = ${?.missing}')).toThrow()
+    expect(() => resolveStr('x = ${?.missing}')).toThrow(ParseError)
+    expect(() => resolveStr('x = ${?.missing}')).toThrow(/empty segment in path/)
   })
 })
 
