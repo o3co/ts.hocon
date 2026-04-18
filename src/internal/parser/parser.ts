@@ -4,7 +4,7 @@ import type { ScalarValueType } from '../../value.js'
 import type { Token } from '../lexer/token.js'
 import type { AstNode, AstField, Pos } from './ast.js'
 
-const EOF_TOKEN: Token = { kind: 'eof', value: '', line: 0, col: 0, isQuoted: false, precedingSpace: false }
+const EOF_TOKEN: Token = { kind: 'eof', value: '', line: 0, col: 0, isQuoted: false, precedingSpace: false, subst: undefined }
 
 class Parser {
   private pos = 0
@@ -131,12 +131,18 @@ class Parser {
         trailingDot = false
       } else if (t.kind === 'unquoted') {
         this.advance()
+        // If this unquoted token starts with '.' and we already have segments (no preceding space),
+        // the leading dot is the separator that followed the previous quoted segment.
+        // e.g. key `a."b.c".d` → after "b.c" the lexer emits unquoted ".d"; strip the leading dot.
+        const raw = (t.value.startsWith('.') && segments.length > 0 && !t.precedingSpace)
+          ? t.value.slice(1)
+          : t.value
         // Split unquoted key at dots
-        const parts = t.value.split('.')
+        const parts = raw.split('.')
         const filtered = parts.filter(s => s.length > 0)
         segments.push(...filtered)
         // If the unquoted value ended with a dot, the next token continues the key
-        trailingDot = t.value.endsWith('.')
+        trailingDot = raw.endsWith('.')
       } else {
         if (segments.length === 0) throw new ParseError(`expected key, got ${t.kind}`, t.line, t.col)
         break
@@ -150,6 +156,13 @@ class Parser {
       const next = this.peek()
       if (next.kind === 'unquoted' && next.value === '.' && !next.precedingSpace) {
         this.advance() // consume the dot separator
+        trailingDot = true
+        continue
+      }
+      // After a quoted segment, the next unquoted token may start with '.' acting as the
+      // dot separator (e.g. key `a."b.c".d` → next token is unquoted ".d").
+      // Mark trailingDot so the next iteration's unquoted branch strips the leading dot.
+      if (next.kind === 'unquoted' && next.value.startsWith('.') && !next.precedingSpace) {
         trailingDot = true
         continue
       }
@@ -258,9 +271,13 @@ class Parser {
       } else if (t.kind === 'lbracket') {
         this.advance()
         node = this.parseArray()
-      } else if (t.kind === 'subst' || t.kind === 'opt_subst') {
+      } else if (t.kind === 'subst') {
         this.advance()
-        node = { kind: 'subst', path: t.value, optional: t.kind === 'opt_subst', pos: { line: t.line, col: t.col } }
+        if (!t.subst) {
+          throw new ParseError(`internal: subst token missing payload`, t.line, t.col)
+        }
+        const payload = t.subst
+        node = { kind: 'subst', segments: payload.segments, optional: payload.optional, pos: { line: t.line, col: t.col } }
       } else if (t.kind === 'string' || t.kind === 'triple_string') {
         this.advance()
         node = { kind: 'scalar', raw: t.value, valueType: 'string', pos: { line: t.line, col: t.col } }
