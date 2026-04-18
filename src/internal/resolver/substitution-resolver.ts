@@ -1,5 +1,6 @@
 import { ResolveError } from '../../errors.js'
 import type { HoconValue } from '../../value.js'
+import type { Segment } from '../lexer/token.js'
 import {
   type AppendPlaceholder,
   isAppend,
@@ -89,8 +90,8 @@ export class SubstitutionResolver {
     return hv
   }
 
-  private segmentsEqual(a: string[], b: string[]): boolean {
-    return a.length === b.length && a.every((seg, i) => seg === b[i])
+  private segmentsEqual(a: Segment[], b: Segment[]): boolean {
+    return a.length === b.length && a.every((seg, i) => seg.text === b[i]?.text)
   }
 
   private resolveSubst(
@@ -105,14 +106,14 @@ export class SubstitutionResolver {
       // Cycle detected: try prior value for self-referential substitutions.
       let prior: ResolverValue | undefined
       if (s.prefixLen > 0) {
-        const leafSeg = s.segments[s.segments.length - 1] ?? ''
+        const leafSeg = s.segments[s.segments.length - 1]?.text ?? ''
         const parentScope = lookupResObj(
           this.root,
           s.segments.slice(0, s.segments.length - 1),
         )
         prior = parentScope?.priorValues.get(leafSeg)
       } else {
-        const rootSeg = s.segments[0] ?? ''
+        const rootSeg = s.segments[0]?.text ?? ''
         prior =
           scope.priorValues.get(rootSeg) ?? this.root.priorValues.get(rootSeg)
       }
@@ -153,14 +154,14 @@ export class SubstitutionResolver {
           if (isSelfRef) {
             let prior: ResolverValue | undefined
             if (s.prefixLen > 0) {
-              const leafSeg = s.segments[s.segments.length - 1] ?? ''
+              const leafSeg = s.segments[s.segments.length - 1]?.text ?? ''
               const parentScope = lookupResObj(
                 this.root,
                 s.segments.slice(0, s.segments.length - 1),
               )
               prior = parentScope?.priorValues.get(leafSeg)
             } else {
-              const rootSeg = s.segments[0] ?? ''
+              const rootSeg = s.segments[0]?.text ?? ''
               prior =
                 scope.priorValues.get(rootSeg) ??
                 this.root.priorValues.get(rootSeg)
@@ -185,7 +186,7 @@ export class SubstitutionResolver {
           result !== undefined &&
           result.kind === 'object'
         ) {
-          const leafSeg = s.segments[s.segments.length - 1] ?? ''
+          const leafSeg = s.segments[s.segments.length - 1]?.text ?? ''
           // Find the prior value: for relativized paths, walk from root to the parent scope
           let prior: ResolverValue | undefined
           if (s.prefixLen > 0) {
@@ -217,11 +218,11 @@ export class SubstitutionResolver {
       }
 
       // Env var fallback — use raw dot-join (no quoting) to match Lightbend behavior
-      const envKey = s.segments.join('.')
+      const envKey = s.segments.map((seg: Segment) => seg.text).join('.')
       const envVal =
         this.opts.env[envKey] ??
         (s.prefixLen > 0
-          ? this.opts.env[s.segments.slice(s.prefixLen).join('.')]
+          ? this.opts.env[s.segments.slice(s.prefixLen).map((seg: Segment) => seg.text).join('.')]
           : undefined)
       if (envVal !== undefined) {
         const result: HoconValue = { kind: 'scalar', raw: envVal, valueType: 'string' }

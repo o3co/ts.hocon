@@ -14,7 +14,6 @@ import {
 } from './types.js'
 import {
   deepMergeResObjInto,
-  parseSubstPath,
 } from './utils.js'
 import { IncludeLoader } from './include-loader.js'
 
@@ -180,7 +179,7 @@ export class StructureBuilder {
         return inner
       }
       case 'subst':
-        return { _kind: 'subst-placeholder', segments: parseSubstPath(ast.path), optional: ast.optional, line: ast.pos.line, col: ast.pos.col, prefixLen: 0 }
+        return { _kind: 'subst-placeholder', segments: ast.segments, optional: ast.optional, line: ast.pos.line, col: ast.pos.col, prefixLen: 0 }
       case 'concat':
         return { _kind: 'concat-placeholder', nodes: ast.nodes.map(n => this.astToResolverValue(n, pathPrefix)) }
       case 'include':
@@ -205,7 +204,7 @@ export class StructureBuilder {
       case 'object':
         return await this.buildAsync(ast, pathPrefix)
       case 'subst':
-        return { _kind: 'subst-placeholder', segments: parseSubstPath(ast.path), optional: ast.optional, line: ast.pos.line, col: ast.pos.col, prefixLen: 0 }
+        return { _kind: 'subst-placeholder', segments: ast.segments, optional: ast.optional, line: ast.pos.line, col: ast.pos.col, prefixLen: 0 }
       case 'concat': {
         const nodes = []
         for (const n of ast.nodes) {
@@ -222,7 +221,9 @@ export class StructureBuilder {
 
   private relativizeSubstPaths(val: ResolverValue, prefixSegments: string[]): void {
     if (isSubst(val)) {
-      val.segments = [...prefixSegments, ...val.segments]
+      // Convert string prefix segments to Segment objects (position 0,0 since these are synthetic)
+      const prefixAsSegments = prefixSegments.map(text => ({ text, line: 0, col: 0 }))
+      val.segments = [...prefixAsSegments, ...val.segments]
       val.prefixLen += prefixSegments.length
       return
     }

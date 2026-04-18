@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { tokenize } from '../src/internal/lexer/lexer.js'
 import { ParseError } from '../src/errors.js'
+import { tokenize } from '../src/internal/lexer/lexer.js'
+import { parse } from '../src/parse.js'
 
 describe('tokenize', () => {
   it('tokenizes empty string', () => {
@@ -107,13 +108,14 @@ describe('tokenize', () => {
   it('tokenizes substitutions', () => {
     const [t] = tokenize('${server.host}')
     expect(t.kind).toBe('subst')
-    expect(t.value).toBe('server.host')
+    expect(t.subst?.segments.map(s => s.text)).toEqual(['server', 'host'])
   })
 
   it('tokenizes optional substitutions', () => {
     const [t] = tokenize('${?foo}')
-    expect(t.kind).toBe('opt_subst')
-    expect(t.value).toBe('foo')
+    expect(t.kind).toBe('subst')
+    expect(t.subst?.optional).toBe(true)
+    expect(t.subst?.segments[0]?.text).toBe('foo')
   })
 
   it('tokenizes newlines', () => {
@@ -151,7 +153,7 @@ describe('tokenize', () => {
     expect(tokens[0].kind).toBe('unquoted')
     expect(tokens[0].value).toBe('foo')
     expect(tokens[1].kind).toBe('subst')
-    expect(tokens[1].value).toBe('bar')
+    expect(tokens[1].subst?.segments[0]?.text).toBe('bar')
     expect(tokens[1].precedingSpace).toBe(false)
   })
 
@@ -178,5 +180,64 @@ describe('tokenize', () => {
         `char '${ch}' should not be allowed in unquoted string`,
       ).toThrow(ParseError)
     }
+  })
+})
+
+function substSegments(input: string) {
+  const tokens = tokenize(input)
+  const t = tokens.find(x => x.kind === 'subst')
+  if (!t?.subst) throw new Error('no subst token found')
+  return t.subst.segments
+}
+
+describe('Segment positions', () => {
+  it('unquoted path records position at first ident char', () => {
+    // dollar-brace foo.bar: '$' at col 1, '{' at col 2, 'f' at col 3
+    const segs = substSegments('${foo.bar}')
+    expect(segs[0]).toMatchObject({ text: 'foo', line: 1, col: 3 })
+    expect(segs[1]).toMatchObject({ text: 'bar', line: 1, col: 7 })
+  })
+
+  it('quoted segments record position at opening quote', () => {
+    // dollar-brace "a"."b": first quote at col 3, second at col 7
+    const segs = substSegments('${"a"."b"}')
+    expect(segs[0]).toMatchObject({ text: 'a', col: 3 })
+    expect(segs[1]).toMatchObject({ text: 'b', col: 7 })
+  })
+
+  it('substitution on second line records correct line number', () => {
+    // x=1 newline y=dollar-brace foo: subst at line 2 col 3, 'f' at col 5
+    const segs = substSegments('x=1\ny=${foo}')
+    expect(segs[0]).toMatchObject({ text: 'foo', line: 2, col: 5 })
+  })
+
+  it('whitespace-concat segments are merged into one segment', () => {
+    // dollar-brace "a" "b": WS between quoted strings merges into single segment
+    const segs = substSegments('${"a" "b"}')
+    expect(segs).toHaveLength(1)
+    expect(segs[0]).toMatchObject({ text: 'a b', col: 3 })
+  })
+
+  it('empty quoted key has valid position', () => {
+    // dollar-brace "": opening quote at col 3
+    const segs = substSegments('${""}')
+    expect(segs).toHaveLength(1)
+    expect(segs[0]).toMatchObject({ text: '', col: 3 })
+  })
+
+  it('invalid escape error points inside subst body (Goal 2)', () => {
+    // bad escape inside subst body — ParseError.line should be 1 (same line as the substitution)
+    let caught: unknown
+    try { parse('x=\x24{"a\\xb"}') } catch (e) { caught = e }
+    expect(caught).toBeInstanceOf(ParseError)
+    expect((caught as ParseError).line).toBe(1)
+  })
+
+  it('empty path error points at subst open', () => {
+    // empty substitution path — ParseError.line should be 1
+    let caught: unknown
+    try { parse('x=\x24{}') } catch (e) { caught = e }
+    expect(caught).toBeInstanceOf(ParseError)
+    expect((caught as ParseError).line).toBe(1)
   })
 })

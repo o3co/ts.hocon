@@ -1,5 +1,5 @@
 import { ParseError } from '../../errors.js'
-import type { Token, TokenKind } from './token.js'
+import type { Segment, SubstPayload, Token, TokenKind } from './token.js'
 
 const SINGLE_CHAR_TOKENS: Record<string, TokenKind> = {
   '{': 'lbrace',
@@ -51,7 +51,7 @@ class Lexer {
       }
 
       // Single-char punctuation
-      if (ch in SINGLE_CHAR_TOKENS) { this.advance(); this.push(SINGLE_CHAR_TOKENS[ch], ch, sl, sc); continue }
+      if (ch in SINGLE_CHAR_TOKENS) { this.advance(); this.push(SINGLE_CHAR_TOKENS[ch] as TokenKind, ch, sl, sc); continue }
 
       // = and +=
       if (ch === '=') { this.advance(); this.push('equals', '=', sl, sc); continue }
@@ -59,17 +59,28 @@ class Lexer {
 
       // Substitution ${...} or ${?...}
       if (ch === '$' && this.peek(1) === '{') {
-        this.advance(); this.advance()
-        const optional = this.peek() === '?'
-        if (optional) this.advance()
-        let path = ''
-        while (this.pos < this.input.length && this.peek() !== '}') {
-          if (this.peek() === '\n') throw new ParseError('unterminated substitution', sl, sc)
-          path += this.advance()
-        }
-        if (this.peek() !== '}') throw new ParseError('unterminated substitution', sl, sc)
-        this.advance()
-        this.push(optional ? 'opt_subst' : 'subst', path.trim(), sl, sc)
+        this.advance(); this.advance() // consume '$' and '{'
+        const payload = this.parseSubstBody(sl, sc)
+        // Reconstruct canonical value string from segments (mirrors rs.hocon logic)
+        const value = payload.segments
+          .map(s => {
+            const t = s.text
+            if (
+              t === '' ||
+              t.includes('.') ||
+              t.includes(' ') ||
+              t.includes('\t') ||
+              t.includes('"') ||
+              t.includes('\\') ||
+              t !== t.trim()
+            ) {
+              const escaped = t.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+              return `"${escaped}"`
+            }
+            return t
+          })
+          .join('.')
+        this.pushSubst(payload, value, sl, sc)
         continue
       }
 
@@ -108,43 +119,8 @@ class Lexer {
 
       // Quoted string
       if (ch === '"') {
-        this.advance()
-        let value = ''
-        while (this.pos < this.input.length && this.peek() !== '"') {
-          if (this.peek() === '\n') throw new ParseError('unterminated string', sl, sc)
-          if (this.peek() === '\\') {
-            this.advance()
-            const esc = this.advance()
-            switch (esc) {
-              case 'n': value += '\n'; break
-              case 't': value += '\t'; break
-              case 'r': value += '\r'; break
-              case '"': value += '"'; break
-              case '\\': value += '\\'; break
-              case '/': value += '/'; break
-              case 'b': value += '\b'; break
-              case 'f': value += '\f'; break
-              case 'u': {
-                if (this.pos + 4 > this.input.length) {
-                  throw new ParseError('Invalid unicode escape: not enough characters', this.line, this.col)
-                }
-                const hex = this.input.slice(this.pos, this.pos + 4)
-                if (!/^[0-9a-fA-F]{4}$/.test(hex)) {
-                  throw new ParseError(`Invalid unicode escape: \\u${hex}`, this.line, this.col)
-                }
-                value += String.fromCharCode(parseInt(hex, 16))
-                for (let i = 0; i < 4; i++) this.advance()
-                break
-              }
-              default:
-                throw new ParseError(`Unknown escape sequence: \\${esc}`, this.line, this.col)
-            }
-          } else {
-            value += this.advance()
-          }
-        }
-        if (this.peek() !== '"') throw new ParseError('unterminated string', sl, sc)
-        this.advance()
+        this.advance() // consume opening '"'
+        const value = this.readQuotedStringBody(sl, sc)
         this.push('string', value, sl, sc, true)
         continue
       }
@@ -178,10 +154,186 @@ class Lexer {
     this.tokens.push({ kind, value, line: l, col: c, isQuoted, precedingSpace: this.hadSpace })
     this.hadSpace = false
   }
+
+  private pushSubst(payload: SubstPayload, value: string, l: number, c: number): void {
+    this.tokens.push({ kind: 'subst', value, line: l, col: c, isQuoted: false, precedingSpace: this.hadSpace, subst: payload })
+    this.hadSpace = false
+  }
+
+  /**
+   * Read body of a quoted string. Opening `"` must already be consumed.
+   * Returns decoded string. Throws ParseError on unterminated/invalid-escape.
+   * openLine/openCol are the position of the opening `"` for error reporting.
+   */
+  private readQuotedStringBody(openLine: number, openCol: number): string {
+    let value = ''
+    while (this.pos < this.input.length && this.peek() !== '"') {
+      if (this.peek() === '\n') throw new ParseError('unterminated string', openLine, openCol)
+      if (this.peek() === '\\') {
+        const escCol = this.col
+        this.advance() // consume '\'
+        if (this.pos >= this.input.length) {
+          throw new ParseError('unterminated string', openLine, openCol)
+        }
+        const esc = this.advance()
+        switch (esc) {
+          case 'n': value += '\n'; break
+          case 't': value += '\t'; break
+          case 'r': value += '\r'; break
+          case '"': value += '"'; break
+          case '\\': value += '\\'; break
+          case '/': value += '/'; break
+          case 'b': value += '\b'; break
+          case 'f': value += '\f'; break
+          case 'u': {
+            if (this.pos + 4 > this.input.length) {
+              throw new ParseError('invalid unicode escape', openLine, escCol)
+            }
+            const hex = this.input.slice(this.pos, this.pos + 4)
+            if (!/^[0-9a-fA-F]{4}$/.test(hex)) {
+              throw new ParseError('invalid unicode escape', openLine, escCol)
+            }
+            const code = parseInt(hex, 16)
+            // Reject surrogate codepoints (0xD800–0xDFFF) for cross-language consistency with rs.hocon.
+            // Note: Rust char::from_u32 rejects surrogates; TypeScript String.fromCharCode would accept them.
+            // We follow rs.hocon behavior: surrogates are invalid.
+            if (code >= 0xD800 && code <= 0xDFFF) {
+              throw new ParseError('invalid unicode escape', openLine, escCol)
+            }
+            value += String.fromCharCode(code)
+            for (let i = 0; i < 4; i++) this.advance()
+            break
+          }
+          default:
+            throw new ParseError(`unknown escape sequence: \\${esc}`, openLine, escCol)
+        }
+      } else {
+        value += this.advance()
+      }
+    }
+    if (this.pos >= this.input.length || this.peek() !== '"') {
+      throw new ParseError('unterminated string', openLine, openCol)
+    }
+    this.advance() // consume closing '"'
+    return value
+  }
+
+  /**
+   * Parse the body of a `${...}` substitution (called after `${` has been consumed).
+   * Implements Appendix A state machine from the cross-language spec.
+   */
+  private parseSubstBody(startLine: number, startCol: number): SubstPayload {
+    // Check for optional sigil
+    let optional = false
+    if (this.peek() === '?') {
+      this.advance()
+      optional = true
+    }
+
+    // Current segment accumulation state
+    let curText = ''
+    let curStarted = false
+    let curLine = 0
+    let curCol = 0
+
+    let pendingWs = ''
+    const segments: Segment[] = []
+    // Track last-seen dot position for trailing-dot error reporting
+    let lastDot: [number, number] | null = null
+
+    while (true) {
+      if (this.pos >= this.input.length) {
+        throw new ParseError('unterminated substitution', startLine, startCol)
+      }
+      const ch = this.peek()
+
+      if (ch === '}') {
+        this.advance()
+        pendingWs = '' // trailing WS discarded
+        break // goto END
+      } else if (ch === '"') {
+        // QUOTED token
+        const qLine = startLine // substitutions cannot span newlines, so same line
+        const qCol = this.col
+        if (curStarted) {
+          curText += pendingWs
+        }
+        pendingWs = ''
+        this.advance() // consume opening '"'
+        const decoded = this.readQuotedStringBody(qLine, qCol)
+        curText += decoded
+        if (!curStarted) {
+          curLine = qLine
+          curCol = qCol
+          curStarted = true
+        }
+      } else if (isUnquotedSubstChar(ch)) {
+        // UNQUOTED token: read a run of unquoted chars
+        const uCol = this.col
+        if (curStarted) {
+          curText += pendingWs
+        }
+        pendingWs = ''
+        if (!curStarted) {
+          curLine = startLine // always same line as ${; no newlines allowed
+          curCol = uCol
+          curStarted = true
+        }
+        while (this.pos < this.input.length && isUnquotedSubstChar(this.peek())) {
+          curText += this.advance()
+        }
+      } else if (ch === '.') {
+        // DOT: flush current segment (or error if not started)
+        const dotCol = this.col
+        pendingWs = ''
+        if (!curStarted) {
+          throw new ParseError('empty segment in path', startLine, dotCol)
+        }
+        segments.push({ text: curText, line: curLine, col: curCol })
+        curText = ''
+        curStarted = false
+        curLine = 0
+        curCol = 0
+        lastDot = [startLine, dotCol]
+        this.advance()
+      } else if (ch === ' ' || ch === '\t') {
+        // WS: buffer into pendingWs
+        pendingWs += ch
+        this.advance()
+      } else if (ch === '\n' || ch === '\r') {
+        throw new ParseError('unterminated substitution', startLine, startCol)
+      } else {
+        throw new ParseError(`unexpected character in substitution path: ${JSON.stringify(ch)}`, startLine, this.col)
+      }
+    }
+
+    // END validation
+    if (curStarted) {
+      segments.push({ text: curText, line: curLine, col: curCol })
+    } else if (segments.length === 0) {
+      // ${}
+      throw new ParseError('empty substitution path', startLine, startCol)
+    } else {
+      // trailing dot: ${foo.} — report at the offending dot position
+      const [errLine, errCol] = lastDot ?? [startLine, startCol]
+      throw new ParseError('empty segment in path', errLine, errCol)
+    }
+
+    return { segments, optional }
+  }
 }
 
 export function tokenize(input: string): Token[] {
   return new Lexer(input).tokenize()
+}
+
+/**
+ * Returns true if `ch` is a valid unquoted character inside a `${...}` body.
+ * Forbidden: whitespace, `"`, `\`, structural chars, operators, sigils.
+ */
+function isUnquotedSubstChar(ch: string): boolean {
+  return ch !== '' && !' \t\n\r"\\'
+    .includes(ch) && !'{}[]'.includes(ch) && !':=,+#`^?!@*&$.'.includes(ch)
 }
 
 function isUnquotedStart(ch: string): boolean {

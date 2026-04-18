@@ -1,9 +1,10 @@
 import type { HoconValue } from '../../value.js'
+import type { Segment } from '../lexer/token.js'
 
 // ---- Internal placeholder types ----
 export type SubstPlaceholder = {
   _kind: 'subst-placeholder'
-  segments: string[]
+  segments: Segment[]
   optional: boolean
   line: number
   col: number

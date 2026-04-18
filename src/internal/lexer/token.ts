@@ -1,3 +1,14 @@
+export interface Segment {
+  readonly text: string
+  readonly line: number
+  readonly col: number
+}
+
+export interface SubstPayload {
+  readonly segments: Segment[]
+  readonly optional: boolean
+}
+
 export type TokenKind =
   | 'lbrace' | 'rbrace'
   | 'lbracket' | 'rbracket'
@@ -6,8 +17,7 @@ export type TokenKind =
   | 'string'         // "..." quoted string
   | 'triple_string'  // """..."""
   | 'unquoted'       // bare word, number, true/false/null
-  | 'subst'          // ${path}
-  | 'opt_subst'      // ${?path}
+  | 'subst'          // ${path} and ${?path} — check subst.optional for optional
   | 'eof'
 
 export type Token = {
@@ -17,4 +27,5 @@ export type Token = {
   col: number
   isQuoted: boolean       // true for "..." and """..."""
   precedingSpace: boolean // true if preceded by whitespace (concat detection)
+  subst?: SubstPayload    // populated only when kind === 'subst'
 }

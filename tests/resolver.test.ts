@@ -5,7 +5,7 @@ import { ResolveError } from '../src/errors.js'
 import { tokenize } from '../src/internal/lexer/lexer.js'
 import { parseTokens } from '../src/internal/parser/parser.js'
 import { resolve } from '../src/internal/resolver/resolver.js'
-import { parseSubstPath, segmentsToKey } from '../src/internal/resolver/utils.js'
+import { segmentsToKey } from '../src/internal/resolver/utils.js'
 import type { HoconValue } from '../src/value.js'
 
 function resolveStr(input: string, env: Record<string, string> = {}, files: Record<string, string> = {}): HoconValue {
@@ -297,18 +297,16 @@ describe('Resolver - circular substitution without prior value', () => {
   })
 })
 
-describe('Resolver - parseSubstPath quoted segments', () => {
+describe('Resolver - quoted-segment substitution paths', () => {
   it('resolves substitution with quoted path containing dots', () => {
     // ${"a.b"} should treat "a.b" as a single key, not split at dot
     const v = resolveStr('"a.b" = 42\nx = ${"a.b"}')
     expect(obj(v).get('x')).toEqual({ kind: 'scalar', raw: '42', valueType: 'number' })
   })
 
-  it('resolves substitution with dot-starting path (empty segment)', () => {
-    // Paths starting with a dot produce an empty leading segment in parseSubstPath.
-    // If the key isn't found, optional sub returns undefined (field dropped).
-    const v = resolveStr('x = ${?.missing}')
-    expect(obj(v).get('x')).toBeUndefined()
+  it('rejects substitution with dot-starting path (leading dot is now a lex error)', () => {
+    // parseSubstBody now correctly rejects substitutions with a leading dot (empty segment in path)
+    expect(() => resolveStr('x = ${?.missing}')).toThrow()
   })
 })
 
@@ -498,40 +496,32 @@ describe('include merge-all probing', () => {
   })
 })
 
+// Helper: build a minimal Segment array from text strings (position unused in these tests)
+function segs(...texts: string[]) {
+  return texts.map(text => ({ text, line: 1, col: 1 }))
+}
+
 describe('segmentsToKey', () => {
   it('joins simple segments with dots', () => {
-    expect(segmentsToKey(['a', 'b', 'c'])).toBe('a.b.c')
+    expect(segmentsToKey(segs('a', 'b', 'c'))).toBe('a.b.c')
   })
   it('quotes segments containing dots', () => {
-    expect(segmentsToKey(['a.b', 'c'])).toBe('"a.b".c')
+    expect(segmentsToKey(segs('a.b', 'c'))).toBe('"a.b".c')
   })
   it('quotes empty-string segments', () => {
-    expect(segmentsToKey(['', 'foo'])).toBe('"".foo')
+    expect(segmentsToKey(segs('', 'foo'))).toBe('"".foo')
   })
   it('handles single segment', () => {
-    expect(segmentsToKey(['x'])).toBe('x')
-  })
-  it('roundtrips with parseSubstPath', () => {
-    const cases = [['a', 'b'], ['a.b', 'c'], ['', 'x', ''], ['a.b.c', 'd.e']]
-    for (const segs of cases) {
-      expect(parseSubstPath(segmentsToKey(segs))).toEqual(segs)
-    }
+    expect(segmentsToKey(segs('x'))).toBe('x')
   })
   it('escapes segments containing double quotes', () => {
-    expect(segmentsToKey(['a"b', 'c'])).toBe('"a\\"b".c')
-    expect(parseSubstPath(segmentsToKey(['a"b', 'c']))).toEqual(['a"b', 'c'])
+    expect(segmentsToKey(segs('a"b', 'c'))).toBe('"a\\"b".c')
   })
   it('escapes segments containing backslashes', () => {
-    expect(segmentsToKey(['a\\b', 'c'])).toBe('"a\\\\b".c')
-    expect(parseSubstPath(segmentsToKey(['a\\b', 'c']))).toEqual(['a\\b', 'c'])
+    expect(segmentsToKey(segs('a\\b', 'c'))).toBe('"a\\\\b".c')
   })
   it('quotes segments with whitespace', () => {
-    expect(segmentsToKey([' a ', 'b'])).toBe('" a ".b')
-    expect(parseSubstPath(segmentsToKey([' a ', 'b']))).toEqual([' a ', 'b'])
-  })
-  it('preserves unknown escape sequences in parseSubstPath', () => {
-    // \n inside quotes should be preserved as literal \n, not treated as escape
-    expect(parseSubstPath('"a\\nb"')).toEqual(['a\\nb'])
+    expect(segmentsToKey(segs(' a ', 'b'))).toBe('" a ".b')
   })
 })
 

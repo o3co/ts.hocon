@@ -100,7 +100,7 @@ describe('parseTokens', () => {
       const val = node.fields[0]!.value
       expect(val.kind).toBe('subst')
       if (val.kind === 'subst') {
-        expect(val.path).toBe('server.host')
+        expect(val.segments.map(s => s.text)).toEqual(['server', 'host'])
         expect(val.optional).toBe(false)
       }
     }

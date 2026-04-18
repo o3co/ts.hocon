@@ -1,4 +1,5 @@
 import type { HoconValue } from '../../value.js'
+import type { Segment } from '../lexer/token.js'
 import {
   type ResObj,
   type ResolverValue,
@@ -6,80 +7,23 @@ import {
   makeResObj,
 } from './types.js'
 
-/**
- * Parse a substitution path that may contain quoted segments.
- * E.g. `"a.b.c"` → ["a.b.c"], `a.b.c` → ["a","b","c"],
- * `"".""."""` → ["","",""]
- */
-export function parseSubstPath(raw: string): string[] {
-  const segments: string[] = []
-  let i = 0
-  while (i < raw.length) {
-    // Skip whitespace
-    while (i < raw.length && (raw[i] === ' ' || raw[i] === '\t')) i++
-    if (i >= raw.length) break
-
-    if (raw[i] === '"') {
-      // Quoted segment
-      i++ // skip opening quote
-      let seg = ''
-      while (i < raw.length && raw[i] !== '"') {
-        if (raw[i] === '\\' && i + 1 < raw.length && (raw[i + 1] === '"' || raw[i + 1] === '\\')) {
-          seg += raw[i + 1]
-          i += 2
-        } else {
-          seg += raw[i]
-          i++
-        }
-      }
-      if (i < raw.length) i++ // skip closing quote
-      segments.push(seg)
-      // Skip whitespace and dot separator
-      while (i < raw.length && (raw[i] === ' ' || raw[i] === '\t')) i++
-      if (i < raw.length && raw[i] === '.') i++
-    } else if (raw[i] === '.') {
-      // Dot at start or after dot means empty-string segment
-      segments.push('')
-      i++
-    } else {
-      // Unquoted segment - read until dot or end
-      let seg = ''
-      while (i < raw.length && raw[i] !== '.') {
-        seg += raw[i]
-        i++
-      }
-      segments.push(seg.trim())
-      if (i < raw.length && raw[i] === '.') i++
-    }
-  }
-  return segments
-}
-
-export function segmentsToKey(segments: string[]): string {
+export function segmentsToKey(segments: Segment[]): string {
   return segments
     .map(s => {
-      if (s === '' || /[^a-zA-Z0-9\-_]/.test(s)) {
-        return `"${s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
+      const t = s.text
+      if (t === '' || /[^a-zA-Z0-9\-_]/.test(t)) {
+        return `"${t.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
       }
-      return s
+      return t
     })
     .join('.')
 }
 
-export function lookupPath(root: ResObj, segments: string[]): ResolverValue | undefined {
+export function lookupPath(root: ResObj, segments: Segment[]): ResolverValue | undefined {
   const [head, ...tail] = segments
-  if (head === undefined || head === '') {
-    // For empty-string keys like "", try direct lookup
-    if (segments.length > 0) {
-      const val = root.fields.get('')
-      if (val === undefined) return undefined
-      if (tail.length === 0) return val
-      if (isResObj(val)) return lookupPath(val, tail)
-      return undefined
-    }
-    return undefined
-  }
-  const val = root.fields.get(head)
+  if (head === undefined) return undefined
+  const key = head.text
+  const val = root.fields.get(key)
   if (val === undefined) return undefined
   if (tail.length === 0) return val
   if (isResObj(val)) return lookupPath(val, tail)
@@ -87,10 +31,10 @@ export function lookupPath(root: ResObj, segments: string[]): ResolverValue | un
 }
 
 /** Walk from root to find a ResObj at the given path (not the value, but the container). */
-export function lookupResObj(root: ResObj, segments: string[]): ResObj | undefined {
+export function lookupResObj(root: ResObj, segments: Segment[]): ResObj | undefined {
   let cur: ResObj = root
   for (const seg of segments) {
-    const val = cur.fields.get(seg)
+    const val = cur.fields.get(seg.text)
     if (val === undefined || !isResObj(val)) return undefined
     cur = val
   }
