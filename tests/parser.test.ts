@@ -343,3 +343,84 @@ describe('spec compliance Phase 1 — comma rules', () => {
     expect(() => parse('{ a = 1,, b = 2 }')).toThrow()
   })
 })
+
+// -----------------------------------------------------------------------------
+// Spec compliance Phase 2 (issue #TBD): concatenation, paths, and +=
+// See tests/resolver.test.ts for items that require resolution-time checks.
+// Convention: it.fails(...) pins known violations; plain it(...) for ✅ items.
+// -----------------------------------------------------------------------------
+
+describe('spec compliance Phase 2 — concatenation, paths, and +=', () => {
+  // --- S3.2: root non-object/non-array is invalid --------------------------
+  it('S3.2: root bare string is rejected', () => {
+    expect(() => parse('"hello"')).toThrow()
+  })
+
+  it('S3.2: root bare number is rejected', () => {
+    expect(() => parse('42')).toThrow()
+  })
+
+  // --- S10.7: concatenation does not span a newline ------------------------
+  it('S10.7: same-line concat produces a single concat node (spec L335)', () => {
+    const node = parse('x = foo bar')
+    if (node.kind !== 'object') throw new Error('expected object')
+    expect(node.fields).toHaveLength(1)
+    expect(node.fields[0]!.value.kind).toBe('concat')
+  })
+
+  it('S10.7: tokens on next line are parsed as a new field, not concat (spec L335)', () => {
+    const node = parse('x = foo\nbar = 1')
+    if (node.kind !== 'object') throw new Error('expected object')
+    expect(node.fields).toHaveLength(2)
+    expect(node.fields[0]!.key).toEqual(['x'])
+    expect(node.fields[1]!.key).toEqual(['bar'])
+  })
+
+  // --- S10.8: string concat allowed in field keys --------------------------
+  // VIOLATION: parser rejects unquoted-space-unquoted as a key.
+  it.fails('S10.8: unquoted string concat is allowed in field keys (spec L317)', () => {
+    const node = parse('foo bar = 1')
+    if (node.kind !== 'object') throw new Error('expected object')
+    expect(node.fields[0]!.key).toEqual(['foo bar'])
+  })
+
+  // --- S11.4: 10.0foo → path [10, 0foo] ------------------------------------
+  it('S11.4: 10.0foo is parsed as two-element path [10, 0foo] (spec L496)', () => {
+    const node = parse('10.0foo = 2')
+    if (node.kind !== 'object') throw new Error('expected object')
+    expect(node.fields[0]!.key).toEqual(['10', '0foo'])
+  })
+
+  // --- S11.5: foo10.0 → path [foo10, 0] ------------------------------------
+  it('S11.5: foo10.0 is parsed as two-element path [foo10, 0] (spec L498)', () => {
+    const node = parse('foo10.0 = 1')
+    if (node.kind !== 'object') throw new Error('expected object')
+    expect(node.fields[0]!.key).toEqual(['foo10', '0'])
+  })
+
+  // --- S11.8: path expression always stringifies ---------------------------
+  it('S11.8: unquoted true as a key stringifies to the string "true" (spec L504)', () => {
+    const node = parse('true = 1')
+    if (node.kind !== 'object') throw new Error('expected object')
+    expect(node.fields[0]!.key).toEqual(['true'])
+  })
+
+  // --- S11.9: substitutions not allowed inside path expressions ------------
+  it('S11.9: subst-only key is rejected (substitution cannot begin a key) (spec L479)', () => {
+    expect(() => parse('${x} = 1')).toThrow()
+  })
+
+  it('S11.9: subst embedded in path key is rejected (spec L479)', () => {
+    expect(() => parse('a.${x}.b = 1')).toThrow()
+  })
+
+  // --- S12.5: include may NOT begin a key path ----------------------------
+  // VIOLATION: parser accepts include.foo as a regular two-element path key.
+  it.fails('S12.5: include.foo = 1 is rejected because include may not begin a key path (spec L570)', () => {
+    expect(() => parse('include.foo = 1')).toThrow()
+  })
+
+  it.fails('S12.5: include.foo.bar = 1 is rejected (spec L570)', () => {
+    expect(() => parse('include.foo.bar = 1')).toThrow()
+  })
+})
