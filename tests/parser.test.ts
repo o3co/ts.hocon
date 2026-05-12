@@ -425,7 +425,7 @@ describe('spec compliance Phase 2 — concatenation, paths, and +=', () => {
   })
 })
 
-// Spec compliance Phase 3 (issue #85): substitution & include (parser-level)
+// Spec compliance Phase 3 (tracking issue #70): substitution & include (parser-level)
 // Convention: it.fails(...) pins known violations; plain it(...) for ✅ items.
 // -----------------------------------------------------------------------------
 
