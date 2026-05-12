@@ -791,3 +791,145 @@ describe('spec compliance Phase 3 — substitution & include (resolver-level)', 
     ).toThrow()
   })
 })
+
+// ---------------------------------------------------------------------------
+// Phase 5 spec debt tests
+// ---------------------------------------------------------------------------
+
+// S6.5 — "newline" means specifically 0x000A (LF) (HOCON spec L183)
+// Probe (2026-05-13): 'x = 1\ry = 2' → x = "1\ry = 2" (CR absorbed into unquoted value).
+// CR (0x0D) is not treated as the field separator; only LF (0x0A) is.
+describe('S6.5 - "newline" means 0x000A (LF) only (HOCON spec L183)', () => {
+  it('S6.5: CR alone (0x0D) does not act as a field separator', () => {
+    // If CR were treated as newline, "x = 1\ry = 2" would produce two fields.
+    // Spec: newline = LF only, so CR is whitespace absorbed into the value.
+    const v = resolveStr('x = 1\ry = 2')
+    const fields = obj(v)
+    // Only one field 'x'; 'y' is not a separate top-level key.
+    expect(fields.has('y')).toBe(false)
+  })
+
+  it('S6.5: LF (0x0A) acts as the field separator', () => {
+    const v = resolveStr('x = 1\ny = 2')
+    expect(obj(v).get('x')).toEqual({ kind: 'scalar', raw: '1', valueType: 'number' })
+    expect(obj(v).get('y')).toEqual({ kind: 'scalar', raw: '2', valueType: 'number' })
+  })
+})
+
+// S7.6 — intermediate non-object value breaks merge with later object (HOCON spec L207)
+// Probe (2026-05-13): foo={a:42}, foo=null, foo={b:43} → result has only b=43 ✅
+describe('S7.6 - intermediate non-object breaks object merge (HOCON spec L207)', () => {
+  it('S7.6: intermediate null prevents merge; final object stands alone', () => {
+    // Spec L207-238 example:
+    //   foo : { "a" : 42 }
+    //   foo : null          ← non-object interrupts chain
+    //   foo : { "b" : 43 }
+    // Result: { foo: { b: 43 } } — the two objects never merge.
+    const v = resolveStr('foo = { a: 42 }\nfoo = null\nfoo = { b: 43 }')
+    const foo = obj(v).get('foo')
+    if (foo?.kind !== 'object') throw new Error('expected object')
+    expect(foo.fields.has('a')).toBe(false)
+    expect(foo.fields.get('b')).toEqual({ kind: 'scalar', raw: '43', valueType: 'number' })
+  })
+
+  it('S7.6: intermediate non-null scalar also prevents merge', () => {
+    const v = resolveStr('foo = { a: 42 }\nfoo = 99\nfoo = { b: 43 }')
+    const foo = obj(v).get('foo')
+    if (foo?.kind !== 'object') throw new Error('expected object')
+    expect(foo.fields.has('a')).toBe(false)
+    expect(foo.fields.get('b')).toEqual({ kind: 'scalar', raw: '43', valueType: 'number' })
+  })
+})
+
+// S10.9 — true/false stringify to "true"/"false" in concat (HOCON spec L363)
+// Probe (2026-05-13): 'x = true foo' → "true foo" ✅
+describe('S10.9 - true/false stringify in value concat (HOCON spec L363)', () => {
+  it('S10.9: "true" keyword stringifies to "true" in concatenation', () => {
+    const v = resolveStr('x = true foo')
+    expect(obj(v).get('x')).toEqual({ kind: 'scalar', raw: 'true foo', valueType: 'string' })
+  })
+
+  it('S10.9: "false" keyword stringifies to "false" in concatenation', () => {
+    const v = resolveStr('x = false bar')
+    expect(obj(v).get('x')).toEqual({ kind: 'scalar', raw: 'false bar', valueType: 'string' })
+  })
+})
+
+// S10.10 — null stringifies to "null" in concat (HOCON spec L364)
+// Probe (2026-05-13): 'x = null foo' → "null foo" ✅
+describe('S10.10 - null stringifies to "null" in value concat (HOCON spec L364)', () => {
+  it('S10.10: "null" keyword stringifies to "null" in concatenation', () => {
+    const v = resolveStr('x = null foo')
+    expect(obj(v).get('x')).toEqual({ kind: 'scalar', raw: 'null foo', valueType: 'string' })
+  })
+
+  it('S10.10: "null" alone is not stringified (type preserved as null)', () => {
+    // Single non-string value is NOT converted (spec L376)
+    const v = resolveStr('x = null')
+    expect(obj(v).get('x')).toEqual({ kind: 'scalar', raw: 'null', valueType: 'null' })
+  })
+})
+
+// S10.16 — non-newline whitespace in arrays produces concat, not separate elements (HOCON spec L447)
+// Probe (2026-05-13): '[ 1 2 3 4 ]' → ["1 2 3 4"] (one string element) ✅
+describe('S10.16 - non-newline whitespace in arrays makes concat, not elements (HOCON spec L447)', () => {
+  it('S10.16: [1 2 3 4] is one concatenated string element, not four integers', () => {
+    const v = resolveStr('a = [ 1 2 3 4 ]')
+    const a = obj(v).get('a')
+    if (a?.kind !== 'array') throw new Error('expected array')
+    // spec: "this is an array with one element, the string '1 2 3 4'"
+    expect(a.items).toHaveLength(1)
+    expect(a.items[0]).toEqual({ kind: 'scalar', raw: '1 2 3 4', valueType: 'string' })
+  })
+
+  it('S10.16: elements separated by newlines are distinct', () => {
+    const v = resolveStr('a = [\n1\n2\n3\n4\n]')
+    const a = obj(v).get('a')
+    if (a?.kind !== 'array') throw new Error('expected array')
+    expect(a.items).toHaveLength(4)
+  })
+})
+
+// S14a.7 — whitespace (including newlines) allowed between `include` and resource name
+// (HOCON spec L952)
+// Probe (2026-05-13): include\n"file.conf" parses and resolves correctly ✅
+describe('S14a.7 - whitespace/newlines allowed between include and resource name (HOCON spec L952)', () => {
+  it('S14a.7: newline between include keyword and quoted filename is accepted', () => {
+    const v = resolveStr('include\n"inc.conf"', {}, { '/inc.conf': 'x = 42' })
+    expect(obj(v).get('x')).toEqual({ kind: 'scalar', raw: '42', valueType: 'number' })
+  })
+
+  it('S14a.7: multiple spaces between include keyword and quoted filename is accepted', () => {
+    const v = resolveStr('include   "inc.conf"', {}, { '/inc.conf': 'y = 7' })
+    expect(obj(v).get('y')).toEqual({ kind: 'scalar', raw: '7', valueType: 'number' })
+  })
+})
+
+// S13a.10 — substitution memoized by instance, not by path (HOCON spec L885)
+// This is an internal resolver implementation detail. Two ${b} substitutions at
+// different positions in the file resolve using the same lookup document (the final
+// merged config), so both naturally see the same result. No externally observable
+// difference exists between "memoized by instance" and "resolved independently" when
+// the config is non-self-referential. Status: ➖ (not externally observable via the
+// black-box public API; structural reason: the spec rule constrains resolver internals,
+// not the observable output for any valid input program).
+
+// S13a.3 — self-ref before any prior value → error (HOCON spec L767)
+// Probe (2026-05-13): resolveStr('a = ${a}') throws ResolveError "circular substitution: a".
+// Spec L767-773: error should be treated as "undefined" (missing subst) rather than
+// "intractable cycle". Both lead to an error, but the error message differs.
+// Classification: ⚠️ — error is raised (correct), but as a cycle error rather than a
+// missing-substitution error; the spec wants "undefined" semantics for this case.
+describe('S13a.3 - self-ref with no prior value → error (HOCON spec L767)', () => {
+  it('S13a.3: a = ${a} with no prior value for a raises an error', () => {
+    // Spec: treated as "undefined" — same outcome as required substitution not found.
+    // Impl raises ResolveError("circular substitution: a") instead of a missing-path error,
+    // but an error IS raised either way. ⚠️ wrong error message, correct behavior.
+    expect(() => resolveStr('a = ${a}')).toThrow(ResolveError)
+  })
+
+  it('S13a.3: a = ${a} is distinct from a two-step cycle (both error, but different cause)', () => {
+    // Two-step cycle — also an error, per S13a.8
+    expect(() => resolveStr('a = ${b}\nb = ${a}')).toThrow(ResolveError)
+  })
+})
