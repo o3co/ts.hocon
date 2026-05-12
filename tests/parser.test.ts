@@ -345,7 +345,7 @@ describe('spec compliance Phase 1 — comma rules', () => {
 })
 
 // -----------------------------------------------------------------------------
-// Spec compliance Phase 2 (issue #TBD): concatenation, paths, and +=
+// Spec compliance Phase 2 (issue #82): concatenation, paths, and +=
 // See tests/resolver.test.ts for items that require resolution-time checks.
 // Convention: it.fails(...) pins known violations; plain it(...) for ✅ items.
 // -----------------------------------------------------------------------------
