@@ -61,8 +61,8 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
   tests: —
   status: 🤷
 - **S3.2** Root non-object/non-array is invalid (when explicitly enclosed) — §Omit root braces (L131)
-  tests: —
-  status: 🤷
+  tests: tests/parser.test.ts (spec compliance Phase 2)
+  status: ✅
 - **S3.3** Implicit `{}` when file does not start with `[` or `{` — §Omit root braces (L134)
   tests: tests/lightbend/testdata/equiv01/no-root-braces.conf (fixture)
   status: ✅
@@ -196,8 +196,8 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
   tests: tests/resolver.test.ts:159
   status: ✅
 - **S10.4** Mixing arrays + objects in concat is an error — §Array and object concatenation (L385)
-  tests: —
-  status: 🤷
+  tests: tests/resolver.test.ts (spec compliance Phase 2)
+  status: ❌ (see #75) — resolver silently treats object as extra array element instead of erroring
 - **S10.5** Inner whitespace between simple values preserved — §String value concatenation (L332)
   tests: tests/lightbend/testdata/equiv01/unquoted.conf (fixture)
   status: ✅
@@ -205,11 +205,11 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
   tests: tests/lightbend/testdata/equiv01/unquoted.conf (fixture)
   status: ✅
 - **S10.7** Concatenation does not span a newline — §String value concatenation (L335)
-  tests: —
-  status: 🤷
+  tests: tests/parser.test.ts (spec compliance Phase 2)
+  status: ✅
 - **S10.8** String concat allowed in field keys — §Value concatenation (L317)
-  tests: —
-  status: 🤷
+  tests: tests/parser.test.ts (spec compliance Phase 2)
+  status: ❌ (see #76) — parser rejects unquoted-space-unquoted as key with "unexpected token after key: unquoted"
 - **S10.9** `true`/`false` stringify to `"true"`/`"false"` in concat — §String value concatenation (L363)
   tests: —
   status: 🤷
@@ -223,11 +223,11 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
   tests: tests/config.test.ts:172
   status: ✅
 - **S10.13** Array/object appearing in string concat is an error — §String value concatenation (L373)
-  tests: —
-  status: 🤷
+  tests: tests/resolver.test.ts (spec compliance Phase 2)
+  status: ❌ (see #77) — resolver silently wraps scalar + array into flat array instead of erroring
 - **S10.14** Whitespace around obj/array substitutions is ignored — §Concatenation with whitespace (L440)
-  tests: —
-  status: 🤷
+  tests: tests/resolver.test.ts (spec compliance Phase 2)
+  status: ⚠️ (see #78) — works for object substs; whitespace not stripped for array substs (included as extra element)
 - **S10.15** Quoted whitespace between obj/array substitutions is an error — §Concatenation with whitespace (L442)
   tests: tests/resolver.test.ts:181
   status: ✅
@@ -241,8 +241,8 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
   tests: tests/resolver.test.ts:214
   status: ✅
 - **S10.19** Mixing a substitution-resolved object with a literal array (or vice versa) is an error — §Array and object concatenation (L385-389)
-  tests: —
-  status: 🤷
+  tests: tests/resolver.test.ts (spec compliance Phase 2)
+  status: ❌ (see #79) — resolver silently treats as array concat instead of erroring
 
 ## S11. Path expressions
 
@@ -256,11 +256,11 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
   tests: tests/lightbend/testdata/equiv01/path-keys.conf (fixture)
   status: ✅
 - **S11.4** `10.0foo` → path `[10, 0foo]` — §Path expressions (L496)
-  tests: —
-  status: 🤷
+  tests: tests/parser.test.ts (spec compliance Phase 2)
+  status: ✅
 - **S11.5** `foo10.0` → path `[foo10, 0]` — §Path expressions (L498)
-  tests: —
-  status: 🤷
+  tests: tests/parser.test.ts (spec compliance Phase 2)
+  status: ✅
 - **S11.6** Empty path element must be quoted (`a."".b` ok) — §Path expressions (L515)
   tests: tests/lightbend/testdata/subst-tokenize/st09-empty-quoted-key.conf (fixture)
   status: ✅
@@ -268,11 +268,11 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
   tests: tests/lightbend/testdata/subst-tokenize/st-err09-empty-segment-leading-dot.conf (fixture)
   status: ✅
 - **S11.8** Path expression always stringifies (single `true` → `"true"`) — §Path expressions (L504)
-  tests: —
-  status: 🤷
+  tests: tests/parser.test.ts (spec compliance Phase 2)
+  status: ✅
 - **S11.9** Substitutions not allowed inside path expressions — §Path expressions (L479)
-  tests: —
-  status: 🤷
+  tests: tests/parser.test.ts (spec compliance Phase 2)
+  status: ✅
 - **S11.10** Quoted path segments respected in getter API (e.g. `config.get("foo.\"bar.baz\"")`) — §Path expressions (L485)
   tests: tests/config.test.ts:202
   status: ✅
@@ -292,8 +292,8 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
   tests: tests/lightbend/testdata/equiv02/path-keys-weird-whitespace.conf (fixture)
   status: ✅
 - **S12.5** `include` may NOT begin a path expression in a key — §Paths as keys (L570)
-  tests: —
-  status: 🤷
+  tests: tests/parser.test.ts (spec compliance Phase 2)
+  status: ❌ (see #80) — parser accepts `include.foo = 1` as a two-element path key instead of rejecting it
 
 ## S13. Substitutions
 
@@ -406,8 +406,8 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
   tests: tests/resolver.test.ts:67; tests/parse.test.ts:186
   status: ✅
 - **S13b.2** `+=` on non-array prior value → error — §`+=` field separator (L732)
-  tests: —
-  status: 🤷
+  tests: tests/resolver.test.ts (spec compliance Phase 2)
+  status: ❌ (see #81) — resolver wraps the scalar as a single-element array instead of erroring
 - **S13b.3** `+=` works on first mention of key (no prior `=`) — §`+=` field separator (L734)
   tests: tests/resolver.test.ts:74
   status: ✅

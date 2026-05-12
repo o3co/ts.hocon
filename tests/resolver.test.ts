@@ -615,3 +615,93 @@ describe('include file() resolution', () => {
     expect(fields.get('bar')).toEqual({ kind: 'scalar', raw: '43', valueType: 'number' })
   })
 })
+
+// -----------------------------------------------------------------------------
+// Spec compliance Phase 2 (issue #TBD): concatenation and += (resolver-level)
+// Convention: it.fails(...) pins known violations; plain it(...) for ✅ items.
+// -----------------------------------------------------------------------------
+
+describe('spec compliance Phase 2 — concatenation and += (resolver-level)', () => {
+  // --- S10.4: mixing arrays + objects in concat is an error ----------------
+  // VIOLATION: resolver silently treats the object as an extra array element.
+  it.fails('S10.4: array then object literal in concat is an error (spec L385)', () => {
+    expect(() => resolveStr('x = [1,2] { a=1 }')).toThrow()
+  })
+
+  it.fails('S10.4: object literal then array in concat is an error (spec L385)', () => {
+    expect(() => resolveStr('x = { a=1 } [1,2]')).toThrow()
+  })
+
+  // --- S10.13: array/object appearing in string concat is an error ---------
+  // VIOLATION: resolver silently wraps scalars + array into a flat array.
+  it.fails('S10.13: quoted string followed by array literal is an error (spec L373)', () => {
+    expect(() => resolveStr('x = "hello" [1,2]')).toThrow()
+  })
+
+  it.fails('S10.13: array literal followed by quoted string is an error (spec L373)', () => {
+    expect(() => resolveStr('x = [1,2] "hello"')).toThrow()
+  })
+
+  it.fails('S10.13: quoted string followed by object literal is an error (spec L373)', () => {
+    expect(() => resolveStr('x = "hello" { a=1 }')).toThrow()
+  })
+
+  // --- S10.14: whitespace around obj/array substitutions is ignored --------
+  // Note: s() builds "${name}" without a literal ${ in source to avoid linter warnings.
+  // PARTIAL VIOLATION: whitespace stripping works for object substs but not array substs;
+  // the whitespace separator scalar is included as an extra array element.
+  it.fails('S10.14: unquoted whitespace between two array substitutions is ignored (spec L440)', () => {
+    // subst(a) subst(b) where both resolve to arrays → array concat, whitespace stripped
+    const s = (name: string) => '$' + '{' + name + '}'
+    const input = 'a=[1]\nb=[2]\nx = ' + s('a') + ' ' + s('b')
+    const v = resolveStr(input)
+    const fields = obj(v)
+    const xVal = fields.get('x')
+    expect(xVal?.kind).toBe('array')
+    if (xVal?.kind === 'array') {
+      expect(xVal.items).toHaveLength(2)
+    }
+  })
+
+  it('S10.14: unquoted whitespace between two object substitutions is ignored (spec L440)', () => {
+    // subst(a) subst(b) where both resolve to objects → object merge, whitespace stripped
+    const s = (name: string) => '$' + '{' + name + '}'
+    const input = 'a={p=1}\nb={q=2}\nx = ' + s('a') + ' ' + s('b')
+    const v = resolveStr(input)
+    const fields = obj(v)
+    const xVal = fields.get('x')
+    expect(xVal?.kind).toBe('object')
+    if (xVal?.kind === 'object') {
+      expect(xVal.fields.has('p')).toBe(true)
+      expect(xVal.fields.has('q')).toBe(true)
+    }
+  })
+
+  // --- S10.19: substitution-resolved object + literal array → error --------
+  // VIOLATION: resolver silently treats as array concat, no error thrown.
+  it.fails('S10.19: subst resolving to object concatenated with literal array is an error (spec L385-389)', () => {
+    const s = (name: string) => '$' + '{' + name + '}'
+    const input = 'y = { a = 1 }\nx = ' + s('y') + ' [1,2]'
+    expect(() => resolveStr(input)).toThrow()
+  })
+
+  it.fails('S10.19: subst resolving to array concatenated with object literal is an error (spec L385-389)', () => {
+    const s = (name: string) => '$' + '{' + name + '}'
+    const input = 'y = [1,2]\nx = ' + s('y') + ' { a=1 }'
+    expect(() => resolveStr(input)).toThrow()
+  })
+
+  // --- S13b.2: += on non-array prior value → error -------------------------
+  // VIOLATION: resolver wraps the scalar as a single-element array instead of erroring.
+  it.fails('S13b.2: += when prior value is a number scalar is an error (spec L732)', () => {
+    expect(() => resolveStr('x = 1\nx += [2]')).toThrow()
+  })
+
+  it.fails('S13b.2: += when prior value is a string scalar is an error (spec L732)', () => {
+    expect(() => resolveStr('x = "hello"\nx += [2]')).toThrow()
+  })
+
+  it.fails('S13b.2: += when prior value is an object is an error (spec L732)', () => {
+    expect(() => resolveStr('x = { a = 1 }\nx += [2]')).toThrow()
+  })
+})
