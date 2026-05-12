@@ -106,13 +106,13 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
   tests: tests/lexer.test.ts:286; tests/lexer.test.ts:293
   status: ❌ ([#72](https://github.com/o3co/ts.hocon/issues/72)) — lexer only recognizes ASCII space/tab/CR; Unicode whitespace categories leak into unquoted runs
 - **S6.2** Non-breaking spaces (0x00A0, 0x2007, 0x202F) are whitespace — §Whitespace (L171)
-  tests: tests/lexer.test.ts:303; tests/lexer.test.ts:310; tests/lexer.test.ts:316
+  tests: tests/lexer.test.ts:310; tests/lexer.test.ts:317; tests/lexer.test.ts:323
   status: ❌ ([#72](https://github.com/o3co/ts.hocon/issues/72)) — NBSP / figure space / narrow NBSP are not recognized as whitespace
 - **S6.3** BOM (0xFEFF) treated as whitespace — §Whitespace (L173)
   tests: tests/lexer.test.ts:161; tests/lightbend/testdata/bom.conf (fixture)
   status: ✅
 - **S6.4** ASCII control whitespace (tab, vtab, FF, CR, FS, GS, RS, US) — §Whitespace (L174)
-  tests: tests/lexer.test.ts:326; tests/lexer.test.ts:332; tests/lexer.test.ts:337; tests/lexer.test.ts:343; tests/lexer.test.ts:349
+  tests: tests/lexer.test.ts:333; tests/lexer.test.ts:339; tests/lexer.test.ts:344; tests/lexer.test.ts:350; tests/lexer.test.ts:356
   status: ⚠️ ([#72](https://github.com/o3co/ts.hocon/issues/72)) — 2 of 8 sub-rules pass: tab (0x09) and CR (0x0D) are recognized; vtab (0x0B), FF (0x0C), FS–US (0x1C–0x1F) are not. The ⚠️ glyph contributes 0.5 to the rate per legend; the actual sub-rule coverage is 25%
 - **S6.5** "newline" means specifically 0x000A (LF) — §Whitespace (L183)
   tests: —
@@ -157,13 +157,13 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
   tests: tests/lightbend/testdata/equiv01/unquoted.conf (fixture)
   status: ✅
 - **S8.6** Unquoted string cannot begin with `0-9` or `-` — §Unquoted strings (L270)
-  tests: tests/lexer.test.ts:359; tests/lexer.test.ts:363
+  tests: tests/lexer.test.ts:369; tests/lexer.test.ts:373
   status: ❌ ([#73](https://github.com/o3co/ts.hocon/issues/73)) — lexer permits digits and `-` as unquoted starts (src/internal/lexer/lexer.ts:338), and parser turns non-JSON-number forms such as `123abc` / `-foo` into strings (src/internal/parser/parser.ts:325) rather than rejecting them
 - **S8.7** No escape sequences in unquoted strings — §Unquoted strings (L253)
-  tests: tests/lexer.test.ts:372
+  tests: tests/lexer.test.ts:385
   status: ✅
 - **S8.8** Unquoted strings allow control characters except forbidden set — §Unquoted strings (L280)
-  tests: tests/lexer.test.ts:379; tests/lexer.test.ts:386
+  tests: tests/lexer.test.ts:392; tests/lexer.test.ts:399
   status: ✅
 
 ## S9. Multi-line strings
