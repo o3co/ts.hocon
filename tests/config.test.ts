@@ -442,7 +442,10 @@ describe('S15 - numerically-indexed object to array', () => {
     expect(c.getList('items')).toEqual(['a', 'b'])
   })
 
-  // S15.2: conversion is lazy — object is still accessible as object before type-coercion
+  // S15.2: conversion is lazy — object is still accessible as object before type-coercion.
+  // Trivially passes today because no conversion exists; once #87 lands, this must
+  // continue passing to confirm the implementation is genuinely lazy (does not eagerly
+  // convert during parse). Re-validate after #87.
   it('S15.2: get() and getConfig() on numeric-keyed object return object (lazy, not eager)', () => {
     const c = parse('items = {"0":"a","1":"b"}')
     // As a plain get(), it returns the object (no eager conversion)
@@ -451,14 +454,28 @@ describe('S15 - numerically-indexed object to array', () => {
     expect(c.getConfig('items').getString('0')).toBe('a')
   })
 
-  // S15.3: conversion in concatenation when list expected
-  it.fails('S15.3: getList() on a numeric-keyed object produced via concatenation', () => {
-    // Build a config where the key is a numerically-indexed object from properties-style assignment
-    const c = parse('foo.0 = "a"\nfoo.1 = "b"')
-    expect(c.getList('foo')).toEqual(['a', 'b'])
+  // S15.3: conversion in concatenation when list expected (spec L1210).
+  // Probe (2026-05-13) shows `arr = [a] ${obj}` parses to a 3-element array
+  // ["a", " ", {"0":"x","1":"y"}] — whitespace artefact + un-converted object.
+  // Spec requires conversion + flatten to ["a","x","y"]. Pin asserts the un-converted
+  // last element so a future #87 fix flips it; .fails version asserts the spec shape.
+  it('S15.3: [a] ${obj} concat currently includes un-converted object as last element', () => {
+    const c = parse('obj = {"0":"x","1":"y"}\narr = [a] ${obj}')
+    const items = c.getList('arr') as unknown[]
+    expect(items.length).toBe(3)
+    // Last element is the un-converted object, not the flattened "x"/"y" strings.
+    expect(typeof items[items.length - 1]).toBe('object')
+    expect(items[items.length - 1]).not.toBeNull()
   })
 
-  // S15.4: empty object must NOT be converted
+  it.fails('S15.3: [a] ${obj} should produce ["a","x","y"] after conversion+flatten (spec L1210, see #87)', () => {
+    const c = parse('obj = {"0":"x","1":"y"}\narr = [a] ${obj}')
+    expect(c.getList('arr')).toEqual(['a', 'x', 'y'])
+  })
+
+  // S15.4: empty object must NOT be converted. Trivially passes today because no
+  // conversion exists at all; once #87 lands, this must continue passing to confirm
+  // the implementation has an explicit empty-object guard. Re-validate after #87.
   it('S15.4: getList() on empty object still throws (empty object not converted)', () => {
     const c = parse('items = {}')
     expect(() => c.getList('items')).toThrow(ConfigError)
