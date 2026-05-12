@@ -20,11 +20,12 @@ coverage/
 # Claude Code (local-only settings)
 .claude/settings.local.json
 
-# Generated API docs
-docs/
+# Generated API docs (typedoc output) — ignore directory contents, not the directory itself,
+# so hand-written docs at docs/<file>.md can be explicitly re-included below.
+docs/*
 
-# Superpowers (development process artifacts)
-docs/superpowers/
+# Hand-written docs to track
+!docs/spec-compliance.md
 
 # Fetched testdata (from xx.hocon)
 tests/lightbend/testdata/expected/
