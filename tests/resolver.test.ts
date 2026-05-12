@@ -713,8 +713,12 @@ describe('spec compliance Phase 2 — concatenation and += (resolver-level)', ()
 describe('spec compliance Phase 3 — substitution & include (resolver-level)', () => {
   // --- S13.3: ${? is exactly 3 chars — no whitespace before ? ---------------
   it('S13.3: whitespace before ? is not treated as optional substitution (spec L584)', () => {
-    // ${ ?foo} must NOT be treated as optional ${?foo}; lexer/parser must reject or differ
+    // ${ ?foo} must NOT be treated as optional ${?foo}; lexer/parser must reject or differ.
+    // Probe both env states: with foo undefined AND with foo defined. The former
+    // could throw because the optional path has no value (wrong reason); the latter
+    // distinguishes "rejected as malformed" from "silently re-parsed as required ${foo}".
     expect(() => resolveStr('x = ${ ?foo}')).toThrow()
+    expect(() => resolveStr('foo = 1\nx = ${ ?foo}')).toThrow()
   })
 
   // --- S13.5: substitutions are NOT parsed inside quoted strings -------------
@@ -725,6 +729,9 @@ describe('spec compliance Phase 3 — substitution & include (resolver-level)', 
   })
 
   // --- S13.9: null in config blocks env var lookup ---------------------------
+  // Spec L618 specifies env-var suppression when a key is null in config; the
+  // required-vs-optional distinction for "null as resolved value vs missing" is
+  // ambiguous in the spec, so we test only the unambiguous optional case here.
   it('S13.9: config null for a key blocks env var lookup for optional subst (spec L618)', () => {
     // HOME=null in config means ${?HOME} sees null, not the env value
     const r = resolveStr('HOME = null\nresult = ${?HOME}', { HOME: '/x/y' })
