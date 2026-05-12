@@ -705,3 +705,82 @@ describe('spec compliance Phase 2 — concatenation and += (resolver-level)', ()
     expect(() => resolveStr('x = { a = 1 }\nx += [2]')).toThrow()
   })
 })
+
+// Spec compliance Phase 3 (issue #85): substitution & include (resolver-level)
+// Convention: it.fails(...) pins known violations; plain it(...) for ✅ items.
+// -----------------------------------------------------------------------------
+
+describe('spec compliance Phase 3 — substitution & include (resolver-level)', () => {
+  // --- S13.3: ${? is exactly 3 chars — no whitespace before ? ---------------
+  it('S13.3: whitespace before ? is not treated as optional substitution (spec L584)', () => {
+    // ${ ?foo} must NOT be treated as optional ${?foo}; lexer/parser must reject or differ
+    expect(() => resolveStr('x = ${ ?foo}')).toThrow()
+  })
+
+  // --- S13.5: substitutions are NOT parsed inside quoted strings -------------
+  it('S13.5: ${foo} inside double-quoted string is a literal (spec L593)', () => {
+    const r = resolveStr('x = "${foo}"')
+    const x = obj(r).get('x')
+    expect(x).toEqual({ kind: 'scalar', raw: '${foo}', valueType: 'string' })
+  })
+
+  // --- S13.9: null in config blocks env var lookup ---------------------------
+  it('S13.9: config null for a key blocks env var lookup for optional subst (spec L618)', () => {
+    // HOME=null in config means ${?HOME} sees null, not the env value
+    const r = resolveStr('HOME = null\nresult = ${?HOME}', { HOME: '/x/y' })
+    const result = obj(r).get('result')
+    // null config value takes precedence over env var; result resolves to null
+    expect(result).toEqual({ kind: 'scalar', raw: 'null', valueType: 'null' })
+  })
+
+  // --- S13.13: optional undefined in string concat → empty string ------------
+  it('S13.13: optional missing subst in string concat contributes empty string (spec L636)', () => {
+    const r = resolveStr('x = "pre"${?missing}"post"')
+    const x = obj(r).get('x')
+    expect(x).toEqual({ kind: 'scalar', raw: 'prepost', valueType: 'string' })
+  })
+
+  // --- S13.14: optional undefined in array concat → no extra elements --------
+  // VIOLATION: whitespace scalars between the arrays leak into the result as extra elements.
+  it.fails('S13.14: optional missing subst in array concat produces clean 2-element array (spec L637, see #83)', () => {
+    const r = resolveStr('x = [1] ${?missing} [2]')
+    const x = obj(r).get('x')
+    expect(x?.kind).toBe('array')
+    if (x?.kind === 'array') {
+      expect(x.items).toHaveLength(2)
+      expect(x.items[0]).toEqual({ kind: 'scalar', raw: '1', valueType: 'number' })
+      expect(x.items[1]).toEqual({ kind: 'scalar', raw: '2', valueType: 'number' })
+    }
+  })
+
+  it('S13.14: optional missing subst in object concat merges adjacent objects (spec L637)', () => {
+    const r = resolveStr('x = {a:1} ${?missing} {b:2}')
+    const x = obj(r).get('x')
+    expect(x?.kind).toBe('object')
+    if (x?.kind === 'object') {
+      expect(x.fields.has('a')).toBe(true)
+      expect(x.fields.has('b')).toBe(true)
+    }
+  })
+
+  // --- S13a.10: substitution memoized by instance, not by path ---------------
+  // Internal resolver implementation detail — not externally observable from a
+  // black-box API perspective. No test added.
+  // # not externally observable — internal memoization semantics
+
+  // --- S13a.13: a = ${?a}foo resolves to "foo" when a not previously set -----
+  // VIOLATION: resolver gives "foofoo" — the self-ref picks up "foo" as its prior value,
+  // then the concat produces "foo" + "foo" = "foofoo".
+  it.fails('S13a.13: a = ${?a}foo resolves to "foo" when a not previously assigned (spec L841, see #84)', () => {
+    const r = resolveStr('a = ${?a}foo')
+    const a = obj(r).get('a')
+    expect(a).toEqual({ kind: 'scalar', raw: 'foo', valueType: 'string' })
+  })
+
+  // --- S14b.1: included root must be an object; array root → error -----------
+  it('S14b.1: including a file whose root is an array is an error (spec L993)', () => {
+    expect(() =>
+      resolveStr('include "arr.conf"', {}, { '/arr.conf': '[1, 2, 3]' })
+    ).toThrow()
+  })
+})

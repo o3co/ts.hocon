@@ -304,14 +304,14 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
   tests: tests/resolver.test.ts:98; tests/lightbend/testdata/subst-tokenize/st15-optional-subst.conf (fixture)
   status: ✅
 - **S13.3** `${?` is exactly 3 chars (no whitespace before `?`) — §Substitutions (L584)
-  tests: —
-  status: 🤷
+  tests: tests/resolver.test.ts:715
+  status: ✅
 - **S13.4** Resolver MAY consult external sources (env vars, system properties) for unresolved substitutions — §Substitutions (L588) (concrete env behavior → S26)
   tests: tests/parse.test.ts:35
   status: ✅
 - **S13.5** Substitutions are NOT parsed inside quoted strings — §Substitutions (L593)
-  tests: —
-  status: 🤷
+  tests: tests/resolver.test.ts:721
+  status: ✅
 - **S13.6** Substitution paths are absolute (rooted at config root) — §Substitutions (L603)
   tests: tests/resolver.test.ts:93
   status: ✅
@@ -322,8 +322,8 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
   tests: tests/resolver.test.ts:213
   status: ✅
 - **S13.9** `null` in config blocks env var lookup — §Substitutions (L618)
-  tests: —
-  status: 🤷
+  tests: tests/resolver.test.ts:728
+  status: ✅
 - **S13.10** Required substitution undefined → error — §Substitutions (L627)
   tests: tests/resolver.test.ts:126; tests/parse.test.ts:51
   status: ✅
@@ -334,17 +334,17 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
   tests: tests/lightbend/testdata/equiv04/missing-substitutions.conf (fixture)
   status: ✅
 - **S13.13** Optional undefined in string concat → empty string — §Substitutions (L636)
-  tests: —
-  status: 🤷
+  tests: tests/resolver.test.ts:737
+  status: ✅
 - **S13.14** Optional undefined in obj/array concat → empty obj/array — §Substitutions (L637)
-  tests: —
-  status: 🤷
+  tests: tests/resolver.test.ts:745 (it.fails — array variant); tests/resolver.test.ts:756 (object variant ✅)
+  status: ⚠️ (see #83) — object concat works correctly; array concat leaks whitespace scalars as extra elements
 - **S13.15** `foo : ${?bar}${?baz}` skipped only when BOTH undefined — §Substitutions (L640)
   tests: tests/resolver.test.ts:274
   status: ✅
 - **S13.16** Substitutions only in field values / array elements — §Substitutions (L644)
-  tests: —
-  status: 🤷
+  tests: tests/parser.test.ts:434
+  status: ✅
 - **S13.17** Single-substitution value preserves type — §Substitutions (L648)
   tests: tests/resolver.test.ts:88
   status: ✅
@@ -385,7 +385,7 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
   tests: tests/resolver.test.ts:148
   status: ✅
 - **S13a.10** Substitution memoized by instance, not by path — §Self-Referential (L885)
-  tests: —
+  tests: — (not externally observable — internal memoization semantics)
   status: 🤷
 - **S13a.11** Object can refer to its own descendant (`bar : { foo : 42, baz : ${bar.foo} }`) — §Self-Referential (L806)
   tests: tests/resolver.test.ts:227
@@ -394,8 +394,8 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
   tests: tests/resolver.test.ts:93
   status: ✅
 - **S13a.13** `a = ${?a}foo` resolves to `"foo"` (look-back undefined) — §Self-Referential (L841)
-  tests: —
-  status: 🤷
+  tests: tests/resolver.test.ts:774 (it.fails)
+  status: ❌ (see #84) — resolver produces `"foofoo"` instead of `"foo"`; self-ref picks up the trailing literal as prior value
 - **S13a.14** Mutually-referring object fields (`bar.a = ${foo.d}; foo.c = ${bar.b}`) resolve lazily without false cycle — §Self-Referential (L825-834)
   tests: tests/resolver.test.ts:227
   status: ✅
@@ -452,17 +452,17 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
   tests: tests/parser.test.ts:146; tests/resolver.test.ts:344
   status: ✅
 - **S14a.6** Unquoted `include` at non-start-of-key is literal — §Include syntax (L962)
-  tests: —
-  status: 🤷
+  tests: tests/parser.test.ts:439
+  status: ✅
 - **S14a.7** Whitespace allowed between `include` and resource name (incl. newlines) — §Include syntax (L952)
   tests: tests/lightbend/testdata/test03.conf (fixture)
   status: 🤷
 - **S14a.8** No value concatenation on include argument — §Include syntax (L957)
-  tests: —
-  status: 🤷
+  tests: tests/parser.test.ts:447
+  status: ✅
 - **S14a.9** No substitutions in include argument — §Include syntax (L959)
-  tests: —
-  status: 🤷
+  tests: tests/parser.test.ts:452
+  status: ✅
 - **S14a.10** Include argument must be quoted string — §Include syntax (L958)
   tests: tests/parser.test.ts:282
   status: ✅
@@ -473,8 +473,8 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
 ### S14b. Include semantics: merging
 
 - **S14b.1** Included root must be an object (array → error) — §Include semantics: merging (L993)
-  tests: —
-  status: 🤷
+  tests: tests/resolver.test.ts:781
+  status: ✅
 - **S14b.2** Included keys merge per duplicate-key rules — §Include semantics: merging (L997)
   tests: tests/resolver.test.ts:255
   status: ✅
