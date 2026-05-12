@@ -293,3 +293,53 @@ describe('parseTokens', () => {
     expect(() => parseTokens(tokenize('include required( classpath("reference.conf") )'))).toThrow(/not supported/)
   })
 })
+
+// -----------------------------------------------------------------------------
+// Spec compliance Phase 1 (issue #70): parser-level comma rules.
+// See lexer.test.ts for the full convention.
+// -----------------------------------------------------------------------------
+
+describe('spec compliance Phase 1 — comma rules', () => {
+  // --- S5.2: single trailing comma is allowed and ignored ------------------
+  it('S5.2: single trailing comma in array is allowed', () => {
+    const node = parse('list = [1, 2, 3,]')
+    if (node.kind !== 'object') throw new Error('expected object')
+    const arr = node.fields[0]!.value
+    expect(arr.kind).toBe('array')
+    if (arr.kind === 'array') expect(arr.items).toHaveLength(3)
+  })
+
+  it('S5.2: single trailing comma in object is allowed', () => {
+    const node = parse('{ a = 1, b = 2, }')
+    if (node.kind !== 'object') throw new Error('expected object')
+    expect(node.fields).toHaveLength(2)
+  })
+
+  // --- S5.3: two trailing commas invalid -----------------------------------
+  it('S5.3: two trailing commas in array is rejected ([1,2,3,,])', () => {
+    expect(() => parse('list = [1, 2, 3,,]')).toThrow()
+  })
+
+  it('S5.3: two trailing commas in object is rejected', () => {
+    expect(() => parse('{ a = 1, b = 2,, }')).toThrow()
+  })
+
+  // --- S5.4: leading comma invalid -----------------------------------------
+  it('S5.4: leading comma in array is rejected ([,1,2,3])', () => {
+    expect(() => parse('list = [,1, 2, 3]')).toThrow()
+  })
+
+  it('S5.4: leading comma in object is rejected', () => {
+    expect(() => parse('{ , a = 1 }')).toThrow()
+  })
+
+  // --- S5.5: two consecutive commas invalid --------------------------------
+  it('S5.5: two consecutive commas in array is rejected ([1,,2,3])', () => {
+    expect(() => parse('list = [1,, 2, 3]')).toThrow()
+  })
+
+  // --- S5.6: same comma rules apply to object fields -----------------------
+  it('S5.6: two consecutive commas between object fields is rejected', () => {
+    expect(() => parse('{ a = 1,, b = 2 }')).toThrow()
+  })
+})

@@ -256,3 +256,149 @@ describe('Segment positions', () => {
     expect((caught as ParseError).line).toBe(1)
   })
 })
+
+// -----------------------------------------------------------------------------
+// Spec compliance Phase 1 (issue #70): lexer-level rules.
+//
+// Each test is annotated with its xx.hocon spec checklist ID (S<n>.<m>).
+// Where the current implementation diverges from spec, the test uses
+// it.fails(...) to pin the spec-correct assertion: CI stays green while
+// the implementation is buggy, and the test will FLIP to red once a fix
+// lands. At that point remove the it.fails wrapper and promote the
+// docs/spec-compliance.md status from this row to a plain it(...).
+// -----------------------------------------------------------------------------
+
+describe('spec compliance Phase 1 — lexer-level', () => {
+  // --- S2.3: comment markers inside quoted strings are literal -------------
+  it('S2.3: // and # inside a quoted string are kept verbatim', () => {
+    const [t1] = tokenize('"http://example.com"')
+    expect(t1.kind).toBe('string')
+    expect(t1.value).toBe('http://example.com')
+
+    const [t2] = tokenize('"# not a comment"')
+    expect(t2.kind).toBe('string')
+    expect(t2.value).toBe('# not a comment')
+  })
+
+  // --- S6.1: Unicode Zs / Zl / Zp category characters are whitespace -------
+  // Spec L170: lexer must treat any Unicode whitespace (Zs/Zl/Zp categories)
+  // as separator. ts.hocon currently only handles ASCII space + tab + CR.
+  it.fails('S6.1: em space (U+2003, Zs) separates two unquoted tokens', () => {
+    const tokens = tokenize('a b').filter(t => t.kind !== 'eof')
+    expect(tokens.map(t => t.kind)).toEqual(['unquoted', 'unquoted'])
+    expect(tokens[0].value).toBe('a')
+    expect(tokens[1].value).toBe('b')
+  })
+
+  it.fails('S6.1: line separator (U+2028, Zl) separates two unquoted tokens', () => {
+    const tokens = tokenize('a b').filter(t => t.kind !== 'eof')
+    // Spec says U+2028 (Zl) is whitespace and should separate tokens.
+    // Currently ts.hocon folds it into the unquoted run, producing a single
+    // token "a<U+2028>b". When fixed via #72, expect the lexer to emit two
+    // unquoted tokens with values "a" and "b".
+    //
+    // NOTE on it.fails wrong-reason risk: a hypothetical fix that REJECTS
+    // U+2028 with a throw would also flip this test (it.fails counts a throw
+    // as "expected failure"). That fix would be spec-incorrect — see #72 for
+    // the spec-correct expectation. Reviewers of any #72 fix should verify
+    // the impl matches spec intent (whitespace) rather than just satisfying
+    // this pin.
+    expect(tokens.map(t => t.value)).toEqual(['a', 'b'])
+  })
+
+  // --- S6.2: non-breaking spaces are whitespace ----------------------------
+  it.fails('S6.2: NBSP (U+00A0) separates tokens', () => {
+    const tokens = tokenize('a b').filter(t => t.kind !== 'eof')
+    expect(tokens.map(t => t.kind)).toEqual(['unquoted', 'unquoted'])
+    expect(tokens[0].value).toBe('a')
+    expect(tokens[1].value).toBe('b')
+  })
+
+  it.fails('S6.2: figure space (U+2007) separates tokens', () => {
+    const tokens = tokenize('a b').filter(t => t.kind !== 'eof')
+    expect(tokens.map(t => t.kind)).toEqual(['unquoted', 'unquoted'])
+    expect(tokens[0].value).toBe('a')
+  })
+
+  it.fails('S6.2: narrow no-break space (U+202F) separates tokens', () => {
+    const tokens = tokenize('a b').filter(t => t.kind !== 'eof')
+    expect(tokens.map(t => t.kind)).toEqual(['unquoted', 'unquoted'])
+    expect(tokens[0].value).toBe('a')
+  })
+
+  // --- S6.4: ASCII control whitespace --------------------------------------
+  // Spec L174 lists: tab (\t = 0x09), vertical tab (\v = 0x0B), form feed
+  // (\f = 0x0C), carriage return (\r = 0x0D), file separator (0x1C), group
+  // separator (0x1D), record separator (0x1E), unit separator (0x1F).
+  it('S6.4 (partial): tab (0x09) is whitespace', () => {
+    const tokens = tokenize('a\tb').filter(t => t.kind !== 'eof')
+    expect(tokens.map(t => t.kind)).toEqual(['unquoted', 'unquoted'])
+    expect(tokens[1].precedingSpace).toBe(true)
+  })
+
+  it('S6.4 (partial): carriage return (0x0D) is whitespace', () => {
+    const tokens = tokenize('a\rb').filter(t => t.kind !== 'eof')
+    expect(tokens.map(t => t.kind)).toEqual(['unquoted', 'unquoted'])
+  })
+
+  it.fails('S6.4: vertical tab (0x0B) is whitespace', () => {
+    const tokens = tokenize('a\x0Bb').filter(t => t.kind !== 'eof')
+    expect(tokens.map(t => t.kind)).toEqual(['unquoted', 'unquoted'])
+    expect(tokens[0].value).toBe('a')
+  })
+
+  it.fails('S6.4: form feed (0x0C) is whitespace', () => {
+    const tokens = tokenize('a\x0Cb').filter(t => t.kind !== 'eof')
+    expect(tokens.map(t => t.kind)).toEqual(['unquoted', 'unquoted'])
+    expect(tokens[0].value).toBe('a')
+  })
+
+  it.fails('S6.4: file/group/record/unit separators (0x1C-0x1F) are whitespace', () => {
+    for (const ch of ['\x1C', '\x1D', '\x1E', '\x1F']) {
+      const tokens = tokenize(`a${ch}b`).filter(t => t.kind !== 'eof')
+      expect(tokens.map(t => t.kind), `for char U+00${ch.charCodeAt(0).toString(16).toUpperCase()}`)
+        .toEqual(['unquoted', 'unquoted'])
+    }
+  })
+
+  // --- S8.6: unquoted string cannot begin with 0-9 or - --------------------
+  // Spec L270. Already-known violation tracked in docs/spec-compliance.md.
+  // Tests go through full parse(), not just tokenize(), so a fix at either
+  // the lexer (isUnquotedStart) OR the parser (scalarValueType rejection of
+  // non-number digit/hyphen tokens) layer will flip these to red.
+  it.fails('S8.6: digit-starting unquoted string is rejected (e.g. 123abc)', () => {
+    expect(() => parse('x = 123abc')).toThrow(ParseError)
+  })
+
+  it.fails('S8.6: hyphen-starting unquoted string is rejected (e.g. -foo)', () => {
+    // -123 is a valid number literal; -foo is not, and per spec L270 the
+    // unquoted form should be rejected end-to-end at parse time.
+    expect(() => parse('x = -foo')).toThrow(ParseError)
+  })
+
+  // --- S8.7: no escape sequences in unquoted strings -----------------------
+  // Spec L253. tokenize('a\\n') consumes 'a' as an unquoted token (the
+  // backslash terminates the unquoted run via isUnquotedContinue), then the
+  // main loop hits the bare '\\' and throws via the catch-all "unexpected
+  // character" branch. End-to-end behavior matches spec: backslash escapes
+  // are NOT decoded inside unquoted strings.
+  it('S8.7: backslash is rejected in unquoted strings (no \\n decoding)', () => {
+    expect(() => tokenize('a\\n')).toThrow(ParseError)
+  })
+
+  // --- S8.8: unquoted strings allow control characters except forbidden ----
+  // Spec L280. Forbidden set per L245: $"{}[]:=,+#`^?!@*&\
+  // Other control chars (e.g. SOH 0x01, BEL 0x07) should be permitted.
+  it('S8.8: SOH (0x01) is allowed inside unquoted string', () => {
+    const tokens = tokenize('foo\x01bar').filter(t => t.kind !== 'eof')
+    expect(tokens).toHaveLength(1)
+    expect(tokens[0].kind).toBe('unquoted')
+    expect(tokens[0].value).toBe('foo\x01bar')
+  })
+
+  it('S8.8: BEL (0x07) is allowed inside unquoted string', () => {
+    const tokens = tokenize('foo\x07bar').filter(t => t.kind !== 'eof')
+    expect(tokens).toHaveLength(1)
+    expect(tokens[0].value).toBe('foo\x07bar')
+  })
+})
