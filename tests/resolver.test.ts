@@ -617,7 +617,7 @@ describe('include file() resolution', () => {
 })
 
 // -----------------------------------------------------------------------------
-// Spec compliance Phase 2 (issue #TBD): concatenation and += (resolver-level)
+// Spec compliance Phase 2 (issue #82): concatenation and += (resolver-level)
 // Convention: it.fails(...) pins known violations; plain it(...) for ✅ items.
 // -----------------------------------------------------------------------------
 
