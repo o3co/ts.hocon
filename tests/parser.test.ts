@@ -424,3 +424,32 @@ describe('spec compliance Phase 2 — concatenation, paths, and +=', () => {
     expect(() => parse('include.foo.bar = 1')).toThrow()
   })
 })
+
+// Spec compliance Phase 3 (issue #85): substitution & include (parser-level)
+// Convention: it.fails(...) pins known violations; plain it(...) for ✅ items.
+// -----------------------------------------------------------------------------
+
+describe('spec compliance Phase 3 — substitution & include (parser-level)', () => {
+  // --- S13.16: substitutions only in field values / array elements -----------
+  it('S13.16: substitution in key position is rejected (spec L644)', () => {
+    expect(() => parse('${foo} = 1')).toThrow()
+  })
+
+  // --- S14a.6: unquoted `include` at non-start-of-key is literal ------------
+  it('S14a.6: x.include = 1 is parsed successfully with key x.include (spec L962)', () => {
+    const node = parse('x.include = 1')
+    if (node.kind !== 'object') throw new Error('expected object')
+    // key path is ["x", "include"] — include is a literal when not at key start
+    expect(node.fields[0]!.key).toEqual(['x', 'include'])
+  })
+
+  // --- S14a.8: no value concatenation on include argument -------------------
+  it('S14a.8: include "a.conf" "b.conf" is a parse error (spec L957)', () => {
+    expect(() => parse('include "a.conf" "b.conf"')).toThrow()
+  })
+
+  // --- S14a.9: no substitutions in include argument -------------------------
+  it('S14a.9: include ${path} is a parse error (spec L959)', () => {
+    expect(() => parse('include ${path}')).toThrow()
+  })
+})
