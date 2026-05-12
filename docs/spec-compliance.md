@@ -2,7 +2,7 @@
 
 This file extends the canonical item definitions in [`xx.hocon/docs/spec-checklist.md`](../../xx.hocon/docs/spec-checklist.md). It inherits all 209 items in the same order, adding `tests:` and `status:` fields for this implementation.
 
-- **`tests:`** — placeholder; actual test-path mapping is a separate later phase. All cells read `—` until that phase runs.
+- **`tests:`** — path to the test or fixture exercising each item, or `—` when no test covers it (test debt).
 - **`status:`** — uses the glyphs defined in the template legend (✅ ⚠️ ❌ 🤷 ➖). Default is 🤷 (no test, unverified).
 - **Compliance rate** — computed as `(✅ + ⚠️·0.5) / total` (spec-total) and `(✅ + ⚠️·0.5) / (total − ➖)` (in-scope). See the template for the full convention. Current rollup (execution pass): ✅ 115 / ⚠️ 0 / ❌ 1 / 🤷 77 / ➖ 16 — spec-total 55.0% (115/209), in-scope 59.6% (115/193).
 - **Out-of-scope items** — inherited verbatim from the template; `status: ➖`.
@@ -143,7 +143,7 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
 
 - **S8.1** Forbidden characters rejected (``$ " { } [ ] : = , + # ` ^ ? ! @ * & \``) and whitespace — §Unquoted strings (L245)
   tests: tests/lexer.test.ts:191
-  status: ✅
+  status: ⚠️ — cited test covers only a subset of the forbidden set; `isUnquotedStart` / `isUnquotedContinue` in src/internal/lexer/lexer.ts do not exclude `` ` `` (backtick), so the impl allows it in unquoted strings contrary to spec L245
 - **S8.2** `//` inside an unquoted string starts a comment — §Unquoted strings (L248)
   tests: tests/lexer.test.ts:29
   status: ✅
@@ -158,7 +158,7 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
   status: ✅
 - **S8.6** Unquoted string cannot begin with `0-9` or `-` — §Unquoted strings (L270)
   tests: —
-  status: 🤷
+  status: ❌ — impl violates spec: lexer permits digits and `-` as unquoted starts (src/internal/lexer/lexer.ts:338), and parser turns non-JSON-number forms such as `123abc` / `-foo` into strings (src/internal/parser/parser.ts:325) rather than rejecting them
 - **S8.7** No escape sequences in unquoted strings — §Unquoted strings (L253)
   tests: —
   status: 🤷
@@ -415,20 +415,20 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
 ### S13c. List values from environment variables
 
 - **S13c.1** `${X[]}` looks up `X_0`, `X_1`, ... env vars — §List values from env (L900)
-  tests: tests/lightbend/testdata/env-variables.conf (fixture)
-  status: 🤷
+  tests: —
+  status: ❌ — not implemented; substitution lexer (src/internal/lexer/lexer.ts:333) rejects `[` / `]` inside `${...}` body and env fallback only resolves scalar values (src/internal/resolver/substitution-resolver.ts:220). `env-variables.conf` exists but is not wired into the Vitest Lightbend runner.
 - **S13c.2** Stops at first missing index — §List values from env (L905)
-  tests: tests/lightbend/testdata/env-variables.conf (fixture)
-  status: 🤷
+  tests: —
+  status: ❌ — not implemented (see S13c.1)
 - **S13c.3** `${X[]}` no elements → required error — §List values from env (L910)
   tests: —
-  status: 🤷
+  status: ❌ — not implemented (see S13c.1)
 - **S13c.4** `${?X[]}` no elements → undefined / removed — §List values from env (L912)
-  tests: tests/lightbend/testdata/env-variables.conf (fixture)
-  status: 🤷
+  tests: —
+  status: ❌ — not implemented (see S13c.1)
 - **S13c.5** `[]` suffix supported only for env vars (not config / sys props) — §List values from env (L902)
   tests: —
-  status: 🤷
+  status: ❌ — not implemented (see S13c.1); constraint is moot when the `[]` suffix itself is rejected by the lexer
 
 ## S14. Includes
 
