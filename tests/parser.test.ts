@@ -445,6 +445,10 @@ describe('spec compliance Phase 3 — substitution & include (parser-level)', ()
 
   // --- S14a.8: no value concatenation on include argument -------------------
   it('S14a.8: include "a.conf" "b.conf" is a parse error (spec L957)', () => {
+    // The parser consumes one quoted argument and treats the second as a stray
+    // token, so the throw is structural rather than a dedicated "no concat" check.
+    // The spec rule ("no value concatenation on include argument") is upheld
+    // because concatenation is never attempted.
     expect(() => parse('include "a.conf" "b.conf"')).toThrow()
   })
 
