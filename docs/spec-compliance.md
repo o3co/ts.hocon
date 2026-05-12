@@ -560,26 +560,33 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
 ## S15. Numerically-indexed objects to arrays
 
 - **S15.1** `{"0":"a","1":"b"}` → `["a","b"]` when array context — §Conversion (L1191)
-  tests: —
-  status: 🤷
+  tests: tests/config.test.ts:440
+  status: ❌
+  `getList()` throws `ConfigError: expected array` instead of converting the numerically-indexed object. Pin asserts via `.fails` that the expected `["a","b"]` shape currently does not materialize. See issue #87.
 - **S15.2** Conversion is lazy (only on type-required access) — §Conversion (L1204)
-  tests: —
-  status: 🤷
+  tests: tests/config.test.ts:449
+  status: ✅ (incidental)
+  `get()` and `getConfig()` on a numeric-keyed object return the object unchanged. Currently passes trivially because no conversion exists at all; **must be re-validated after #87 lands** to confirm laziness is enforced by an explicit `coerceList`-time guard rather than by the absence of conversion.
 - **S15.3** Conversion in concatenation when list expected — §Conversion (L1210)
-  tests: —
-  status: 🤷
+  tests: tests/config.test.ts:457 (pin); tests/config.test.ts:469 (.fails spec assertion)
+  status: ❌
+  real concat context `arr = [a] ${obj}` (with `obj = {"0":"x","1":"y"}`) produces a 3-element array `["a", " ", {0:"x",1:"y"}]` — whitespace artefact + un-converted object. Spec L1210 requires conversion + flatten to `["a","x","y"]`. Pin asserts the un-converted last element so a future #87 fix flips it. See issue #87.
 - **S15.4** Empty object NOT converted — §Conversion (L1212)
-  tests: —
-  status: 🤷
+  tests: tests/config.test.ts:478
+  status: ✅ (incidental)
+  `getList()` on `{}` correctly throws `ConfigError`. Currently passes trivially because no conversion runs at all; **must be re-validated after #87 lands** to confirm the implementation has an explicit empty-object guard before the conversion path.
 - **S15.5** Non-integer keys ignored during conversion — §Conversion (L1214)
-  tests: —
-  status: 🤷
+  tests: tests/config.test.ts:485
+  status: ❌
+  `getList()` throws before any conversion logic runs; the non-integer-key ignore rule cannot be exercised until S15.1 is fixed. See issue #87.
 - **S15.6** Missing indices compacted in resulting array — §Conversion (L1216)
-  tests: —
-  status: 🤷
+  tests: tests/config.test.ts:491
+  status: ❌
+  Same root cause as S15.1 — `getList()` does not perform object-to-array conversion at all. See issue #87.
 - **S15.7** Sorted by integer key value — §Conversion (L1216)
-  tests: —
-  status: 🤷
+  tests: tests/config.test.ts:497
+  status: ❌
+  Same root cause as S15.1. See issue #87.
 
 ## S16. MIME Type
 
@@ -603,17 +610,21 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
   tests: tests/config.test.ts:79; tests/coerce.test.ts:5
   status: ✅
 - **S17.5** `"null"` → null when null requested — §Automatic type conversions (L1244)
-  tests: —
-  status: 🤷
+  out-of-scope: spec L1244 describes conversion when **null type is explicitly requested** via a typed accessor. ts.hocon's API surface does not include a `getNull()` or null-requesting accessor — `get()` returns JS `null` naturally based on stored value type, with no conversion path from the string `"null"`. The spec clause is structurally inapplicable to ts.hocon's API model. Aligns with rs.hocon's identical determination (see [rs.hocon#81](https://github.com/o3co/rs.hocon/pull/81)).
+  tests: tests/config.test.ts:507 — kept as a sanity check that quoted `"null"` is stored as a string scalar and unquoted `null` is stored as the null scalar; no type-conversion is exercised.
+  status: ➖
 - **S17.6** null → other type: error — §Automatic type conversions (L1252)
-  tests: —
-  status: 🤷
+  tests: tests/config.test.ts:527 (pin .fails for getString); tests/config.test.ts:532,537,542 (3 passing sub-rules)
+  status: ⚠️ (3-of-4 partial; passing sub-rules are *incidentally* satisfied)
+  `getNumber()`, `getBoolean()`, and `getList()` on a null-typed value throw `ConfigError`, but **not** because `requireScalar` enforces "no null→T conversion" — the impl coincidentally lacks a coercion path from `null` to numeric/boolean/array types, so the typed accessors fall through to "not a number / not a boolean / not an array" errors. The contract is not structurally enforced. `getString()` on null silently returns the raw string `"null"` and is pinned via `.fails`. When fixing #88, add a single explicit `valueType === 'null'` rejection at the `requireScalar` boundary so all four accessors become contract-enforced together. See issue #88.
 - **S17.7** object → other type: error — §Automatic type conversions (L1254)
-  tests: —
-  status: 🤷
+  tests: tests/config.test.ts:549
+  status: ✅
+  `getString()`, `getNumber()`, `getBoolean()`, and `getList()` all throw `ConfigError` when the value is an object.
 - **S17.8** array → other (except numeric-indexed): error — §Automatic type conversions (L1255)
-  tests: —
-  status: 🤷
+  tests: tests/config.test.ts:572
+  status: ✅
+  `getString()`, `getNumber()`, `getBoolean()`, and `getConfig()` all throw `ConfigError` when the value is an array.
 
 ## S18. Units format
 
@@ -688,8 +699,9 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
   tests: tests/config.test.ts:323; tests/config.test.ts:333
   status: ✅
 - **S21.4** Single-letter abbreviations → powers of 2 (java -Xmx convention) — §Size in bytes format (L1385)
-  tests: —
-  status: 🤷
+  tests: tests/config.test.ts:410
+  status: ❌
+  `getBytes()` throws `invalid byte size` for `1K`, `1k`, `1M`, `1G`, `1T`, etc. The spec (L1374–L1390) lists K/k, M/m, G/g, T/t, P/p, E/e, Z/z, Y/y as aliases for the corresponding powers-of-two IEC units. See issue #89.
 - **S21.5** Fractional values supported (`0.5M`) — §Units format (L1281-1294) + §Size in bytes (L1335-1342)
   tests: tests/config.test.ts:384
   status: ✅

@@ -210,8 +210,8 @@ Conformance against the [Lightbend HOCON specification](https://github.com/light
 
 | Metric                                | Status        |
 | ------------------------------------- | ------------- |
-| Spec total (incl. out-of-scope)       | **66.5%**     |
-| In-scope only                         | **73.5%**     |
+| Spec total (incl. out-of-scope)       | **68.7%**     |
+| In-scope only                         | **76.3%**     |
 | Lightbend `test01`–`test13` suite     | 13/13 passing |
 
 Not supported in v0.1.0:
