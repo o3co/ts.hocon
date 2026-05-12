@@ -177,12 +177,12 @@ description = """
 
 ## 仕様準拠
 
-[Lightbend HOCON 仕様](https://github.com/lightbend/config/blob/main/HOCON.md) への準拠状況は [`docs/spec-compliance.md`](docs/spec-compliance.md) に項目単位で記載しています。以下の表は 2026-05-12 時点のスナップショットです — 最新値は [`xx.hocon/docs/compliance-matrix.md`](https://github.com/o3co/xx.hocon/blob/main/docs/compliance-matrix.md) を参照してください。
+[Lightbend HOCON 仕様](https://github.com/lightbend/config/blob/main/HOCON.md) への準拠状況は [`docs/spec-compliance.md`](docs/spec-compliance.md) に項目単位で記載しています。以下の表は 2026-05-13 時点のスナップショットです — 最新値は [`xx.hocon/docs/compliance-matrix.md`](https://github.com/o3co/xx.hocon/blob/main/docs/compliance-matrix.md) を参照してください。
 
 | 指標                                   | 状況          |
 | -------------------------------------- | ------------- |
-| 仕様全体（out-of-scope を含む）        | **68.7%**     |
-| In-scope のみ                          | **76.3%**     |
+| 仕様全体（out-of-scope を含む）        | **74.2%**     |
+| In-scope のみ                          | **83.3%**     |
 | Lightbend `test01`–`test13` テスト群   | 13/13 合格    |
 
 v0.1.0 で未対応の機能:

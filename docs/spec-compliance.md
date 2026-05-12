@@ -15,8 +15,14 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
 ## S1. Unchanged from JSON
 
 - **S1.1** Files must be valid UTF-8 — §Unchanged from JSON (L117)
-  tests: —
-  status: 🤷
+  out-of-scope: The public `parse()` API accepts a JS `string`, which is already a decoded
+  Unicode sequence — Node.js (and browsers) perform UTF-8 decoding at the I/O boundary before
+  the string reaches the parser. `parseFile()` uses `fs.readFileSync(path, 'utf-8')`, which
+  rejects invalid UTF-8 bytes at the OS/Node layer. The HOCON parser itself therefore cannot
+  observe raw byte sequences and has no mechanism to reject invalid UTF-8. UTF-8 validity is
+  structurally enforced at the I/O layer, not the parse layer, in all JS runtimes.
+  tests: tests/config.test.ts (S1.1 describe block — sanity checks multi-byte chars accepted)
+  status: ➖
 - **S1.2.1** Quoted strings accept valid JSON escape sequences (`\" \\ \/ \b \f \n \r \t`) — §Unchanged from JSON (L118)
   tests: tests/lexer.test.ts:49; tests/lightbend/testdata/subst-tokenize/st10-escape-newline.conf (fixture)
   status: ✅
@@ -58,8 +64,12 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
 ## S3. Omit root braces
 
 - **S3.1** Empty file is invalid — §Omit root braces (L130)
-  tests: —
-  status: 🤷
+  tests: tests/config.test.ts (S3.1 describe block)
+  status: ❌
+  notes: `parse('')` and `parse('   \n  ')` both return an empty Config without throwing.
+  Spec L130: "Empty files are invalid documents." The parser accepts empty input as an
+  empty object at the AST level; the fix requires a guard in `parse()` or `parseTokens()`.
+  Tests pinned with `it.fails`.
 - **S3.2** Root non-object/non-array is invalid (when explicitly enclosed) — §Omit root braces (L131)
   tests: tests/parser.test.ts:355
   status: ✅
@@ -115,8 +125,8 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
   tests: tests/lexer.test.ts:333; tests/lexer.test.ts:339; tests/lexer.test.ts:344; tests/lexer.test.ts:350; tests/lexer.test.ts:356
   status: ⚠️ ([#72](https://github.com/o3co/ts.hocon/issues/72)) — 2 of 8 sub-rules pass: tab (0x09) and CR (0x0D) are recognized; vtab (0x0B), FF (0x0C), FS–US (0x1C–0x1F) are not. The ⚠️ glyph contributes 0.5 to the rate per legend; the actual sub-rule coverage is 25%
 - **S6.5** "newline" means specifically 0x000A (LF) — §Whitespace (L183)
-  tests: —
-  status: 🤷
+  tests: tests/resolver.test.ts (S6.5 describe block)
+  status: ✅
 
 ## S7. Duplicate keys and object merging
 
@@ -136,8 +146,8 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
   tests: tests/resolver.test.ts:159; tests/lightbend/testdata/equiv02/path-keys.conf (fixture)
   status: ✅
 - **S7.6** Intermediate non-object value breaks merge with later object — §Duplicate keys (L207)
-  tests: —
-  status: 🤷
+  tests: tests/resolver.test.ts (S7.6 describe block)
+  status: ✅
 
 ## S8. Unquoted strings
 
@@ -211,11 +221,11 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
   tests: tests/parser.test.ts:381
   status: ❌ (see #76) — parser rejects unquoted-space-unquoted as key with "unexpected token after key: unquoted"
 - **S10.9** `true`/`false` stringify to `"true"`/`"false"` in concat — §String value concatenation (L363)
-  tests: —
-  status: 🤷
+  tests: tests/resolver.test.ts (S10.9 describe block)
+  status: ✅
 - **S10.10** `null` stringifies to `"null"` in concat — §String value concatenation (L364)
-  tests: —
-  status: 🤷
+  tests: tests/resolver.test.ts (S10.10 describe block)
+  status: ✅
 - **S10.11** Numbers stringify as written in the source file — §String value concatenation (L366)
   tests: tests/config.test.ts:183
   status: ✅
@@ -232,8 +242,8 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
   tests: tests/resolver.test.ts:181
   status: ✅
 - **S10.16** Non-newline whitespace in arrays is concat, not separator — §Arrays without commas or newlines (L447)
-  tests: —
-  status: 🤷
+  tests: tests/resolver.test.ts (S10.16 describe block)
+  status: ✅
 - **S10.17** Substitution resolving to an array participates in array concat (`${arr} [x]`) — §Array and object concatenation (L387)
   tests: tests/resolver.test.ts:284
   status: ✅
@@ -364,8 +374,14 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
   tests: tests/resolver.test.ts:213
   status: ✅
 - **S13a.3** Self-ref before any prior value → undefined → error — §Self-Referential (L767)
-  tests: —
-  status: 🤷
+  tests: tests/resolver.test.ts (S13a.3 describe block)
+  status: ⚠️
+  notes: `a = ${a}` (no prior value) raises `ResolveError("circular substitution: a")`.
+  An error is raised (correct), but spec L767-773 says this case should be treated as
+  "undefined" (i.e. a missing-substitution error), not an "intractable cycle" error.
+  The distinction matters for error messages and for `${?a}` handling (which the impl
+  already handles correctly via separate detection). Behavior (error) is correct;
+  error classification is off-spec.
 - **S13a.4** Optional self-ref `${?foo}` disappears silently — §Self-Referential (L776)
   tests: tests/resolver.test.ts:291
   status: ✅
@@ -385,8 +401,15 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
   tests: tests/resolver.test.ts:148
   status: ✅
 - **S13a.10** Substitution memoized by instance, not by path — §Self-Referential (L885)
-  tests: — (not externally observable — internal memoization semantics)
-  status: 🤷
+  out-of-scope: Internal resolver implementation detail. Two `${b}` substitutions at
+  different file positions naturally see the same lookup result (the final merged config)
+  regardless of whether memoization is keyed by instance or by path, because the config
+  is non-self-referential in any valid observable test. The spec rule constrains resolver
+  internals to prevent observable differences in self-referential edge cases, but no
+  black-box input/output test can distinguish "memoized by instance" from "resolved
+  independently" via the public API. See resolver.test.ts comment at S13a.10 for details.
+  tests: — (internal memoization semantics — not externally observable)
+  status: ➖
 - **S13a.11** Object can refer to its own descendant (`bar : { foo : 42, baz : ${bar.foo} }`) — §Self-Referential (L806)
   tests: tests/resolver.test.ts:227
   status: ✅
@@ -455,8 +478,8 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
   tests: tests/parser.test.ts:439
   status: ✅
 - **S14a.7** Whitespace allowed between `include` and resource name (incl. newlines) — §Include syntax (L952)
-  tests: tests/lightbend/testdata/test03.conf (fixture)
-  status: 🤷
+  tests: tests/lightbend/testdata/test03.conf (fixture); tests/resolver.test.ts (S14a.7 describe block)
+  status: ✅
 - **S14a.8** No value concatenation on include argument — §Include syntax (L957)
   tests: tests/parser.test.ts:447
   status: ✅
@@ -467,8 +490,8 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
   tests: tests/parser.test.ts:282
   status: ✅
 - **S14a.11** `"include"` (quoted) is just a normal key — §Include syntax (L977)
-  tests: —
-  status: 🤷
+  tests: tests/config.test.ts (S14a.11 describe block)
+  status: ✅
 
 ### S14b. Include semantics: merging
 
@@ -629,17 +652,33 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
 ## S18. Units format
 
 - **S18.1** Number value taken as default unit — §Units format (L1279)
-  tests: —
-  status: 🤷
+  tests: tests/config.test.ts (S18.1 describe block)
+  status: ❌
+  notes: `getDuration()` on a bare number value (e.g. `timeout = 5000`) throws
+  "invalid duration". `parseDuration` extracts all digits, leaving `unit = ""`, and
+  `DURATION_UNITS[""]` is `undefined` → `NaN` → error. Spec L1279: "if the value is a
+  number, it is taken to be a number in the default unit." Fix: add an early-exit in
+  `parseDuration` that returns `num / divisor` when `unit` is the empty string.
+  Tests pinned with `it.fails`.
 - **S18.2** String parsed as: optional ws + number + ws + unit + ws — §Units format (L1281-1294)
   tests: tests/config.test.ts:239
   status: ✅
 - **S18.3** Unit name letters-only (Unicode L* / `isLetter`) — §Units format (L1287)
-  tests: —
-  status: 🤷
+  tests: tests/config.test.ts (S18.3 describe block)
+  status: ✅
+  notes: Effectively enforced via the unit-name map lookup in `parseDuration`/`parseBytes`.
+  Unknown units (including those with digits or hyphens) produce `NaN` → `ConfigError`.
+  No explicit letter-only character check runs, but the outcome is conformant for all
+  tested inputs. ⚠️ would apply only if a non-letter unit string happened to match a
+  map key — which is structurally impossible given the map's contents.
 - **S18.4** String with no unit → interpreted with default unit — §Units format (L1290)
-  tests: —
-  status: 🤷
+  tests: tests/config.test.ts (S18.4 describe block)
+  status: ❌
+  notes: `getDuration()` on a string with no unit suffix (e.g. `timeout = "5000"`) throws
+  "invalid duration". Same root cause as S18.1: `unit = ""` → not in `DURATION_UNITS`
+  → `NaN` → error. Spec L1290: "If a string value has no unit name, then it should be
+  interpreted with the default unit." Fix is the same as S18.1: handle empty-unit case
+  in `parseDuration`. Tests pinned with `it.fails`.
 
 ## S19. Duration format
 
@@ -665,8 +704,13 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
   tests: tests/config.test.ts:254
   status: ✅
 - **S19.8** Duration unit names are case sensitive (lowercase only) — §Duration format (L1304)
-  tests: —
-  status: 🤷
+  tests: tests/config.test.ts (S19.8 describe block)
+  status: ❌
+  notes: `parseDuration` applies `.toLowerCase()` to the unit string before lookup, making
+  unit names case-insensitive. Probe: `"5 MS"` → 5, `"5 Seconds"` → 5000, `"5 DAYS"` →
+  432000000. Spec L1304: "The supported unit strings for duration are case sensitive and must
+  be lowercase." Fix: remove the `.toLowerCase()` call in `parseDuration` and rely on the
+  exact map keys. Tests pinned with `it.fails`.
 
 ## S20. Period format
 
@@ -712,11 +756,17 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
   tests: tests/config.test.ts:157
   status: ✅
 - **S22.2** Intermediate non-object hides earlier object across files — §Config object merging (L1406)
-  tests: —
-  status: 🤷
+  tests: tests/config.test.ts (S22.2 describe block)
+  status: ❌
+  notes: `deepMergeHocon` always recursively merges objects regardless of intermediate
+  non-object values. Probe: `c1({a:{x:1}}).withFallback(c2({a:42})).withFallback(c3({a:{y:2}}))`
+  → `{a:{x:1,y:2}}`. Expected per spec L1410-1417: `{a:{x:1}}` (the non-object `42` in c2
+  prevents c1's `{x:1}` from merging with c3's `{y:2}`). Fix requires `withFallback` /
+  `deepMergeHocon` to track value-sequence history per key, not just the current types.
+  Tests pinned with `it.fails`.
 - **S22.3** Setting key to null clears earlier object value — §Config object merging (L1436)
-  tests: —
-  status: 🤷
+  tests: tests/config.test.ts (S22.3 describe block)
+  status: ✅
 
 ## S23. Java properties mapping
 
@@ -724,14 +774,20 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
   tests: tests/properties.test.ts:30
   status: ✅
 - **S23.2** Empty path elements (leading/trailing) preserved — §Java properties (L1456)
-  tests: —
-  status: 🤷
+  tests: tests/properties.test.ts (S23.2 describe block)
+  status: ✅
 - **S23.3** Properties values are always strings — §Java properties (L1471)
   tests: tests/properties.test.ts:37; tests/parse.test.ts:386
   status: ✅
 - **S23.4** Object wins over string on conflicting key — §Java properties (L1485)
-  tests: —
-  status: 🤷
+  tests: tests/properties.test.ts (S23.4 describe block)
+  status: ❌
+  notes: `setNested` in `properties.ts` overwrites an existing object value with a string
+  when the string key appears after the dotted key. Probe: `"a.b=world\na=hello"` →
+  `{a:"hello"}`. Spec L1485: "the object must always win." Fix: add a guard in `setNested`
+  that skips assignment when the existing value at the last segment is already an object.
+  The reverse order (string first, dotted key second) already works correctly.
+  Tests pinned with `it.fails`.
 - **S23.5** Multi-line values (backslash continuation) — §Note on Java properties similarity (L1587)
   out-of-scope: declared in each implementation's README — the `.properties` reader supports only basic `key=value` syntax to avoid pulling a full Java properties parser into a non-JVM library.
   tests: —
@@ -765,8 +821,8 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
   tests: tests/resolver.test.ts:130; tests/parse.test.ts:35
   status: ✅
 - **S26.2** Empty env var preserved as empty string (not undefined) — §Substitution fallback (L1558)
-  tests: —
-  status: 🤷
+  tests: tests/config.test.ts (S26.2 describe block)
+  status: ✅
 - **S26.3** Env var SecurityException → treated as not present — §Substitution fallback (L1560)
   out-of-scope: `SecurityException` is a JVM-specific exception type; non-JVM runtimes have no equivalent guard at this layer.
   tests: —

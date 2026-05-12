@@ -590,3 +590,217 @@ describe('S17.8 - array to other type must error', () => {
     expect(() => c.getConfig('val')).toThrow(ConfigError)
   })
 })
+
+// ---------------------------------------------------------------------------
+// Phase 5 spec debt tests
+// ---------------------------------------------------------------------------
+
+// S1.1 — files must be valid UTF-8 (HOCON spec L117)
+// The parse() API takes a JS string, which is already a decoded Unicode sequence
+// (Node.js decodes bytes to strings at the I/O boundary). The parser therefore
+// cannot observe raw byte sequences and has no mechanism to reject invalid UTF-8.
+// UTF-8 validation is the responsibility of the I/O layer (e.g. fs.readFileSync
+// with 'utf-8' encoding, which is what parseFile() uses). Status: ➖
+// Sanity check: multi-byte UTF-8 characters in values and keys parse correctly.
+describe('S1.1 - UTF-8 handling (HOCON spec L117)', () => {
+  it('S1.1: multi-byte UTF-8 characters are accepted in string values', () => {
+    const c = parse('key = "héllo wörld"')
+    expect(c.getString('key')).toBe('héllo wörld')
+  })
+
+  it('S1.1: multi-byte UTF-8 characters are accepted in unquoted values', () => {
+    // Japanese characters in an unquoted string
+    const c = parse('lang = こんにちは')
+    expect(c.getString('lang')).toBe('こんにちは')
+  })
+})
+
+// S3.1 — empty file is invalid (HOCON spec L130)
+// Probe (2026-05-13): parse('') returns an empty Config without throwing.
+// Spec L130: "Empty files are invalid documents."
+describe('S3.1 - empty file is invalid (HOCON spec L130)', () => {
+  it.fails('S3.1: parse("") should throw — empty file is invalid per spec L130', () => {
+    // Currently returns an empty Config; spec requires an error.
+    expect(() => parse('')).toThrow()
+  })
+
+  it.fails('S3.1: parse("   \\n  ") (whitespace-only) should throw — same rule', () => {
+    // Whitespace-only file has no root value, same as empty.
+    expect(() => parse('   \n  ')).toThrow()
+  })
+})
+
+// S14a.11 — quoted "include" is just a normal key (HOCON spec L977)
+describe('S14a.11 - quoted "include" is a normal key (HOCON spec L977)', () => {
+  it('S14a.11: "include" = 42 creates a regular key named include', () => {
+    const c = parse('"include" = 42')
+    expect(c.getNumber('include')).toBe(42)
+  })
+
+  it('S14a.11: quoted "include" in an object does not trigger include semantics', () => {
+    const c = parse('{ "include" = "hello" }')
+    expect(c.getString('include')).toBe('hello')
+  })
+})
+
+// S18.1 — number value taken as default unit (HOCON spec L1279)
+// Probe (2026-05-13): getDuration on a number-typed value throws "invalid duration".
+// parseDuration extracts digits → unit="" → DURATION_UNITS[""] is undefined → NaN → error.
+// Spec L1279: "if the value is a number, it is taken to be a number in the default unit."
+describe('S18.1 - bare number is in default unit (HOCON spec L1279)', () => {
+  it.fails('S18.1: getDuration() on a bare number treats it as milliseconds (default unit)', () => {
+    const c = parse('timeout = 5000')
+    // 5000 bare number → 5000 ms
+    expect(c.getDuration('timeout')).toBe(5000)
+  })
+
+  it.fails('S18.1: getDuration() on a bare number with explicit "ms" output unit', () => {
+    const c = parse('timeout = 5000')
+    expect(c.getDuration('timeout', 'ms')).toBe(5000)
+  })
+
+  it.fails('S18.1: getDuration() on a bare number with "s" output unit gives seconds', () => {
+    const c = parse('timeout = 5000')
+    // 5000 ms → 5 s
+    expect(c.getDuration('timeout', 's')).toBe(5)
+  })
+})
+
+// S18.3 — unit name consists only of letters (Unicode L* / Java isLetter) (HOCON spec L1287)
+// Probe (2026-05-13): "5 ms" → 5 (OK); "5 ms2" throws; "5 m-s" throws.
+// Effectively passing because parseDuration does a map lookup — unknown unit = NaN = error.
+describe('S18.3 - unit name must be letters-only (HOCON spec L1287)', () => {
+  it('S18.3: "5 ms" is accepted (valid letter-only unit)', () => {
+    const c = parse('a = "5 ms"')
+    expect(c.getDuration('a')).toBe(5)
+  })
+
+  it('S18.3: "5 ms2" is rejected (digit in unit name)', () => {
+    const c = parse('b = "5 ms2"')
+    expect(() => c.getDuration('b')).toThrow(ConfigError)
+  })
+
+  it('S18.3: "5 m-s" is rejected (hyphen in unit name)', () => {
+    const c = parse('c = "5 m-s"')
+    expect(() => c.getDuration('c')).toThrow(ConfigError)
+  })
+})
+
+// S18.4 — string with no unit uses default unit (HOCON spec L1290)
+// Probe (2026-05-13): getDuration on "5000" (string, no unit) throws "invalid duration".
+// parseDuration: unit="" → DURATION_UNITS[""] undefined → NaN → error.
+// Spec L1290: "If a string value has no unit name, then it should be interpreted with the
+// default unit, as if it were a number."
+describe('S18.4 - string with no unit uses default unit (HOCON spec L1290)', () => {
+  it.fails('S18.4: getDuration() on string "5000" (no unit) treats it as milliseconds', () => {
+    const c = parse('timeout = "5000"')
+    expect(c.getDuration('timeout')).toBe(5000)
+  })
+
+  it.fails('S18.4: getDuration() on string "30" (no unit) with "s" output gives 0.03', () => {
+    const c = parse('delay = "30"')
+    // 30 ms → 0.03 s
+    expect(c.getDuration('delay', 's')).toBeCloseTo(0.03)
+  })
+})
+
+// S19.8 — duration unit names are case sensitive, lowercase only (HOCON spec L1304)
+// Probe (2026-05-13): "5 MS" → 5, "5 Seconds" → 5000, "5 DAYS" → 432000000.
+// parseDuration applies .toLowerCase() to the unit before lookup, making it case-insensitive.
+// Spec L1304: "The supported unit strings for duration are case sensitive and must be lowercase."
+describe('S19.8 - duration unit names are case-sensitive lowercase (HOCON spec L1304)', () => {
+  it.fails('S19.8: "5 MS" should be rejected — uppercase unit is invalid per spec', () => {
+    // Currently parseDuration lowercases → "ms" → 5 ms. Should reject.
+    const c = parse('a = "5 MS"')
+    expect(() => c.getDuration('a')).toThrow(ConfigError)
+  })
+
+  it.fails('S19.8: "5 Seconds" should be rejected — mixed-case unit is invalid per spec', () => {
+    const c = parse('b = "5 Seconds"')
+    expect(() => c.getDuration('b')).toThrow(ConfigError)
+  })
+
+  it.fails('S19.8: "5 DAYS" should be rejected — uppercase unit is invalid per spec', () => {
+    const c = parse('c = "5 DAYS"')
+    expect(() => c.getDuration('c')).toThrow(ConfigError)
+  })
+
+  it('S19.8: "5 ms" (lowercase) is accepted', () => {
+    const c = parse('a = "5 ms"')
+    expect(c.getDuration('a')).toBe(5)
+  })
+
+  it('S19.8: "5 seconds" (lowercase) is accepted', () => {
+    const c = parse('b = "5 seconds"')
+    expect(c.getDuration('b')).toBe(5000)
+  })
+})
+
+// S22.2 — intermediate non-object value hides earlier object across files/merges (HOCON spec L1406)
+// Probe (2026-05-13): c1({a:{x:1}}).withFallback(c2({a:42})).withFallback(c3({a:{y:2}}))
+// → {"a":{"x":1,"y":2}}. Expected per spec: {"a":{"x":1}}.
+// deepMergeHocon always merges objects regardless of intermediate non-object values.
+describe('S22.2 - intermediate non-object hides earlier object in merge (HOCON spec L1406)', () => {
+  it.fails('S22.2: non-object in middle of fallback chain prevents object merge (spec L1406)', () => {
+    // Spec example (L1410-1417):
+    //   first priority: { a: { x: 1 } }
+    //   fallback:       { a: 42 }       ← non-object "breaks" the chain
+    //   another fallback: { a: { y: 2 } }
+    // Pair (fallback, another-fallback): 42 vs {y:2} → 42 wins (non-obj beats obj)
+    // Pair (first, fallback-result=42): {x:1} vs 42 → {x:1} wins (obj over scalar, no merge)
+    // Result: { a: { x: 1 } }
+    const c1 = parse('a { x = 1 }')
+    const c2 = parse('a = 42')
+    const c3 = parse('a { y = 2 }')
+    // Currently produces {"a":{"x":1,"y":2}} — incorrectly merges all three.
+    expect(c1.withFallback(c2).withFallback(c3).toObject()).toEqual({ a: { x: 1 } })
+  })
+
+  it('S22.2: two adjacent objects do merge correctly', () => {
+    // Control: without a non-object interruption, two objects should merge.
+    const c1 = parse('a { x = 1 }')
+    const c2 = parse('a { y = 2 }')
+    expect(c1.withFallback(c2).toObject()).toEqual({ a: { x: 1, y: 2 } })
+  })
+
+  it('S22.2: non-object higher-priority wins over lower-priority object', () => {
+    // c1 wins (scalar 42 > object fallback) — this sub-rule already works
+    const c1 = parse('a = 42')
+    const c2 = parse('a { x = 1 }')
+    expect(c1.withFallback(c2).toObject()).toEqual({ a: 42 })
+  })
+})
+
+// S22.3 — setting key to null clears earlier object value (HOCON spec L1436)
+// Probe (2026-05-13): parse('a=null').withFallback(parse('a{x:1}')) → a=null ✅
+describe('S22.3 - null clears earlier object value in fallback (HOCON spec L1436)', () => {
+  it('S22.3: null in higher-priority config clears object in fallback', () => {
+    const c1 = parse('a = null')
+    const c2 = parse('a { x = 1 }')
+    // null (c1) has higher priority; it wins over the object in the fallback (c2).
+    expect(c1.withFallback(c2).get('a')).toBeNull()
+  })
+
+  it('S22.3: object in higher-priority config wins over null fallback', () => {
+    const c1 = parse('a { x = 1 }')
+    const c2 = parse('a = null')
+    // Object (c1) has higher priority; null fallback is just ignored.
+    expect(c1.withFallback(c2).toObject()).toEqual({ a: { x: 1 } })
+  })
+})
+
+// S26.2 — empty env var preserved as empty string (HOCON spec L1558)
+// Probe (2026-05-13): resolveStr('a = ${EMPTY_VAR}', { EMPTY_VAR: '' }) →
+// { kind: 'scalar', raw: '', valueType: 'string' } ✅
+describe('S26.2 - empty env var preserved as empty string (HOCON spec L1558)', () => {
+  it('S26.2: empty-string env var resolves to empty string, not undefined', () => {
+    const c = parse('a = ${EMPTY_VAR}', { env: { EMPTY_VAR: '' } })
+    expect(c.getString('a')).toBe('')
+  })
+
+  it('S26.2: empty-string env var does not cause required substitution error', () => {
+    // An empty string is a valid value — the field must exist after resolution.
+    const c = parse('a = ${EMPTY_VAR}', { env: { EMPTY_VAR: '' } })
+    expect(c.has('a')).toBe(true)
+  })
+})

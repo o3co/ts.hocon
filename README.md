@@ -206,12 +206,12 @@ Supported byte units: `B`, `KB`/`KiB`, `MB`/`MiB`, `GB`/`GiB`, `TB`/`TiB` (and l
 
 ## Spec Compliance
 
-Conformance against the [Lightbend HOCON specification](https://github.com/lightbend/config/blob/main/HOCON.md) is tracked at item granularity in [`docs/spec-compliance.md`](docs/spec-compliance.md). The table below is a snapshot as of 2026-05-12; see [`xx.hocon/docs/compliance-matrix.md`](https://github.com/o3co/xx.hocon/blob/main/docs/compliance-matrix.md) for live cross-impl values.
+Conformance against the [Lightbend HOCON specification](https://github.com/lightbend/config/blob/main/HOCON.md) is tracked at item granularity in [`docs/spec-compliance.md`](docs/spec-compliance.md). The table below is a snapshot as of 2026-05-13; see [`xx.hocon/docs/compliance-matrix.md`](https://github.com/o3co/xx.hocon/blob/main/docs/compliance-matrix.md) for live cross-impl values.
 
 | Metric                                | Status        |
 | ------------------------------------- | ------------- |
-| Spec total (incl. out-of-scope)       | **68.7%**     |
-| In-scope only                         | **76.3%**     |
+| Spec total (incl. out-of-scope)       | **74.2%**     |
+| In-scope only                         | **83.3%**     |
 | Lightbend `test01`–`test13` suite     | 13/13 passing |
 
 Not supported in v0.1.0:
