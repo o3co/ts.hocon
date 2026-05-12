@@ -560,26 +560,33 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
 ## S15. Numerically-indexed objects to arrays
 
 - **S15.1** `{"0":"a","1":"b"}` → `["a","b"]` when array context — §Conversion (L1191)
-  tests: —
-  status: 🤷
+  tests: tests/config.test.ts:440
+  status: ❌
+  `getList()` throws `ConfigError: expected array` instead of converting the numerically-indexed object. See issue #87.
 - **S15.2** Conversion is lazy (only on type-required access) — §Conversion (L1204)
-  tests: —
-  status: 🤷
+  tests: tests/config.test.ts:446
+  status: ✅
+  `get()` and `getConfig()` on a numeric-keyed object return the object unchanged (no eager conversion). Lazy coercion at `getList()` time is the failing half (tracked under S15.1/issue #87).
 - **S15.3** Conversion in concatenation when list expected — §Conversion (L1210)
-  tests: —
-  status: 🤷
+  tests: tests/config.test.ts:455
+  status: ❌
+  `getList()` on `foo.0 = "a"\nfoo.1 = "b"` (properties-style numeric-keyed object) throws instead of returning `["a","b"]`. See issue #87.
 - **S15.4** Empty object NOT converted — §Conversion (L1212)
-  tests: —
-  status: 🤷
+  tests: tests/config.test.ts:462
+  status: ✅
+  `getList()` on an empty object `{}` correctly throws `ConfigError` (empty object must not be converted).
 - **S15.5** Non-integer keys ignored during conversion — §Conversion (L1214)
-  tests: —
-  status: 🤷
+  tests: tests/config.test.ts:468
+  status: ❌
+  `getList()` throws before any conversion logic runs; the non-integer-key ignore rule cannot be exercised until S15.1 is fixed. See issue #87.
 - **S15.6** Missing indices compacted in resulting array — §Conversion (L1216)
-  tests: —
-  status: 🤷
+  tests: tests/config.test.ts:474
+  status: ❌
+  Same root cause as S15.1 — `getList()` does not perform object-to-array conversion at all. See issue #87.
 - **S15.7** Sorted by integer key value — §Conversion (L1216)
-  tests: —
-  status: 🤷
+  tests: tests/config.test.ts:480
+  status: ❌
+  Same root cause as S15.1. See issue #87.
 
 ## S16. MIME Type
 
@@ -603,17 +610,21 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
   tests: tests/config.test.ts:79; tests/coerce.test.ts:5
   status: ✅
 - **S17.5** `"null"` → null when null requested — §Automatic type conversions (L1244)
-  tests: —
-  status: 🤷
+  tests: tests/config.test.ts:490
+  status: ✅
+  ts.hocon correctly distinguishes quoted `"null"` (valueType `string`, `get()` returns JS string `"null"`) from unquoted `null` (valueType `null`, `get()` returns JS `null`). There is no `getNull()` API, but the spec notes "there's probably no reason an app would do this"; the observable behaviour matches the spec's intent.
 - **S17.6** null → other type: error — §Automatic type conversions (L1252)
-  tests: —
-  status: 🤷
+  tests: tests/config.test.ts:508
+  status: ⚠️
+  `getNumber()`, `getBoolean()`, and `getList()` on a null-typed value correctly throw `ConfigError`. However `getString()` on a null-typed value silently returns the raw string `"null"` instead of throwing — this sub-rule fails. See issue #88.
 - **S17.7** object → other type: error — §Automatic type conversions (L1254)
-  tests: —
-  status: 🤷
+  tests: tests/config.test.ts:532
+  status: ✅
+  `getString()`, `getNumber()`, `getBoolean()`, and `getList()` all throw `ConfigError` when the value is an object.
 - **S17.8** array → other (except numeric-indexed): error — §Automatic type conversions (L1255)
-  tests: —
-  status: 🤷
+  tests: tests/config.test.ts:555
+  status: ✅
+  `getString()`, `getNumber()`, `getBoolean()`, and `getConfig()` all throw `ConfigError` when the value is an array.
 
 ## S18. Units format
 
@@ -688,8 +699,9 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
   tests: tests/config.test.ts:323; tests/config.test.ts:333
   status: ✅
 - **S21.4** Single-letter abbreviations → powers of 2 (java -Xmx convention) — §Size in bytes format (L1385)
-  tests: —
-  status: 🤷
+  tests: tests/config.test.ts:410
+  status: ❌
+  `getBytes()` throws `invalid byte size` for `1K`, `1k`, `1M`, `1G`, `1T`, etc. The spec (L1374–L1390) lists K/k, M/m, G/g, T/t, P/p, E/e, Z/z, Y/y as aliases for the corresponding powers-of-two IEC units. See issue #89.
 - **S21.5** Fractional values supported (`0.5M`) — §Units format (L1281-1294) + §Size in bytes (L1335-1342)
   tests: tests/config.test.ts:384
   status: ✅
