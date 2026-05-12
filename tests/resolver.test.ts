@@ -802,11 +802,17 @@ describe('spec compliance Phase 3 — substitution & include (resolver-level)', 
 describe('S6.5 - "newline" means 0x000A (LF) only (HOCON spec L183)', () => {
   it('S6.5: CR alone (0x0D) does not act as a field separator', () => {
     // If CR were treated as newline, "x = 1\ry = 2" would produce two fields.
-    // Spec: newline = LF only, so CR is whitespace absorbed into the value.
+    // Spec: newline = LF only, so CR is whitespace absorbed into x's unquoted value
+    // and the entire `1\ry = 2` becomes a single string value (with CR normalized
+    // to a space per unquoted-string whitespace rules).
     const v = resolveStr('x = 1\ry = 2')
     const fields = obj(v)
     // Only one field 'x'; 'y' is not a separate top-level key.
     expect(fields.has('y')).toBe(false)
+    // And x's value is the absorbed-into-one-line string, proving CR was treated
+    // as whitespace rather than dropped or causing truncation. This guards against
+    // a false positive where 'y' could be absent for an unrelated reason.
+    expect(fields.get('x')).toEqual({ kind: 'scalar', raw: '1 y = 2', valueType: 'string' })
   })
 
   it('S6.5: LF (0x0A) acts as the field separator', () => {
