@@ -610,9 +610,9 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
   tests: tests/config.test.ts:79; tests/coerce.test.ts:5
   status: ✅
 - **S17.5** `"null"` → null when null requested — §Automatic type conversions (L1244)
-  tests: tests/config.test.ts:490
-  status: ✅
-  ts.hocon correctly distinguishes quoted `"null"` (valueType `string`, `get()` returns JS string `"null"`) from unquoted `null` (valueType `null`, `get()` returns JS `null`). There is no `getNull()` API, but the spec notes "there's probably no reason an app would do this"; the observable behaviour matches the spec's intent.
+  out-of-scope: spec L1244 describes conversion when **null type is explicitly requested** via a typed accessor. ts.hocon's API surface does not include a `getNull()` or null-requesting accessor — `get()` returns JS `null` naturally based on stored value type, with no conversion path from the string `"null"`. The spec clause is structurally inapplicable to ts.hocon's API model. Aligns with rs.hocon's identical determination (see [rs.hocon#81](https://github.com/o3co/rs.hocon/pull/81)).
+  tests: tests/config.test.ts:490 — kept as a sanity check that quoted `"null"` is stored as a string scalar and unquoted `null` is stored as the null scalar; no type-conversion is exercised.
+  status: ➖
 - **S17.6** null → other type: error — §Automatic type conversions (L1252)
   tests: tests/config.test.ts:508
   status: ⚠️
