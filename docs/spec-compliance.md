@@ -17,10 +17,15 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
 - **S1.1** Files must be valid UTF-8 — §Unchanged from JSON (L117)
   out-of-scope: The public `parse()` API accepts a JS `string`, which is already a decoded
   Unicode sequence — Node.js (and browsers) perform UTF-8 decoding at the I/O boundary before
-  the string reaches the parser. `parseFile()` uses `fs.readFileSync(path, 'utf-8')`, which
-  rejects invalid UTF-8 bytes at the OS/Node layer. The HOCON parser itself therefore cannot
-  observe raw byte sequences and has no mechanism to reject invalid UTF-8. UTF-8 validity is
-  structurally enforced at the I/O layer, not the parse layer, in all JS runtimes.
+  the string reaches the parser. `parseFile()` uses `fs.readFileSync(path, 'utf-8')`. Note
+  that Node's default UTF-8 decoder is **non-fatal**: invalid byte sequences are silently
+  replaced with U+FFFD (REPLACEMENT CHARACTER), not thrown. Strict rejection of invalid
+  UTF-8 would require a custom decoder (e.g. `TextDecoder` with `{fatal: true}`) at the I/O
+  layer. The HOCON parser itself cannot observe raw byte sequences and has no mechanism to
+  detect or reject invalid UTF-8 — what reaches the parser layer is always a valid JS string.
+  S1.1 is therefore structurally inapplicable to the parser layer in JS runtimes; honoring
+  it is the caller's responsibility (provide bytes pre-validated, or wrap I/O with a strict
+  decoder). xx.hocon conformance fixtures cannot test this case via the public API.
   tests: tests/config.test.ts (S1.1 describe block — sanity checks multi-byte chars accepted)
   status: ➖
 - **S1.2.1** Quoted strings accept valid JSON escape sequences (`\" \\ \/ \b \f \n \r \t`) — §Unchanged from JSON (L118)

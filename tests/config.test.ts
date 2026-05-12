@@ -598,9 +598,13 @@ describe('S17.8 - array to other type must error', () => {
 // S1.1 — files must be valid UTF-8 (HOCON spec L117)
 // The parse() API takes a JS string, which is already a decoded Unicode sequence
 // (Node.js decodes bytes to strings at the I/O boundary). The parser therefore
-// cannot observe raw byte sequences and has no mechanism to reject invalid UTF-8.
-// UTF-8 validation is the responsibility of the I/O layer (e.g. fs.readFileSync
-// with 'utf-8' encoding, which is what parseFile() uses). Status: ➖
+// cannot observe raw byte sequences and has no mechanism to detect or reject
+// invalid UTF-8. parseFile() uses fs.readFileSync(path, 'utf-8'), and Node's
+// default UTF-8 decoder is non-fatal: invalid byte sequences are silently
+// replaced with U+FFFD (REPLACEMENT CHARACTER), not thrown. Strict UTF-8
+// rejection would require a custom decoder (e.g. TextDecoder with
+// {fatal: true}) at the I/O layer. The parser layer cannot enforce S1.1 by
+// design — what reaches it is always a valid JS string. Status: ➖
 // Sanity check: multi-byte UTF-8 characters in values and keys parse correctly.
 describe('S1.1 - UTF-8 handling (HOCON spec L117)', () => {
   it('S1.1: multi-byte UTF-8 characters are accepted in string values', () => {
