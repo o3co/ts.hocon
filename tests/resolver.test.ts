@@ -706,7 +706,7 @@ describe('spec compliance Phase 2 — concatenation and += (resolver-level)', ()
   })
 })
 
-// Spec compliance Phase 3 (issue #85): substitution & include (resolver-level)
+// Spec compliance Phase 3 (tracking issue #70): substitution & include (resolver-level)
 // Convention: it.fails(...) pins known violations; plain it(...) for ✅ items.
 // -----------------------------------------------------------------------------
 
