@@ -1,10 +1,10 @@
 # HOCON Spec Compliance — ts.hocon
 
-This file extends the canonical item definitions in [`xx.hocon/docs/spec-checklist.md`](../../xx.hocon/docs/spec-checklist.md). It inherits all 209 items in the same order, adding `tests:` and `status:` fields for this implementation.
+This file extends the canonical item definitions in [`xx.hocon/docs/spec-checklist.md`](https://github.com/o3co/xx.hocon/blob/main/docs/spec-checklist.md). It inherits all 209 items in the same order, adding `tests:` and `status:` fields for this implementation.
 
 - **`tests:`** — path to the test or fixture exercising each item, or `—` when no test covers it (test debt).
 - **`status:`** — uses the glyphs defined in the template legend (✅ ⚠️ ❌ 🤷 ➖). Default is 🤷 (no test, unverified).
-- **Compliance rate** — computed as `(✅ + ⚠️·0.5) / total` (spec-total) and `(✅ + ⚠️·0.5) / (total − ➖)` (in-scope). See the template for the full convention. Current rollup (execution pass): ✅ 115 / ⚠️ 0 / ❌ 1 / 🤷 77 / ➖ 16 — spec-total 55.0% (115/209), in-scope 59.6% (115/193).
+- **Compliance rate** — computed as `(✅ + ⚠️·0.5) / total` (spec-total) and `(✅ + ⚠️·0.5) / (total − ➖)` (in-scope). See the [template](https://github.com/o3co/xx.hocon/blob/main/docs/spec-checklist.md) for the full convention and the [cross-impl matrix](https://github.com/o3co/xx.hocon/blob/main/docs/compliance-matrix.md) for the current ts.hocon rollup. The matrix is the source of truth for current counts; intra-file rollups would drift.
 - **Out-of-scope items** — inherited verbatim from the template; `status: ➖`.
 - **Pre-population source** — GitHub issues on [o3co/ts.hocon](https://github.com/o3co/ts.hocon) verified at time of writing; see individual items for links.
 
