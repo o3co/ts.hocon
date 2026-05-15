@@ -61,7 +61,7 @@
   },
   "license": "Apache-2.0",
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "homepage": "https://o3co.github.io/ts.hocon/",
   "bugs": "https://github.com/o3co/ts.hocon/issues",
