@@ -1,7 +1,7 @@
 import { DECIMAL_NUMBER_RE } from '../../coerce.js'
 import { ParseError } from '../../errors.js'
 import type { ScalarValueType } from '../../value.js'
-import type { Token } from '../lexer/token.js'
+import type { Token, TokenKind } from '../lexer/token.js'
 import type { AstNode, AstField, Pos } from './ast.js'
 
 const EOF_TOKEN: Token = { kind: 'eof', value: '', line: 0, col: 0, isQuoted: false, precedingSpace: false, subst: undefined }
@@ -56,7 +56,7 @@ class Parser {
     if (this.pos < this.tokens.length) this.pos++
     return t ?? EOF_TOKEN
   }
-  private skip(...kinds: string[]): void {
+  private skip(...kinds: TokenKind[]): void {
     while (kinds.includes(this.peek().kind)) this.advance()
   }
 
