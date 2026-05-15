@@ -341,19 +341,19 @@ describe('spec compliance Phase 1 — lexer-level', () => {
     expect(tokens.map(t => t.kind)).toEqual(['unquoted', 'unquoted'])
   })
 
-  it.fails('S6.4: vertical tab (0x0B) is whitespace', () => {
+  it('S6.4: vertical tab (0x0B) is whitespace', () => {
     const tokens = tokenize('a\x0Bb').filter(t => t.kind !== 'eof')
     expect(tokens.map(t => t.kind)).toEqual(['unquoted', 'unquoted'])
     expect(tokens[0].value).toBe('a')
   })
 
-  it.fails('S6.4: form feed (0x0C) is whitespace', () => {
+  it('S6.4: form feed (0x0C) is whitespace', () => {
     const tokens = tokenize('a\x0Cb').filter(t => t.kind !== 'eof')
     expect(tokens.map(t => t.kind)).toEqual(['unquoted', 'unquoted'])
     expect(tokens[0].value).toBe('a')
   })
 
-  it.fails('S6.4: file/group/record/unit separators (0x1C-0x1F) are whitespace', () => {
+  it('S6.4: file/group/record/unit separators (0x1C-0x1F) are whitespace', () => {
     for (const ch of ['\x1C', '\x1D', '\x1E', '\x1F']) {
       const tokens = tokenize(`a${ch}b`).filter(t => t.kind !== 'eof')
       expect(tokens.map(t => t.kind), `for char U+00${ch.charCodeAt(0).toString(16).toUpperCase()}`)
