@@ -283,14 +283,14 @@ describe('spec compliance Phase 1 — lexer-level', () => {
   // --- S6.1: Unicode Zs / Zl / Zp category characters are whitespace -------
   // Spec L170: lexer must treat any Unicode whitespace (Zs/Zl/Zp categories)
   // as separator. ts.hocon currently only handles ASCII space + tab + CR.
-  it.fails('S6.1: em space (U+2003, Zs) separates two unquoted tokens', () => {
+  it('S6.1: em space (U+2003, Zs) separates two unquoted tokens', () => {
     const tokens = tokenize('a b').filter(t => t.kind !== 'eof')
     expect(tokens.map(t => t.kind)).toEqual(['unquoted', 'unquoted'])
     expect(tokens[0].value).toBe('a')
     expect(tokens[1].value).toBe('b')
   })
 
-  it.fails('S6.1: line separator (U+2028, Zl) separates two unquoted tokens', () => {
+  it('S6.1: line separator (U+2028, Zl) separates two unquoted tokens', () => {
     const tokens = tokenize('a b').filter(t => t.kind !== 'eof')
     // Spec says U+2028 (Zl) is whitespace and should separate tokens.
     // Currently ts.hocon folds it into the unquoted run, producing a single
