@@ -371,6 +371,14 @@ describe('spec compliance Phase 1 — lexer-level', () => {
     }
   })
 
+  // Regression guard: LF must still emit a newline token after isHoconWhitespace
+  // predicate centralization. isHoconWhitespace returns true for 0x0A, so if the
+  // newline check runs AFTER the whitespace skip, LF would be silently consumed.
+  it('S6 LF still emits newline token (regression guard)', () => {
+    const tokens = tokenize('a\nb')
+    expect(tokens.some(t => t.kind === 'newline')).toBe(true)
+  })
+
   // --- S8.6: unquoted string cannot begin with 0-9 or - --------------------
   // Spec L270. Already-known violation tracked in docs/spec-compliance.md.
   // Tests go through full parse(), not just tokenize(), so a fix at either
