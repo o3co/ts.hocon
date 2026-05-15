@@ -1,6 +1,50 @@
 import { ParseError } from '../../errors.js'
 import type { Segment, SubstPayload, Token, TokenKind } from './token.js'
 
+/**
+ * Returns true if `ch` is a HOCON whitespace character per spec §Whitespace
+ * (HOCON.md L165-184). This is the canonical single-source predicate; all
+ * three lexer sites route through it.
+ *
+ * HOCON_WS = Java Character.isWhitespace set
+ *          ∪ { 0x00A0, 0x2007, 0x202F }   (NBSP variants Java excludes)
+ *          ∪ { 0xFEFF }                    (BOM)
+ *
+ * NOTE: 0x0A (LF) is included here but isHoconNewline takes priority in the
+ * main loop — the caller must check isHoconNewline BEFORE isHoconWhitespace.
+ * NOTE: Do NOT use regex /\s/ (misses 0x1C-0x1F) or stdlib unicode.IsSpace
+ * (includes NEL 0x0085 which HOCON does not list). Hardcode the set.
+ */
+function isHoconWhitespace(ch: string): boolean {
+  const cp = ch.codePointAt(0) ?? -1
+  // ASCII control whitespace: tab, LF, VT, FF, CR
+  if (cp === 0x09 || cp === 0x0A || cp === 0x0B || cp === 0x0C || cp === 0x0D) return true
+  // File/group/record/unit separators (0x1C-0x1F)
+  if (cp >= 0x1C && cp <= 0x1F) return true
+  // ASCII space, NBSP (0x00A0), BOM (0xFEFF) — fast path
+  if (cp === 0x20 || cp === 0xA0 || cp === 0xFEFF) return true
+  // Ogham space mark (Zs)
+  if (cp === 0x1680) return true
+  // En quad through hair space (Zs, 0x2000-0x200A)
+  if (cp >= 0x2000 && cp <= 0x200A) return true
+  // Line separator (Zl), paragraph separator (Zp), narrow no-break space (Zs),
+  // medium mathematical space (Zs)
+  if (cp === 0x2028 || cp === 0x2029 || cp === 0x202F || cp === 0x205F) return true
+  // Ideographic space (Zs)
+  if (cp === 0x3000) return true
+  return false
+}
+
+/**
+ * Returns true only for ASCII LF (0x0A), the sole HOCON newline character.
+ * Per HOCON.md L182-184: "newline refers only and specifically to ASCII
+ * newline 0x000A". Zl (0x2028) and Zp (0x2029) are whitespace, NOT newlines.
+ * Must be checked BEFORE isHoconWhitespace in the main lexer loop.
+ */
+function isHoconNewline(ch: string): boolean {
+  return ch === '\n'
+}
+
 const SINGLE_CHAR_TOKENS: Record<string, TokenKind> = {
   '{': 'lbrace',
   '}': 'rbrace',
@@ -26,18 +70,20 @@ class Lexer {
       const sl = this.line, sc = this.col
       const ch = this.peek()
 
-      // Whitespace (not newline)
-      if (ch === ' ' || ch === '\t' || ch === '\r') {
-        this.advance(); this.hadSpace = true; continue
-      }
-
-      // Newline
-      if (ch === '\n') {
+      // Newline — must be checked before isHoconWhitespace because
+      // isHoconWhitespace returns true for 0x0A (LF); if whitespace were
+      // checked first, LF would be silently consumed and no newline token emitted.
+      if (isHoconNewline(ch)) {
         this.advance()
         if (this.tokens[this.tokens.length - 1]?.kind !== 'newline') {
           this.push('newline', '\n', sl, sc)
         }
         continue
+      }
+
+      // Whitespace (not newline) — expanded to full HOCON_WS set per spec §Whitespace
+      if (isHoconWhitespace(ch)) {
+        this.advance(); this.hadSpace = true; continue
       }
 
       // Comments
@@ -295,12 +341,15 @@ class Lexer {
         curCol = 0
         lastDot = [startLine, dotCol]
         this.advance()
-      } else if (ch === ' ' || ch === '\t') {
-        // WS: buffer into pendingWs
+      } else if (isHoconNewline(ch)) {
+        // LF inside ${...} is an error: substitutions cannot span newlines
+        throw new ParseError('unterminated substitution', startLine, startCol)
+      } else if (isHoconWhitespace(ch)) {
+        // Non-newline HOCON whitespace (incl. NBSP, Zs/Zl/Zp, vtab, FS-US, BOM):
+        // buffer into pendingWs; col advances in this.advance() per §F.
+        // CR is whitespace, not newline — it is buffered here, not an error.
         pendingWs += ch
         this.advance()
-      } else if (ch === '\n' || ch === '\r') {
-        throw new ParseError('unterminated substitution', startLine, startCol)
       } else {
         throw new ParseError(`unexpected character in substitution path: ${JSON.stringify(ch)}`, startLine, this.col)
       }
@@ -328,19 +377,26 @@ export function tokenize(input: string): Token[] {
 
 /**
  * Returns true if `ch` is a valid unquoted character inside a `${...}` body.
- * Forbidden: whitespace, `"`, `\`, structural chars, operators, sigils.
+ * Forbidden: whitespace (full HOCON_WS set), `"`, `\`, structural chars,
+ * operators, sigils.
  */
 function isUnquotedSubstChar(ch: string): boolean {
-  return ch !== '' && !' \t\n\r"\\'
-    .includes(ch) && !'{}[]'.includes(ch) && !':=,+#`^?!@*&$.'.includes(ch)
+  if (ch === '' || isHoconWhitespace(ch)) return false
+  if ('"\\'.includes(ch)) return false
+  if ('{}[]'.includes(ch)) return false
+  if (':=,+#`^?!@*&$.'.includes(ch)) return false
+  return true
 }
 
 function isUnquotedStart(ch: string): boolean {
-  return ch !== '' && !'{}[],:=+#\n\r\t "$?!@*&^\\'.includes(ch)
+  if (ch === '' || isHoconWhitespace(ch)) return false
+  if ('{}[],:=+#"$?!@*&^\\'.includes(ch)) return false
+  return true
 }
 
 function isUnquotedContinue(ch: string, nextFn: () => string): boolean {
-  if (ch === '' || '{}[],:=\n\r\t #"$?!@*&^\\'.includes(ch) || ch === ' ') return false
+  if (ch === '' || isHoconWhitespace(ch)) return false
+  if ('{}[],:=#"$?!@*&^\\'.includes(ch)) return false
   if (ch === '+' && nextFn() === '=') return false
   if (ch === '/' && nextFn() === '/') return false
   return true
