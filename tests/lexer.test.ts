@@ -163,6 +163,16 @@ describe('tokenize', () => {
     expect(tokens[0].value).toBe('foo')
   })
 
+  it('S6.3 BOM mid-stream is whitespace', () => {
+    // Per spec \u00A7Whitespace, BOM (U+FEFF) is whitespace anywhere, not just at
+    // start-of-input. A BOM embedded between two unquoted tokens acts as a
+    // separator. Broadened from "strip at start only" by S6 fix (#72).
+    const tokens = tokenize('foo\uFEFFbar').filter(t => t.kind !== 'eof')
+    expect(tokens.map(t => t.kind)).toEqual(['unquoted', 'unquoted'])
+    expect(tokens[0].value).toBe('foo')
+    expect(tokens[1].value).toBe('bar')
+  })
+
   it('stops unquoted scan at $ for concat', () => {
     const tokens = tokenize('foo${bar}')
     expect(tokens[0].kind).toBe('unquoted')
