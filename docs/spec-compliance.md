@@ -118,16 +118,16 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
 ## S6. Whitespace
 
 - **S6.1** Unicode Zs/Zl/Zp category characters are whitespace — §Whitespace (L170)
-  tests: tests/lexer.test.ts:296; tests/lexer.test.ts:303
+  tests: tests/lexer.test.ts:336; tests/lexer.test.ts:343
   status: ✅ (fixed by PR fix/s6-whitespace-expansion, issue #72 resolved)
 - **S6.2** Non-breaking spaces (0x00A0, 0x2007, 0x202F) are whitespace — §Whitespace (L171)
-  tests: tests/lexer.test.ts:320; tests/lexer.test.ts:327; tests/lexer.test.ts:333
+  tests: tests/lexer.test.ts:360; tests/lexer.test.ts:367; tests/lexer.test.ts:373
   status: ✅ (fixed by PR fix/s6-whitespace-expansion, issue #72 resolved)
 - **S6.3** BOM (0xFEFF) treated as whitespace — §Whitespace (L173)
   tests: tests/lexer.test.ts:161; tests/lexer.test.ts:166; tests/lightbend/testdata/bom.conf (fixture)
   status: ✅ (broadened: BOM is now whitespace anywhere, not only at start-of-input; mid-stream test added)
 - **S6.4** ASCII control whitespace (tab, vtab, FF, CR, FS, GS, RS, US) — §Whitespace (L174)
-  tests: tests/lexer.test.ts:343; tests/lexer.test.ts:349; tests/lexer.test.ts:354; tests/lexer.test.ts:360; tests/lexer.test.ts:366
+  tests: tests/lexer.test.ts:383; tests/lexer.test.ts:389; tests/lexer.test.ts:394; tests/lexer.test.ts:400; tests/lexer.test.ts:406
   status: ✅ (fixed by PR fix/s6-whitespace-expansion, issue #72 resolved — all 8 chars now recognized)
   note — CR inside `${...}`: the S6 GREEN commit changed CR (0x0D) inside a substitution body from
   "unterminated substitution" error to "consumed as inter-segment whitespace". This is intentional per

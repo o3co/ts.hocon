@@ -4,7 +4,9 @@ import type { Segment, SubstPayload, Token, TokenKind } from './token.js'
 /**
  * Returns true if `ch` is a HOCON whitespace character per spec §Whitespace
  * (HOCON.md L165-184). This is the canonical single-source predicate; all
- * three lexer sites route through it.
+ * lexer call sites route through it: the main loop whitespace-skip, the
+ * substitution body inter-segment whitespace skip, `isUnquotedSubstChar`,
+ * `isUnquotedStart`, and `isUnquotedContinue`.
  *
  * HOCON_WS = Java Character.isWhitespace set
  *          ∪ { 0x00A0, 0x2007, 0x202F }   (NBSP variants Java excludes)

@@ -342,17 +342,9 @@ describe('spec compliance Phase 1 — lexer-level', () => {
 
   it('S6.1: line separator (U+2028, Zl) separates two unquoted tokens', () => {
     const tokens = tokenize('a b').filter(t => t.kind !== 'eof')
-    // Spec says U+2028 (Zl) is whitespace and should separate tokens.
-    // Currently ts.hocon folds it into the unquoted run, producing a single
-    // token "a<U+2028>b". When fixed via #72, expect the lexer to emit two
-    // unquoted tokens with values "a" and "b".
-    //
-    // NOTE on it.fails wrong-reason risk: a hypothetical fix that REJECTS
-    // U+2028 with a throw would also flip this test (it.fails counts a throw
-    // as "expected failure"). That fix would be spec-incorrect — see #72 for
-    // the spec-correct expectation. Reviewers of any #72 fix should verify
-    // the impl matches spec intent (whitespace) rather than just satisfying
-    // this pin.
+    // Spec L170: U+2028 (Zl, line separator) is Unicode whitespace and must
+    // separate tokens. Fixed by PR fix/s6-whitespace-expansion (#72): the
+    // lexer now recognises the full Zs/Zl/Zp Unicode whitespace set.
     expect(tokens.map(t => t.value)).toEqual(['a', 'b'])
   })
 
