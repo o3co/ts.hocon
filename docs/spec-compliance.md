@@ -118,17 +118,21 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
 ## S6. Whitespace
 
 - **S6.1** Unicode Zs/Zl/Zp category characters are whitespace — §Whitespace (L170)
-  tests: tests/lexer.test.ts:286; tests/lexer.test.ts:293
-  status: ❌ ([#72](https://github.com/o3co/ts.hocon/issues/72)) — lexer only recognizes ASCII space/tab/CR; Unicode whitespace categories leak into unquoted runs
+  tests: tests/lexer.test.ts:336; tests/lexer.test.ts:343
+  status: ✅ (fixed by PR fix/s6-whitespace-expansion, issue #72 resolved)
 - **S6.2** Non-breaking spaces (0x00A0, 0x2007, 0x202F) are whitespace — §Whitespace (L171)
-  tests: tests/lexer.test.ts:310; tests/lexer.test.ts:317; tests/lexer.test.ts:323
-  status: ❌ ([#72](https://github.com/o3co/ts.hocon/issues/72)) — NBSP / figure space / narrow NBSP are not recognized as whitespace
+  tests: tests/lexer.test.ts:360; tests/lexer.test.ts:367; tests/lexer.test.ts:373
+  status: ✅ (fixed by PR fix/s6-whitespace-expansion, issue #72 resolved)
 - **S6.3** BOM (0xFEFF) treated as whitespace — §Whitespace (L173)
-  tests: tests/lexer.test.ts:161; tests/lightbend/testdata/bom.conf (fixture)
-  status: ✅
+  tests: tests/lexer.test.ts:161; tests/lexer.test.ts:166; tests/lightbend/testdata/bom.conf (fixture)
+  status: ✅ (broadened: BOM is now whitespace anywhere, not only at start-of-input; mid-stream test added)
 - **S6.4** ASCII control whitespace (tab, vtab, FF, CR, FS, GS, RS, US) — §Whitespace (L174)
-  tests: tests/lexer.test.ts:333; tests/lexer.test.ts:339; tests/lexer.test.ts:344; tests/lexer.test.ts:350; tests/lexer.test.ts:356
-  status: ⚠️ ([#72](https://github.com/o3co/ts.hocon/issues/72)) — 2 of 8 sub-rules pass: tab (0x09) and CR (0x0D) are recognized; vtab (0x0B), FF (0x0C), FS–US (0x1C–0x1F) are not. The ⚠️ glyph contributes 0.5 to the rate per legend; the actual sub-rule coverage is 25%
+  tests: tests/lexer.test.ts:383; tests/lexer.test.ts:389; tests/lexer.test.ts:394; tests/lexer.test.ts:400; tests/lexer.test.ts:406
+  status: ✅ (fixed by PR fix/s6-whitespace-expansion, issue #72 resolved — all 8 chars now recognized)
+  note — CR inside `${...}`: the S6 GREEN commit changed CR (0x0D) inside a substitution body from
+  "unterminated substitution" error to "consumed as inter-segment whitespace". This is intentional per
+  spec §F (newline = LF only; CR is whitespace) and is 3-way-convergent across ts/rs/go.
+  Tests pinning this behavior: tests/lexer.test.ts:280 (NBSP), :287 (Zl), :294 (vtab), :301 (CR).
 - **S6.5** "newline" means specifically 0x000A (LF) — §Whitespace (L183)
   tests: tests/resolver.test.ts (S6.5 describe block)
   status: ✅

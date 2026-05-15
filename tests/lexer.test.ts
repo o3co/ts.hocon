@@ -163,6 +163,16 @@ describe('tokenize', () => {
     expect(tokens[0].value).toBe('foo')
   })
 
+  it('S6.3 BOM mid-stream is whitespace', () => {
+    // Per spec \u00A7Whitespace, BOM (U+FEFF) is whitespace anywhere, not just at
+    // start-of-input. A BOM embedded between two unquoted tokens acts as a
+    // separator. Broadened from "strip at start only" by S6 fix (#72).
+    const tokens = tokenize('foo\uFEFFbar').filter(t => t.kind !== 'eof')
+    expect(tokens.map(t => t.kind)).toEqual(['unquoted', 'unquoted'])
+    expect(tokens[0].value).toBe('foo')
+    expect(tokens[1].value).toBe('bar')
+  })
+
   it('stops unquoted scan at $ for concat', () => {
     const tokens = tokenize('foo${bar}')
     expect(tokens[0].kind).toBe('unquoted')
@@ -257,6 +267,46 @@ describe('Segment positions', () => {
   })
 })
 
+describe('Subst body whitespace (S6 inside subst)', () => {
+  // NBSP, Zl, vtab, and CR inside ${...} are treated as inter-segment
+  // whitespace: buffered as pendingWs, not rejected as forbidden chars.
+  // Each case produces a single segment with the whitespace absorbed into
+  // the text, mirroring ASCII-space behavior (${foo bar} => one segment).
+  //
+  // Per spec F: CR is whitespace, not a newline. It must NOT trigger
+  // "unterminated substitution" (only LF does). Intentional and
+  // 3-way-convergent across ts/rs/go.
+
+  it('NBSP (\u00A0) inside subst body is inter-segment whitespace', () => {
+    // ${foo<NBSP>bar}: NBSP buffered as pendingWs, merged into one segment
+    const segs = substSegments('${foo\u00A0bar}')
+    expect(segs).toHaveLength(1)
+    expect(segs[0]?.text).toBe('foo\u00A0bar')
+  })
+
+  it('Zl (\u2028) inside subst body is inter-segment whitespace', () => {
+    // ${foo<Zl>bar}: line separator buffered as pendingWs
+    const segs = substSegments('${foo\u2028bar}')
+    expect(segs).toHaveLength(1)
+    expect(segs[0]?.text).toBe('foo\u2028bar')
+  })
+
+  it('vtab (\u000B) inside subst body is inter-segment whitespace', () => {
+    // ${foo<VT>bar}: vertical tab buffered as pendingWs
+    const segs = substSegments('${foo\u000Bbar}')
+    expect(segs).toHaveLength(1)
+    expect(segs[0]?.text).toBe('foo\u000Bbar')
+  })
+
+  it('CR (\u000D) inside subst body is whitespace, not an error (spec F)', () => {
+    // ${foo<CR>bar}: CR is whitespace (only LF = newline per spec F);
+    // must NOT throw "unterminated substitution".
+    const segs = substSegments('${foo\u000Dbar}')
+    expect(segs).toHaveLength(1)
+    expect(segs[0]?.text).toBe('foo\u000Dbar')
+  })
+})
+
 // -----------------------------------------------------------------------------
 // Spec compliance Phase 1 (issue #70): lexer-level rules.
 //
@@ -283,44 +333,36 @@ describe('spec compliance Phase 1 — lexer-level', () => {
   // --- S6.1: Unicode Zs / Zl / Zp category characters are whitespace -------
   // Spec L170: lexer must treat any Unicode whitespace (Zs/Zl/Zp categories)
   // as separator. ts.hocon currently only handles ASCII space + tab + CR.
-  it.fails('S6.1: em space (U+2003, Zs) separates two unquoted tokens', () => {
+  it('S6.1: em space (U+2003, Zs) separates two unquoted tokens', () => {
     const tokens = tokenize('a b').filter(t => t.kind !== 'eof')
     expect(tokens.map(t => t.kind)).toEqual(['unquoted', 'unquoted'])
     expect(tokens[0].value).toBe('a')
     expect(tokens[1].value).toBe('b')
   })
 
-  it.fails('S6.1: line separator (U+2028, Zl) separates two unquoted tokens', () => {
+  it('S6.1: line separator (U+2028, Zl) separates two unquoted tokens', () => {
     const tokens = tokenize('a b').filter(t => t.kind !== 'eof')
-    // Spec says U+2028 (Zl) is whitespace and should separate tokens.
-    // Currently ts.hocon folds it into the unquoted run, producing a single
-    // token "a<U+2028>b". When fixed via #72, expect the lexer to emit two
-    // unquoted tokens with values "a" and "b".
-    //
-    // NOTE on it.fails wrong-reason risk: a hypothetical fix that REJECTS
-    // U+2028 with a throw would also flip this test (it.fails counts a throw
-    // as "expected failure"). That fix would be spec-incorrect — see #72 for
-    // the spec-correct expectation. Reviewers of any #72 fix should verify
-    // the impl matches spec intent (whitespace) rather than just satisfying
-    // this pin.
+    // Spec L170: U+2028 (Zl, line separator) is Unicode whitespace and must
+    // separate tokens. Fixed by PR fix/s6-whitespace-expansion (#72): the
+    // lexer now recognises the full Zs/Zl/Zp Unicode whitespace set.
     expect(tokens.map(t => t.value)).toEqual(['a', 'b'])
   })
 
   // --- S6.2: non-breaking spaces are whitespace ----------------------------
-  it.fails('S6.2: NBSP (U+00A0) separates tokens', () => {
+  it('S6.2: NBSP (U+00A0) separates tokens', () => {
     const tokens = tokenize('a b').filter(t => t.kind !== 'eof')
     expect(tokens.map(t => t.kind)).toEqual(['unquoted', 'unquoted'])
     expect(tokens[0].value).toBe('a')
     expect(tokens[1].value).toBe('b')
   })
 
-  it.fails('S6.2: figure space (U+2007) separates tokens', () => {
+  it('S6.2: figure space (U+2007) separates tokens', () => {
     const tokens = tokenize('a b').filter(t => t.kind !== 'eof')
     expect(tokens.map(t => t.kind)).toEqual(['unquoted', 'unquoted'])
     expect(tokens[0].value).toBe('a')
   })
 
-  it.fails('S6.2: narrow no-break space (U+202F) separates tokens', () => {
+  it('S6.2: narrow no-break space (U+202F) separates tokens', () => {
     const tokens = tokenize('a b').filter(t => t.kind !== 'eof')
     expect(tokens.map(t => t.kind)).toEqual(['unquoted', 'unquoted'])
     expect(tokens[0].value).toBe('a')
@@ -341,24 +383,32 @@ describe('spec compliance Phase 1 — lexer-level', () => {
     expect(tokens.map(t => t.kind)).toEqual(['unquoted', 'unquoted'])
   })
 
-  it.fails('S6.4: vertical tab (0x0B) is whitespace', () => {
+  it('S6.4: vertical tab (0x0B) is whitespace', () => {
     const tokens = tokenize('a\x0Bb').filter(t => t.kind !== 'eof')
     expect(tokens.map(t => t.kind)).toEqual(['unquoted', 'unquoted'])
     expect(tokens[0].value).toBe('a')
   })
 
-  it.fails('S6.4: form feed (0x0C) is whitespace', () => {
+  it('S6.4: form feed (0x0C) is whitespace', () => {
     const tokens = tokenize('a\x0Cb').filter(t => t.kind !== 'eof')
     expect(tokens.map(t => t.kind)).toEqual(['unquoted', 'unquoted'])
     expect(tokens[0].value).toBe('a')
   })
 
-  it.fails('S6.4: file/group/record/unit separators (0x1C-0x1F) are whitespace', () => {
+  it('S6.4: file/group/record/unit separators (0x1C-0x1F) are whitespace', () => {
     for (const ch of ['\x1C', '\x1D', '\x1E', '\x1F']) {
       const tokens = tokenize(`a${ch}b`).filter(t => t.kind !== 'eof')
       expect(tokens.map(t => t.kind), `for char U+00${ch.charCodeAt(0).toString(16).toUpperCase()}`)
         .toEqual(['unquoted', 'unquoted'])
     }
+  })
+
+  // Regression guard: LF must still emit a newline token after isHoconWhitespace
+  // predicate centralization. isHoconWhitespace returns true for 0x0A, so if the
+  // newline check runs AFTER the whitespace skip, LF would be silently consumed.
+  it('S6 LF still emits newline token (regression guard)', () => {
+    const tokens = tokenize('a\nb')
+    expect(tokens.some(t => t.kind === 'newline')).toBe(true)
   })
 
   // --- S8.6: unquoted string cannot begin with 0-9 or - --------------------
