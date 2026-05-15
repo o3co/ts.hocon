@@ -307,20 +307,20 @@ describe('spec compliance Phase 1 — lexer-level', () => {
   })
 
   // --- S6.2: non-breaking spaces are whitespace ----------------------------
-  it.fails('S6.2: NBSP (U+00A0) separates tokens', () => {
+  it('S6.2: NBSP (U+00A0) separates tokens', () => {
     const tokens = tokenize('a b').filter(t => t.kind !== 'eof')
     expect(tokens.map(t => t.kind)).toEqual(['unquoted', 'unquoted'])
     expect(tokens[0].value).toBe('a')
     expect(tokens[1].value).toBe('b')
   })
 
-  it.fails('S6.2: figure space (U+2007) separates tokens', () => {
+  it('S6.2: figure space (U+2007) separates tokens', () => {
     const tokens = tokenize('a b').filter(t => t.kind !== 'eof')
     expect(tokens.map(t => t.kind)).toEqual(['unquoted', 'unquoted'])
     expect(tokens[0].value).toBe('a')
   })
 
-  it.fails('S6.2: narrow no-break space (U+202F) separates tokens', () => {
+  it('S6.2: narrow no-break space (U+202F) separates tokens', () => {
     const tokens = tokenize('a b').filter(t => t.kind !== 'eof')
     expect(tokens.map(t => t.kind)).toEqual(['unquoted', 'unquoted'])
     expect(tokens[0].value).toBe('a')
