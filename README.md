@@ -26,7 +26,7 @@ A [Lightbend HOCON](https://github.com/lightbend/config/blob/main/HOCON.md) pars
 npm install @o3co/ts.hocon
 ```
 
-Requires Node.js 20+.
+Requires Node.js 22+.
 
 ### 2. Use
 
