@@ -267,6 +267,46 @@ describe('Segment positions', () => {
   })
 })
 
+describe('Subst body whitespace (S6 inside subst)', () => {
+  // NBSP, Zl, vtab, and CR inside ${...} are treated as inter-segment
+  // whitespace: buffered as pendingWs, not rejected as forbidden chars.
+  // Each case produces a single segment with the whitespace absorbed into
+  // the text, mirroring ASCII-space behavior (${foo bar} => one segment).
+  //
+  // Per spec F: CR is whitespace, not a newline. It must NOT trigger
+  // "unterminated substitution" (only LF does). Intentional and
+  // 3-way-convergent across ts/rs/go.
+
+  it('NBSP (\u00A0) inside subst body is inter-segment whitespace', () => {
+    // ${foo<NBSP>bar}: NBSP buffered as pendingWs, merged into one segment
+    const segs = substSegments('${foo\u00A0bar}')
+    expect(segs).toHaveLength(1)
+    expect(segs[0]?.text).toBe('foo\u00A0bar')
+  })
+
+  it('Zl (\u2028) inside subst body is inter-segment whitespace', () => {
+    // ${foo<Zl>bar}: line separator buffered as pendingWs
+    const segs = substSegments('${foo\u2028bar}')
+    expect(segs).toHaveLength(1)
+    expect(segs[0]?.text).toBe('foo\u2028bar')
+  })
+
+  it('vtab (\u000B) inside subst body is inter-segment whitespace', () => {
+    // ${foo<VT>bar}: vertical tab buffered as pendingWs
+    const segs = substSegments('${foo\u000Bbar}')
+    expect(segs).toHaveLength(1)
+    expect(segs[0]?.text).toBe('foo\u000Bbar')
+  })
+
+  it('CR (\u000D) inside subst body is whitespace, not an error (spec F)', () => {
+    // ${foo<CR>bar}: CR is whitespace (only LF = newline per spec F);
+    // must NOT throw "unterminated substitution".
+    const segs = substSegments('${foo\u000Dbar}')
+    expect(segs).toHaveLength(1)
+    expect(segs[0]?.text).toBe('foo\u000Dbar')
+  })
+})
+
 // -----------------------------------------------------------------------------
 // Spec compliance Phase 1 (issue #70): lexer-level rules.
 //
