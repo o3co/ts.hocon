@@ -129,6 +129,10 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
 - **S6.4** ASCII control whitespace (tab, vtab, FF, CR, FS, GS, RS, US) — §Whitespace (L174)
   tests: tests/lexer.test.ts:343; tests/lexer.test.ts:349; tests/lexer.test.ts:354; tests/lexer.test.ts:360; tests/lexer.test.ts:366
   status: ✅ (fixed by PR fix/s6-whitespace-expansion, issue #72 resolved — all 8 chars now recognized)
+  note — CR inside `${...}`: the S6 GREEN commit changed CR (0x0D) inside a substitution body from
+  "unterminated substitution" error to "consumed as inter-segment whitespace". This is intentional per
+  spec §F (newline = LF only; CR is whitespace) and is 3-way-convergent across ts/rs/go.
+  Tests pinning this behavior: tests/lexer.test.ts:280 (NBSP), :287 (Zl), :294 (vtab), :301 (CR).
 - **S6.5** "newline" means specifically 0x000A (LF) — §Whitespace (L183)
   tests: tests/resolver.test.ts (S6.5 describe block)
   status: ✅
