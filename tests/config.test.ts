@@ -437,64 +437,45 @@ describe('getBytes', () => {
 // Issue #87: getList() does not perform object-to-array conversion
 describe('S15 - numerically-indexed object to array', () => {
   // S15.1: basic conversion when array type is requested
-  it.fails('S15.1: getList() converts {"0":"a","1":"b"} to ["a","b"]', () => {
+  it('S15.1: getList() converts {"0":"a","1":"b"} to ["a","b"]', () => {
     const c = parse('items = {"0":"a","1":"b"}')
     expect(c.getList('items')).toEqual(['a', 'b'])
   })
 
-  // S15.2: conversion is lazy — object is still accessible as object before type-coercion.
-  // Trivially passes today because no conversion exists; once #87 lands, this must
-  // continue passing to confirm the implementation is genuinely lazy (does not eagerly
-  // convert during parse). Re-validate after #87.
+  // S15.2: conversion is lazy — object is still accessible as object via untyped/object accessors.
+  // Explicit guard that get/getConfig do NOT trigger conversion.
   it('S15.2: get() and getConfig() on numeric-keyed object return object (lazy, not eager)', () => {
     const c = parse('items = {"0":"a","1":"b"}')
-    // As a plain get(), it returns the object (no eager conversion)
     expect(c.get('items')).toEqual({ '0': 'a', '1': 'b' })
-    // getConfig() also works — object not auto-converted
     expect(c.getConfig('items').getString('0')).toBe('a')
   })
 
   // S15.3: conversion in concatenation when list expected (spec L1210).
-  // Probe (2026-05-13) shows `arr = [a] ${obj}` parses to a 3-element array
-  // ["a", " ", {"0":"x","1":"y"}] — whitespace artefact + un-converted object.
-  // Spec requires conversion + flatten to ["a","x","y"]. Pin asserts the un-converted
-  // last element so a future #87 fix flips it; .fails version asserts the spec shape.
-  it('S15.3: [a] ${obj} concat currently includes un-converted object as last element', () => {
-    const c = parse('obj = {"0":"x","1":"y"}\narr = [a] ${obj}')
-    const items = c.getList('arr') as unknown[]
-    expect(items.length).toBe(3)
-    // Last element is the un-converted object, not the flattened "x"/"y" strings.
-    expect(typeof items[items.length - 1]).toBe('object')
-    expect(items[items.length - 1]).not.toBeNull()
-  })
-
-  it.fails('S15.3: [a] ${obj} should produce ["a","x","y"] after conversion+flatten (spec L1210, see #87)', () => {
+  it('S15.3: [a] ${obj} produces ["a","x","y"] after conversion+flatten', () => {
     const c = parse('obj = {"0":"x","1":"y"}\narr = [a] ${obj}')
     expect(c.getList('arr')).toEqual(['a', 'x', 'y'])
   })
 
-  // S15.4: empty object must NOT be converted. Trivially passes today because no
-  // conversion exists at all; once #87 lands, this must continue passing to confirm
-  // the implementation has an explicit empty-object guard. Re-validate after #87.
-  it('S15.4: getList() on empty object still throws (empty object not converted)', () => {
+  // S15.4: empty object must NOT be converted. Explicit empty-object guard.
+  it('S15.4: getList() on empty object throws (empty object not converted)', () => {
     const c = parse('items = {}')
     expect(() => c.getList('items')).toThrow(ConfigError)
   })
 
   // S15.5: non-integer keys ignored during conversion
-  it.fails('S15.5: getList() ignores non-integer keys when converting {"0":"a","foo":"b","1":"c"}', () => {
+  it('S15.5: getList() ignores non-integer keys when converting {"0":"a","foo":"b","1":"c"}', () => {
     const c = parse('items = {"0":"a","foo":"b","1":"c"}')
     expect(c.getList('items')).toEqual(['a', 'c'])
   })
 
   // S15.6: missing indices compacted
-  it.fails('S15.6: getList() on {"0":"a","2":"c"} compacts missing index → ["a","c"]', () => {
+  it('S15.6: getList() on {"0":"a","2":"c"} compacts missing index → ["a","c"]', () => {
     const c = parse('items = {"0":"a","2":"c"}')
     expect(c.getList('items')).toEqual(['a', 'c'])
   })
 
   // S15.7: sorted by integer key value
-  it.fails('S15.7: getList() on {"1":"b","0":"a"} produces ["a","b"] (sorted by key int)', () => {
+  it('S15.7: getList() on {"1":"b","0":"a"} produces ["a","b"] (sorted by key int)', () => {
     const c = parse('items = {"1":"b","0":"a"}')
     expect(c.getList('items')).toEqual(['a', 'b'])
   })

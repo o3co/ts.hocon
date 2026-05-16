@@ -1,4 +1,5 @@
 import { ResolveError } from '../../errors.js'
+import { numericObjectToArray } from '../../value/numeric-array.js'
 import type { HoconValue } from '../../value.js'
 import type { Segment } from '../lexer/token.js'
 import {
@@ -271,12 +272,26 @@ export class SubstitutionResolver {
       return { kind: 'object', fields: merged }
     }
 
-    // Array concatenation: if any element is an array, treat all as array elements
-    if (resolved.some((v) => v.kind === 'array')) {
+    // Array concatenation: if any non-separator element is an array, treat all as array elements.
+    // Filter parser-inserted separator whitespace first (same rule as object concat above).
+    const nonSepForArray = resolved.filter((v) => !separatorValues.has(v))
+    if (nonSepForArray.some((v) => v.kind === 'array')) {
       const items: HoconValue[] = []
-      for (const v of resolved) {
-        if (v.kind === 'array') items.push(...v.items)
-        else items.push(v)
+      for (const v of nonSepForArray) {
+        if (v.kind === 'array') {
+          items.push(...v.items)
+        } else if (v.kind === 'object') {
+          // S15: attempt numeric-object-to-array conversion when mixing objects into array concat.
+          const converted = numericObjectToArray(v)
+          if (converted !== null) {
+            items.push(...converted)
+          } else {
+            // No eligible keys — push the object as-is (silent S10.4 mix, out of scope).
+            items.push(v)
+          }
+        } else {
+          items.push(v)
+        }
       }
       return { kind: 'array', items }
     }
