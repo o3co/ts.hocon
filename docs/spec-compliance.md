@@ -356,7 +356,7 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
   tests: tests/resolver.test.ts:737
   status: ✅
 - **S13.14** Optional undefined in obj/array concat → empty obj/array — §Substitutions (L637)
-  tests: tests/resolver.test.ts:745 (array variant); tests/resolver.test.ts:756 (object variant)
+  tests: tests/resolver.test.ts:753 (array variant); tests/resolver.test.ts:764 (object variant)
   status: ✅ — fixed alongside S15 concat work; missing optional substitution no longer leaves a whitespace artefact in the array result.
 - **S13.15** `foo : ${?bar}${?baz}` skipped only when BOTH undefined — §Substitutions (L640)
   tests: tests/resolver.test.ts:274
@@ -596,27 +596,27 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
   status: ✅
   `getList()` invokes `numericObjectToArray` (`src/value/numeric-array.ts`) before the type check, converting numeric-keyed objects to arrays per spec.
 - **S15.2** Conversion is lazy (only on type-required access) — §Conversion (L1204)
-  tests: tests/config.test.ts:449; tests/s15-numeric-obj-array.test.ts (xx.hocon na02 fixture)
+  tests: tests/config.test.ts:447; tests/s15-numeric-obj-array.test.ts (xx.hocon na02 fixture)
   status: ✅
   `get()`/`getConfig()` do not invoke `numericObjectToArray`; only list-typed accessors trigger conversion. Explicit guard, not incidental.
 - **S15.3** Conversion in concatenation when list expected — §Conversion (L1210)
-  tests: tests/config.test.ts:455 (Phase 4 spec form, now passing); tests/s15-numeric-obj-array.test.ts (xx.hocon na03a/b/c/d fixtures including the NORMATIVE multi-piece left-to-right concat)
+  tests: tests/config.test.ts:454 (Phase 4 spec form, now passing); tests/s15-numeric-obj-array.test.ts (xx.hocon na03a/b/c/d/e fixtures including the NORMATIVE multi-piece left-to-right pairwise fold)
   status: ✅
-  Resolver array-concat branch in `src/internal/resolver/substitution-resolver.ts:resolveConcat` filters separator whitespace (matching object-concat behavior) and invokes `numericObjectToArray` on object elements, spreading the resulting items.
+  Resolver array-concat branch in `src/internal/resolver/substitution-resolver.ts:resolveConcat` uses a true pairwise left-to-right fold (per spec §"Multi-piece concat") — adjacent Objects are merged first via S10.3, then `numericObjectToArray` is invoked when the partner is an Array. Verified by `na03e-multi-piece-overlap.conf` (overlapping numeric keys).
 - **S15.4** Empty object NOT converted — §Conversion (L1212)
-  tests: tests/config.test.ts:461; tests/s15-numeric-obj-array.test.ts (xx.hocon na04 fixture)
+  tests: tests/config.test.ts:460; tests/s15-numeric-obj-array.test.ts (xx.hocon na04 fixture)
   status: ✅
   `numericObjectToArray` returns `null` on empty objects; `getList` then throws `ConfigError`. Explicit empty-guard, not incidental.
 - **S15.5** Non-integer keys ignored during conversion — §Conversion (L1214)
-  tests: tests/config.test.ts:467; tests/s15-numeric-obj-array.test.ts (xx.hocon na05 fixture)
+  tests: tests/config.test.ts:466; tests/s15-numeric-obj-array.test.ts (xx.hocon na05 fixture)
   status: ✅
   Pre-filter regex `^(0|[1-9][0-9]*)$` in `numericObjectToArray` rejects non-integer keys before parsing.
 - **S15.6** Missing indices compacted in resulting array — §Conversion (L1216)
-  tests: tests/config.test.ts:473; tests/s15-numeric-obj-array.test.ts (xx.hocon na06 fixture)
+  tests: tests/config.test.ts:472; tests/s15-numeric-obj-array.test.ts (xx.hocon na06 fixture)
   status: ✅
   After eligibility filtering and integer parsing, entries are sorted by integer ascending and projected to a value array — gaps eliminated.
 - **S15.7** Sorted by integer key value — §Conversion (L1216)
-  tests: tests/config.test.ts:479; tests/s15-numeric-obj-array.test.ts (xx.hocon na07 fixture)
+  tests: tests/config.test.ts:478; tests/s15-numeric-obj-array.test.ts (xx.hocon na07 fixture)
   status: ✅
   Same sort step as S15.6.
 

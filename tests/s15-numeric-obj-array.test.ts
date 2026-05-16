@@ -34,6 +34,7 @@ describe('S15 — numeric-obj-array parse-tree conformance', () => {
     'na03b-concat-right-list',
     'na03c-concat-two-objs',
     'na03d-concat-multi-piece',
+    'na03e-multi-piece-overlap',
     'na04-empty',
     'na05-non-int-keys',
     'na06-gaps',
@@ -172,5 +173,15 @@ describe('S15 — concat-side conversion (resolver pairwise join)', () => {
   it('na03d: ${obj1} ${obj2} [a] (multi-piece, left-to-right) produces ["x","y","z","w","a"]', () => {
     const c = loadFixture('na03d-concat-multi-piece.conf')
     expect(c.getList('arr')).toEqual(['x', 'y', 'z', 'w', 'a'])
+  })
+
+  // na03e: NORMATIVE overlapping keys — distinguishes pairwise fold from single-pass loop.
+  // obj1={"0":"x","1":"y"}, obj2={"0":"z"}
+  // join(obj1, obj2) → object-merge → {"0":"z","1":"y"} (later "0" wins)
+  // join(merged, [a]) → numericObjectToArray → ["z","y","a"]
+  // Single-pass loop (wrong) would produce ["x","y","z","a"].
+  it('na03e: ${obj1} ${obj2} [a] with overlapping keys produces ["z","y","a"] (pairwise fold)', () => {
+    const c = loadFixture('na03e-multi-piece-overlap.conf')
+    expect(c.getList('arr')).toEqual(['z', 'y', 'a'])
   })
 })
