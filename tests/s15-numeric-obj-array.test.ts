@@ -10,10 +10,11 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { parse } from '../src/index.js'
 import { ConfigError } from '../src/errors.js'
 
-const confDir = new URL('./lightbend/testdata/numeric-obj-array', import.meta.url).pathname
+const confDir = fileURLToPath(new URL('./lightbend/testdata/numeric-obj-array', import.meta.url))
 
 function loadFixture(name: string): ReturnType<typeof parse> {
   const content = readFileSync(join(confDir, name), 'utf-8')
@@ -25,7 +26,7 @@ function loadFixture(name: string): ReturnType<typeof parse> {
 // the correct resolved tree, identical between Lightbend and o3co).
 // ---------------------------------------------------------------------------
 describe('S15 — numeric-obj-array parse-tree conformance', () => {
-  const expectedDir = new URL('./lightbend/testdata/expected/numeric-obj-array', import.meta.url).pathname
+  const expectedDir = fileURLToPath(new URL('./lightbend/testdata/expected/numeric-obj-array', import.meta.url))
 
   const fixtures = [
     'na01-basic',

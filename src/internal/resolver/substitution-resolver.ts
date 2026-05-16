@@ -255,7 +255,15 @@ export class SubstitutionResolver {
     // NOT user-authored values like '' or ' ' which should prevent object merging.
     const nonSep = resolved.filter((v) => !separatorValues.has(v))
 
-    if (nonSep.length === 0) return resolved[0] as HoconValue
+    if (nonSep.length === 0) {
+      // All resolved values are parser-inserted separators (e.g. concat collapsed to
+      // whitespace tokens after optional substitutions resolved away). Concatenate the
+      // raw scalars rather than dropping all but the first separator value.
+      const str = resolved
+        .map((v) => (v.kind === 'scalar' ? v.raw : JSON.stringify(v)))
+        .join('')
+      return { kind: 'scalar', raw: str, valueType: 'string' }
+    }
 
     // True left-to-right pairwise fold per spec §"Multi-piece concat is left-to-right pairwise
     // (NORMATIVE)". This matches Lightbend ConfigConcatenation.consolidate semantics.
@@ -296,7 +304,18 @@ export class SubstitutionResolver {
       if (left.kind === 'array' && right.kind === 'array') {
         return { kind: 'array', items: [...left.items, ...right.items] }
       }
-      // String concat (scalars, or mixed scalar/other)
+      // Array + non-array (scalar/other) — preserve prior "array context wins" behavior:
+      // push the non-array element into the array. S10.13 (array+scalar → error) is a
+      // separate cluster (Phase 6 #?) and is out of scope here.
+      if (left.kind === 'array') {
+        return { kind: 'array', items: [...left.items, right] }
+      }
+      if (right.kind === 'array') {
+        return { kind: 'array', items: [left, ...right.items] }
+      }
+      // String concat (scalars, or scalar+object — the obj+scalar case keeps prior
+      // string-concat behavior since prior code reached string-concat too when no array
+      // was present).
       const leftStr = left.kind === 'scalar' ? left.raw : JSON.stringify(left)
       const rightStr = right.kind === 'scalar' ? right.raw : JSON.stringify(right)
       return { kind: 'scalar', raw: leftStr + rightStr, valueType: 'string' }

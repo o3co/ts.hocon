@@ -602,7 +602,7 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
 - **S15.3** Conversion in concatenation when list expected — §Conversion (L1210)
   tests: tests/config.test.ts:454 (Phase 4 spec form, now passing); tests/s15-numeric-obj-array.test.ts (xx.hocon na03a/b/c/d/e fixtures including the NORMATIVE multi-piece left-to-right pairwise fold)
   status: ✅
-  Resolver array-concat branch in `src/internal/resolver/substitution-resolver.ts:resolveConcat` uses a true pairwise left-to-right fold (per spec §"Multi-piece concat") — adjacent Objects are merged first via S10.3, then `numericObjectToArray` is invoked when the partner is an Array. Verified by `na03e-multi-piece-overlap.conf` (overlapping numeric keys).
+  `src/internal/resolver/substitution-resolver.ts:resolveConcat` performs a true left-to-right pairwise fold (per spec §"Multi-piece concat") over non-separator resolved values — adjacent Objects are merged first via S10.3, then `numericObjectToArray` is invoked when the partner is an Array. Verified by `na03e-multi-piece-overlap.conf` (overlapping numeric keys). Note: the function no longer has a distinct "array-concat branch"; all type-pair dispatch happens inside the fold's `joinPair` helper.
 - **S15.4** Empty object NOT converted — §Conversion (L1212)
   tests: tests/config.test.ts:460; tests/s15-numeric-obj-array.test.ts (xx.hocon na04 fixture)
   status: ✅
