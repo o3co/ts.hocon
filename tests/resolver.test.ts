@@ -648,9 +648,9 @@ describe('spec compliance Phase 2 — concatenation and += (resolver-level)', ()
 
   // --- S10.14: whitespace around obj/array substitutions is ignored --------
   // Note: s() builds "${name}" without a literal ${ in source to avoid linter warnings.
-  // PARTIAL VIOLATION: whitespace stripping works for object substs but not array substs;
-  // the whitespace separator scalar is included as an extra array element.
-  it.fails('S10.14: unquoted whitespace between two array substitutions is ignored (spec L440)', () => {
+  // Fixed alongside S15 concat work: resolveConcat now filters parser-inserted separator
+  // whitespace from the array-concat path (matching the existing object-concat filter).
+  it('S10.14: unquoted whitespace between two array substitutions is ignored (spec L440)', () => {
     // subst(a) subst(b) where both resolve to arrays → array concat, whitespace stripped
     const s = (name: string) => '$' + '{' + name + '}'
     const input = 'a=[1]\nb=[2]\nx = ' + s('a') + ' ' + s('b')
@@ -748,8 +748,9 @@ describe('spec compliance Phase 3 — substitution & include (resolver-level)', 
   })
 
   // --- S13.14: optional undefined in array concat → no extra elements --------
-  // VIOLATION: whitespace scalars between the arrays leak into the result as extra elements.
-  it.fails('S13.14: optional missing subst in array concat produces clean 2-element array (spec L637, see #83)', () => {
+  // Fixed alongside S15 concat work: array-concat now filters separator whitespace, so the
+  // missing optional substitution no longer leaves a whitespace artefact in the result.
+  it('S13.14: optional missing subst in array concat produces clean 2-element array (spec L637, see #83)', () => {
     const r = resolveStr('x = [1] ${?missing} [2]')
     const x = obj(r).get('x')
     expect(x?.kind).toBe('array')

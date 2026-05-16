@@ -1,4 +1,5 @@
 import { ResolveError } from '../../errors.js'
+import { numericObjectToArray } from '../../value/numeric-array.js'
 import type { HoconValue } from '../../value.js'
 import type { Segment } from '../lexer/token.js'
 import {
@@ -248,44 +249,95 @@ export class SubstitutionResolver {
       .filter((v): v is HoconValue => v !== undefined)
 
     if (resolved.length === 0) return { kind: 'scalar', raw: 'null', valueType: 'null' }
-    if (resolved.length === 1) return resolved[0]!
+    if (resolved.length === 1) return resolved[0] as HoconValue
 
-    // Object concatenation: if all non-separator elements are objects, deep-merge them.
-    // Only filter parser-inserted separator whitespace (tracked via separatorValues WeakSet),
+    // Filter parser-inserted separator whitespace (tracked via separatorValues WeakSet),
     // NOT user-authored values like '' or ' ' which should prevent object merging.
     const nonSep = resolved.filter((v) => !separatorValues.has(v))
-    if (nonSep.length > 0 && nonSep.every((v) => v.kind === 'object')) {
-      const merged = new Map<string, HoconValue>()
-      for (const v of nonSep) {
-        if (v.kind === 'object') {
-          for (const [k, val] of v.fields) {
-            const existing = merged.get(k)
-            if (existing?.kind === 'object' && val.kind === 'object') {
-              merged.set(k, deepMergeHoconValues(existing, val))
-            } else {
-              merged.set(k, val)
-            }
-          }
+
+    if (nonSep.length === 0) {
+      // All resolved values are parser-inserted separators (e.g. concat collapsed to
+      // whitespace tokens after optional substitutions resolved away). Concatenate the
+      // raw scalars rather than dropping all but the first separator value.
+      const str = resolved
+        .map((v) => (v.kind === 'scalar' ? v.raw : JSON.stringify(v)))
+        .join('')
+      return { kind: 'scalar', raw: str, valueType: 'string' }
+    }
+
+    // True left-to-right pairwise fold per spec §"Multi-piece concat is left-to-right pairwise
+    // (NORMATIVE)". This matches Lightbend ConfigConcatenation.consolidate semantics.
+    //
+    // join_pair handles each type-pair:
+    //   Object + Object  → deep object-merge (S10.3)
+    //   Array  + Object  → numericObjectToArray on right, then array-concat (S15.3)
+    //   Object + Array   → numericObjectToArray on left, then array-concat (S15.3)
+    //   Array  + Array   → array-concat
+    //   others           → string concat (fallthrough)
+    //
+    // Critically, Object + Object produces an object (not an array), so overlapping numeric
+    // keys in adjacent objects are merged before the object side meets an array partner.
+    // A single-pass "classify first, then iterate" loop gets this wrong for overlapping keys.
+    const joinPair = (left: HoconValue, right: HoconValue): HoconValue => {
+      if (left.kind === 'object' && right.kind === 'object') {
+        // S10.3: both objects — deep-merge (later value wins on duplicate keys)
+        return deepMergeHoconValues(left, right)
+      }
+      if (left.kind === 'array' && right.kind === 'object') {
+        // S15.3: list + object — attempt numeric conversion on the object side
+        const converted = numericObjectToArray(right)
+        if (converted !== null) {
+          return { kind: 'array', items: [...left.items, ...converted] }
         }
+        // No eligible keys — treat as array+object mix (S10.4 path: push object as element)
+        return { kind: 'array', items: [...left.items, right] }
       }
-      return { kind: 'object', fields: merged }
+      if (left.kind === 'object' && right.kind === 'array') {
+        // S15.3: object + list — attempt numeric conversion on the object side
+        const converted = numericObjectToArray(left)
+        if (converted !== null) {
+          return { kind: 'array', items: [...converted, ...right.items] }
+        }
+        // No eligible keys — treat as object+array mix (S10.4 path: push object as element)
+        return { kind: 'array', items: [left, ...right.items] }
+      }
+      if (left.kind === 'array' && right.kind === 'array') {
+        return { kind: 'array', items: [...left.items, ...right.items] }
+      }
+      // Array + non-array (scalar/other) — preserve prior "array context wins" behavior:
+      // push the non-array element into the array. S10.13 (array+scalar → error) is a
+      // separate cluster (Phase 6 #?) and is out of scope here.
+      if (left.kind === 'array') {
+        return { kind: 'array', items: [...left.items, right] }
+      }
+      if (right.kind === 'array') {
+        return { kind: 'array', items: [left, ...right.items] }
+      }
+      // String concat (scalars, or scalar+object — the obj+scalar case keeps prior
+      // string-concat behavior since prior code reached string-concat too when no array
+      // was present).
+      const leftStr = left.kind === 'scalar' ? left.raw : JSON.stringify(left)
+      const rightStr = right.kind === 'scalar' ? right.raw : JSON.stringify(right)
+      return { kind: 'scalar', raw: leftStr + rightStr, valueType: 'string' }
     }
 
-    // Array concatenation: if any element is an array, treat all as array elements
-    if (resolved.some((v) => v.kind === 'array')) {
-      const items: HoconValue[] = []
-      for (const v of resolved) {
-        if (v.kind === 'array') items.push(...v.items)
-        else items.push(v)
-      }
-      return { kind: 'array', items }
+    // Pairwise left-to-right reduce over non-separator elements.
+    // For the string-concat case we must include separator whitespace tokens (they are
+    // user-meaningful in string context), so fall back to the full `resolved` list when the
+    // fold result is a scalar to preserve whitespace joining.
+    const [head, ...tail] = nonSep
+    const folded = tail.reduce(joinPair, head as HoconValue)
+
+    // If the result is scalar and there were separator tokens, re-run as plain string concat
+    // over all resolved values so whitespace is preserved (scalars are concatenated verbatim).
+    if (folded.kind === 'scalar') {
+      const str = resolved
+        .map((v) => (v.kind === 'scalar' ? v.raw : JSON.stringify(v)))
+        .join('')
+      return { kind: 'scalar', raw: str, valueType: 'string' }
     }
 
-    // String concatenation
-    const str = resolved
-      .map((v) => (v.kind === 'scalar' ? v.raw : JSON.stringify(v)))
-      .join('')
-    return { kind: 'scalar', raw: str, valueType: 'string' }
+    return folded
   }
 
   private resolveAppend(a: AppendPlaceholder, scope: ResObj): HoconValue {

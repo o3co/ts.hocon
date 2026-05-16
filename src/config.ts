@@ -1,6 +1,7 @@
 import { coerceBoolean, coerceNumber, parseBytes, parseDuration } from './coerce.js'
 import type { ByteUnit, DurationUnit } from './coerce.js'
 import { ConfigError } from './errors.js'
+import { numericObjectToArray } from './value/numeric-array.js'
 import type { HoconValue, ScalarValueType } from './value.js'
 
 export class Config {
@@ -61,6 +62,12 @@ export class Config {
   getList(path: string): unknown[] {
     const v = this.lookupNode(path)
     if (v === undefined) throw new ConfigError(`path not found: ${path}`, path)
+    // S15: if the value is a numerically-keyed object, convert to array before type check.
+    // Empty objects and objects with no eligible integer keys return null → fall through to error.
+    if (v.kind === 'object') {
+      const converted = numericObjectToArray(v)
+      if (converted !== null) return converted.map(hoconToJs)
+    }
     if (v.kind !== 'array') throw new ConfigError(`expected array at ${path}`, path)
     return v.items.map(hoconToJs)
   }

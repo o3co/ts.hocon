@@ -246,7 +246,7 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
   status: ❌ (see #77) — resolver silently wraps scalar + array into flat array instead of erroring
 - **S10.14** Whitespace around obj/array substitutions is ignored — §Concatenation with whitespace (L440)
   tests: tests/resolver.test.ts:653,666
-  status: ⚠️ (see #78) — works for object substs; whitespace not stripped for array substs (included as extra element)
+  status: ✅ — fixed alongside S15 concat work; `resolveConcat` array-concat branch now filters parser-inserted separator whitespace to match the existing object-concat behavior.
 - **S10.15** Quoted whitespace between obj/array substitutions is an error — §Concatenation with whitespace (L442)
   tests: tests/resolver.test.ts:181
   status: ✅
@@ -356,8 +356,8 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
   tests: tests/resolver.test.ts:737
   status: ✅
 - **S13.14** Optional undefined in obj/array concat → empty obj/array — §Substitutions (L637)
-  tests: tests/resolver.test.ts:745 (it.fails — array variant); tests/resolver.test.ts:756 (object variant ✅)
-  status: ⚠️ (see #83) — object concat works correctly; array concat leaks whitespace scalars as extra elements
+  tests: tests/resolver.test.ts:753 (array variant); tests/resolver.test.ts:764 (object variant)
+  status: ✅ — fixed alongside S15 concat work; missing optional substitution no longer leaves a whitespace artefact in the array result.
 - **S13.15** `foo : ${?bar}${?baz}` skipped only when BOTH undefined — §Substitutions (L640)
   tests: tests/resolver.test.ts:274
   status: ✅
@@ -592,33 +592,33 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
 ## S15. Numerically-indexed objects to arrays
 
 - **S15.1** `{"0":"a","1":"b"}` → `["a","b"]` when array context — §Conversion (L1191)
-  tests: tests/config.test.ts:440
-  status: ❌
-  `getList()` throws `ConfigError: expected array` instead of converting the numerically-indexed object. Pin asserts via `.fails` that the expected `["a","b"]` shape currently does not materialize. See issue #87.
+  tests: tests/config.test.ts:440 (Phase 4 spec form, now passing); tests/numeric-array.test.ts (helper unit tests); tests/s15-numeric-obj-array.test.ts (xx.hocon na01 fixture)
+  status: ✅
+  `getList()` invokes `numericObjectToArray` (`src/value/numeric-array.ts`) before the type check, converting numeric-keyed objects to arrays per spec.
 - **S15.2** Conversion is lazy (only on type-required access) — §Conversion (L1204)
-  tests: tests/config.test.ts:449
-  status: ✅ (incidental)
-  `get()` and `getConfig()` on a numeric-keyed object return the object unchanged. Currently passes trivially because no conversion exists at all; **must be re-validated after #87 lands** to confirm laziness is enforced by an explicit `coerceList`-time guard rather than by the absence of conversion.
+  tests: tests/config.test.ts:447; tests/s15-numeric-obj-array.test.ts (xx.hocon na02 fixture)
+  status: ✅
+  `get()`/`getConfig()` do not invoke `numericObjectToArray`; only list-typed accessors trigger conversion. Explicit guard, not incidental.
 - **S15.3** Conversion in concatenation when list expected — §Conversion (L1210)
-  tests: tests/config.test.ts:457 (pin); tests/config.test.ts:469 (.fails spec assertion)
-  status: ❌
-  real concat context `arr = [a] ${obj}` (with `obj = {"0":"x","1":"y"}`) produces a 3-element array `["a", " ", {0:"x",1:"y"}]` — whitespace artefact + un-converted object. Spec L1210 requires conversion + flatten to `["a","x","y"]`. Pin asserts the un-converted last element so a future #87 fix flips it. See issue #87.
+  tests: tests/config.test.ts:454 (Phase 4 spec form, now passing); tests/s15-numeric-obj-array.test.ts (xx.hocon na03a/b/c/d/e fixtures including the NORMATIVE multi-piece left-to-right pairwise fold)
+  status: ✅
+  `src/internal/resolver/substitution-resolver.ts:resolveConcat` performs a true left-to-right pairwise fold (per spec §"Multi-piece concat") over non-separator resolved values — adjacent Objects are merged first via S10.3, then `numericObjectToArray` is invoked when the partner is an Array. Verified by `na03e-multi-piece-overlap.conf` (overlapping numeric keys). Note: the function no longer has a distinct "array-concat branch"; all type-pair dispatch happens inside the fold's `joinPair` helper.
 - **S15.4** Empty object NOT converted — §Conversion (L1212)
-  tests: tests/config.test.ts:478
-  status: ✅ (incidental)
-  `getList()` on `{}` correctly throws `ConfigError`. Currently passes trivially because no conversion runs at all; **must be re-validated after #87 lands** to confirm the implementation has an explicit empty-object guard before the conversion path.
+  tests: tests/config.test.ts:460; tests/s15-numeric-obj-array.test.ts (xx.hocon na04 fixture)
+  status: ✅
+  `numericObjectToArray` returns `null` on empty objects; `getList` then throws `ConfigError`. Explicit empty-guard, not incidental.
 - **S15.5** Non-integer keys ignored during conversion — §Conversion (L1214)
-  tests: tests/config.test.ts:485
-  status: ❌
-  `getList()` throws before any conversion logic runs; the non-integer-key ignore rule cannot be exercised until S15.1 is fixed. See issue #87.
+  tests: tests/config.test.ts:466; tests/s15-numeric-obj-array.test.ts (xx.hocon na05 fixture)
+  status: ✅
+  Pre-filter regex `^(0|[1-9][0-9]*)$` in `numericObjectToArray` rejects non-integer keys before parsing.
 - **S15.6** Missing indices compacted in resulting array — §Conversion (L1216)
-  tests: tests/config.test.ts:491
-  status: ❌
-  Same root cause as S15.1 — `getList()` does not perform object-to-array conversion at all. See issue #87.
+  tests: tests/config.test.ts:472; tests/s15-numeric-obj-array.test.ts (xx.hocon na06 fixture)
+  status: ✅
+  After eligibility filtering and integer parsing, entries are sorted by integer ascending and projected to a value array — gaps eliminated.
 - **S15.7** Sorted by integer key value — §Conversion (L1216)
-  tests: tests/config.test.ts:497
-  status: ❌
-  Same root cause as S15.1. See issue #87.
+  tests: tests/config.test.ts:478; tests/s15-numeric-obj-array.test.ts (xx.hocon na07 fixture)
+  status: ✅
+  Same sort step as S15.6.
 
 ## S16. MIME Type
 
