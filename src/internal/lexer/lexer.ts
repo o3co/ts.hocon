@@ -334,10 +334,14 @@ class Lexer {
       } else if (isUnquotedSubstChar(ch)) {
         // S8.6 (HOCON.md L270–276) also applies to unquoted path segments
         // inside ${...}: a segment beginning with '-' must be followed by a
-        // digit. Digit-leading segments are not policed here (consistent
-        // with the value-position rule and ts.hocon's unquoted-only token
-        // model — see docs/spec-compliance.md §S8.6).
-        if (ch === '-' && !isDecimalDigit(this.peek(1))) {
+        // digit. Gate on `!curStarted` so the check fires only at segment
+        // start — a `-` that follows a quoted fragment in the same segment
+        // (e.g. ${"a"-foo} resolving the key "a-foo" via quoted/unquoted
+        // concat) is not policed, mirroring how the existing ${"a"x} flow
+        // builds "ax". Digit-leading segments are not policed here either
+        // (consistent with the value-position rule and ts.hocon's unquoted-
+        // only token model — see docs/spec-compliance.md §S8.6).
+        if (ch === '-' && !curStarted && !isDecimalDigit(this.peek(1))) {
           const after = this.peek(1) === '' ? 'EOF' : JSON.stringify(this.peek(1))
           throw new ParseError(
             `unquoted path segment cannot begin with '-' unless followed by a digit (got '-' then ${after}, HOCON.md L270-276)`,
