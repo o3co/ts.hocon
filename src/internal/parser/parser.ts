@@ -140,6 +140,19 @@ class Parser {
         // Split unquoted key at dots
         const parts = raw.split('.')
         const filtered = parts.filter(s => s.length > 0)
+        // S8.6 (HOCON.md L270–276): each unquoted key segment that begins with
+        // '-' must be followed by a digit. The lexer sees `a.-foo` as a single
+        // unquoted token, so we validate per-segment here after splitting.
+        // Symmetric with the value-position and parseSubstBody checks.
+        for (const seg of filtered) {
+          if (seg[0] === '-' && !(seg.length >= 2 && seg[1] >= '0' && seg[1] <= '9')) {
+            const after = seg.length >= 2 ? JSON.stringify(seg[1]) : 'EOF'
+            throw new ParseError(
+              `unquoted key segment cannot begin with '-' unless followed by a digit (got '-' then ${after} in ${JSON.stringify(seg)}, HOCON.md L270-276)`,
+              t.line, t.col
+            )
+          }
+        }
         segments.push(...filtered)
         // If the unquoted value ended with a dot, the next token continues the key
         trailingDot = raw.endsWith('.')

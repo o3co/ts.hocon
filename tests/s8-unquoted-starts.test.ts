@@ -8,8 +8,13 @@
 // tests/lightbend/testdata/unquoted-starts/ and corresponding
 // tests/lightbend/testdata/expected/unquoted-starts/.
 //
-// ts.hocon implements S8.6 via a lex-time check in isUnquotedStart rather
-// than via a separate number token kind (which the lexer does not have).
+// ts.hocon implements S8.6 via three lex/parse-time checks rather than via a
+// separate number token kind (which the lexer does not have):
+//   1. Main tokenize loop, unquoted-start branch (src/internal/lexer/lexer.ts,
+//      runs after the isUnquotedStart predicate dispatches the branch).
+//   2. parseSubstBody, unquoted-segment start (same file).
+//   3. parseKey, post-`.`-split (src/internal/parser/parser.ts), so that
+//      dotted keys like `a.-foo` are policed at the segment level.
 // See docs/spec-compliance.md §S8.6 for the architectural rationale and the
 // Lightbend-quirk gaps (us13, us15) that remain out of scope for this PR.
 import { describe, it, expect } from 'vitest'
@@ -17,6 +22,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parse } from '../src/index.js'
+import { ParseError } from '../src/errors.js'
 
 const confDir = fileURLToPath(new URL('./lightbend/testdata/unquoted-starts', import.meta.url))
 const expectedDir = fileURLToPath(new URL('./lightbend/testdata/expected/unquoted-starts', import.meta.url))
@@ -91,7 +97,16 @@ describe('S8.6 — unquoted-starts conformance', () => {
 
   // S8.6 also applies inside substitution paths: an unquoted segment beginning
   // with '-' (not followed by a digit) is a lex error. See parseSubstBody.
+  // Asserts ParseError specifically so this is a tripwire for the parseSubstBody
+  // check itself — otherwise a generic .toThrow() would still pass via the
+  // ResolveError that fires for the missing path lookup.
   it('S8.6 in substitution path: ${-foo} is rejected (path element rule)', () => {
-    expect(() => parse('x = ${-foo}')).toThrow()
+    expect(() => parse('x = ${-foo}')).toThrow(ParseError)
+  })
+
+  // S8.6 applies to each segment of a dotted key path. The lexer sees `a.-foo`
+  // as a single unquoted token; parseKey splits on `.` and validates segments.
+  it('S8.6 in key path: a.-foo = 1 is rejected (segment-level rule)', () => {
+    expect(() => parse('a.-foo = 1')).toThrow(ParseError)
   })
 })
