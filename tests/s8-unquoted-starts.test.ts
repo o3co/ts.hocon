@@ -109,4 +109,13 @@ describe('S8.6 — unquoted-starts conformance', () => {
   it('S8.6 in key path: a.-foo = 1 is rejected (segment-level rule)', () => {
     expect(() => parse('a.-foo = 1')).toThrow(ParseError)
   })
+
+  // Regression: the parseSubstBody S8.6 check must fire only at segment start
+  // (gated on `!curStarted`). Quoted+unquoted concat within a segment — e.g.
+  // ${"a"-foo} building key "a-foo" — must remain accepted. Mirrors the
+  // existing ${"a"x} → "ax" concat flow.
+  it('S8.6 in substitution: ${"a"-foo} (quoted+unquoted concat) is accepted', () => {
+    const input = '"a-foo" = 1\nx = ${"a"-foo}'
+    expect(() => parse(input)).not.toThrow()
+  })
 })
