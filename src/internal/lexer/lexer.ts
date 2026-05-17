@@ -175,6 +175,23 @@ class Lexer {
 
       // Unquoted string (stops at terminators and $)
       if (isUnquotedStart(ch)) {
+        // S8.6 (HOCON.md L270–276): an unquoted string starting with '-' MUST
+        // be followed by a digit (so the run BEGINS what could be a number
+        // literal — full number validity is not enforced here; e.g. '-1foo'
+        // is permitted as a single unquoted token because '-1' starts a valid
+        // number prefix). Bare '-' and '-foo' / '-bar' inputs are lex errors.
+        // Digit-leading runs (e.g. '123abc') intentionally remain a single
+        // unquoted token — ts.hocon has no separate number token, so spec
+        // compliance for digit-leading runs is provided behaviorally via
+        // value coercion (the resolved string value matches Lightbend's
+        // value-concat result). See docs/spec-compliance.md §S8.6.
+        if (ch === '-' && !isDecimalDigit(this.peek(1))) {
+          const after = this.peek(1) === '' ? 'EOF' : JSON.stringify(this.peek(1))
+          throw new ParseError(
+            `unquoted string cannot begin with '-' unless followed by a digit (got '-' then ${after}, HOCON.md L270-276)`,
+            sl, sc
+          )
+        }
         let value = ''
         while (this.pos < this.input.length && isUnquotedContinue(this.peek(), () => this.peek(1))) {
           value += this.advance()
@@ -315,6 +332,18 @@ class Lexer {
           curStarted = true
         }
       } else if (isUnquotedSubstChar(ch)) {
+        // S8.6 (HOCON.md L270–276) also applies to unquoted path segments
+        // inside ${...}: a segment beginning with '-' must be followed by a
+        // digit. Digit-leading segments are not policed here (consistent
+        // with the value-position rule and ts.hocon's unquoted-only token
+        // model — see docs/spec-compliance.md §S8.6).
+        if (ch === '-' && !isDecimalDigit(this.peek(1))) {
+          const after = this.peek(1) === '' ? 'EOF' : JSON.stringify(this.peek(1))
+          throw new ParseError(
+            `unquoted path segment cannot begin with '-' unless followed by a digit (got '-' then ${after}, HOCON.md L270-276)`,
+            startLine, this.col
+          )
+        }
         // UNQUOTED token: read a run of unquoted chars
         const uCol = this.col
         if (curStarted) {
@@ -388,6 +417,10 @@ function isUnquotedSubstChar(ch: string): boolean {
   if ('{}[]'.includes(ch)) return false
   if (':=,+#`^?!@*&$.'.includes(ch)) return false
   return true
+}
+
+function isDecimalDigit(ch: string): boolean {
+  return ch >= '0' && ch <= '9'
 }
 
 function isUnquotedStart(ch: string): boolean {

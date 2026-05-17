@@ -223,6 +223,10 @@ Supported since v0.2.0 (P1):
 
 - `.properties` file parsing
 
+### Stricter than Lightbend
+
+- **S8.6 leading-hyphen rejection** (Unreleased): `a = -foo`, `a = -bar`, `a = -` etc. now raise a lex error per HOCON.md L270–276, where Lightbend silently falls back to unquoted strings. Mitigation: quote the value (`a = "-foo"`). See [CHANGELOG](CHANGELOG.md#unreleased) and [`docs/spec-compliance.md`](docs/spec-compliance.md) §S8.6.
+
 ## Performance
 
 ### ts.hocon Parsing Cost
