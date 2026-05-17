@@ -420,9 +420,10 @@ describe('spec compliance Phase 1 — lexer-level', () => {
     expect(() => parse('x = 123abc')).toThrow(ParseError)
   })
 
-  it.fails('S8.6: hyphen-starting unquoted string is rejected (e.g. -foo)', () => {
+  it('S8.6: hyphen-starting unquoted string is rejected (e.g. -foo)', () => {
     // -123 is a valid number literal; -foo is not, and per spec L270 the
-    // unquoted form should be rejected end-to-end at parse time.
+    // unquoted form is rejected at lex time by isUnquotedStart's '-'-no-digit
+    // check (#73 / fix in src/internal/lexer/lexer.ts).
     expect(() => parse('x = -foo')).toThrow(ParseError)
   })
 

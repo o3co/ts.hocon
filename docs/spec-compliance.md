@@ -176,8 +176,8 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
   tests: tests/lightbend/testdata/equiv01/unquoted.conf (fixture)
   status: ✅
 - **S8.6** Unquoted string cannot begin with `0-9` or `-` — §Unquoted strings (L270)
-  tests: tests/lexer.test.ts:369; tests/lexer.test.ts:373
-  status: ❌ ([#73](https://github.com/o3co/ts.hocon/issues/73)) — lexer permits digits and `-` as unquoted starts (src/internal/lexer/lexer.ts:338), and parser turns non-JSON-number forms such as `123abc` / `-foo` into strings (src/internal/parser/parser.ts:325) rather than rejecting them
+  tests: tests/s8-unquoted-starts.test.ts (16 xx.hocon fixtures); tests/lexer.test.ts:423 (`-foo` rejected); tests/lexer.test.ts:419 (`123abc` documented gap)
+  status: ⚠️ partial ([#73](https://github.com/o3co/ts.hocon/issues/73)) — `-` not followed by a digit is rejected at lex time (`isUnquotedStart` in src/internal/lexer/lexer.ts). Digit-leading unquoted strings (e.g. `123abc`, `01`, `1e+x`) are still accepted as single tokens; ts.hocon's token model has no separate `number` kind, so the **resolved value** matches Lightbend value-concat output for most cases (us01, us04–us12, us14, us16) and only the lex-time error semantics for `01` (us13, Lightbend silent-accept quirk) and `1e+x` (us15, Lightbend value-parser error on `+`) remain open. Closing those gaps requires introducing a `number` token kind (architectural change deferred until cross-impl alignment is needed).
 - **S8.7** No escape sequences in unquoted strings — §Unquoted strings (L253)
   tests: tests/lexer.test.ts:385
   status: ✅
