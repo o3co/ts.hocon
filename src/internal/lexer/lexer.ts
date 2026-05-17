@@ -184,8 +184,9 @@ class Lexer {
         // resolved string value matches Lightbend's value-concat result).
         // See docs/spec-compliance.md §S8.6 for the architectural rationale.
         if (ch === '-' && !isDecimalDigit(this.peek(1))) {
+          const after = this.peek(1) === '' ? 'EOF' : JSON.stringify(this.peek(1))
           throw new ParseError(
-            "unquoted string cannot begin with '-' unless followed by a digit (HOCON.md L270-276)",
+            `unquoted string cannot begin with '-' unless followed by a digit (got '-' then ${after}, HOCON.md L270-276)`,
             sl, sc
           )
         }
@@ -329,6 +330,18 @@ class Lexer {
           curStarted = true
         }
       } else if (isUnquotedSubstChar(ch)) {
+        // S8.6 (HOCON.md L270–276) also applies to unquoted path segments
+        // inside ${...}: a segment beginning with '-' must be followed by a
+        // digit. Digit-leading segments are not policed here (consistent
+        // with the value-position rule and ts.hocon's unquoted-only token
+        // model — see docs/spec-compliance.md §S8.6).
+        if (ch === '-' && !isDecimalDigit(this.peek(1))) {
+          const after = this.peek(1) === '' ? 'EOF' : JSON.stringify(this.peek(1))
+          throw new ParseError(
+            `unquoted path segment cannot begin with '-' unless followed by a digit (got '-' then ${after}, HOCON.md L270-276)`,
+            startLine, this.col
+          )
+        }
         // UNQUOTED token: read a run of unquoted chars
         const uCol = this.col
         if (curStarted) {

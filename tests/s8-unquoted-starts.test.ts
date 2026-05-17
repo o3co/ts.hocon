@@ -78,11 +78,20 @@ describe('S8.6 — unquoted-starts conformance', () => {
   }
 
   for (const name of KNOWN_GAP_FIXTURES) {
-    // Placeholder: keeps the fixture wired into the test file so a future PR
-    // can flip `it.skip` to `it(...).toThrow()` when the gap is closed.
-    it.skip(`${name}: known gap — strict enforcement deferred`, () => {
+    // it.fails — currently this assertion FAILS (parse does not throw), and
+    // that failure is the expected state. When the gap closes (i.e. parse
+    // begins throwing as the strict spec requires), this `.fails` will
+    // *itself* fail, surfacing the change in CI without any source edit.
+    // Tracking: ts.hocon#73 (architectural change: introduce `number` token).
+    it.fails(`${name}: known gap (ts.hocon#73) — strict enforcement deferred`, () => {
       const content = readFileSync(join(confDir, `${name}.conf`), 'utf-8')
       expect(() => parse(content)).toThrow()
     })
   }
+
+  // S8.6 also applies inside substitution paths: an unquoted segment beginning
+  // with '-' (not followed by a digit) is a lex error. See parseSubstBody.
+  it('S8.6 in substitution path: ${-foo} is rejected (path element rule)', () => {
+    expect(() => parse('x = ${-foo}')).toThrow()
+  })
 })
