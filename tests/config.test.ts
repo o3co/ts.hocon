@@ -633,21 +633,31 @@ describe('S14a.11 - quoted "include" is a normal key (HOCON spec L977)', () => {
 // parseDuration extracts digits → unit="" → DURATION_UNITS[""] is undefined → NaN → error.
 // Spec L1279: "if the value is a number, it is taken to be a number in the default unit."
 describe('S18.1 - bare number is in default unit (HOCON spec L1279)', () => {
-  it.fails('S18.1: getDuration() on a bare number treats it as milliseconds (default unit)', () => {
+  it('S18.1: getDuration() on a bare number treats it as milliseconds (default unit)', () => {
     const c = parse('timeout = 5000')
     // 5000 bare number → 5000 ms
     expect(c.getDuration('timeout')).toBe(5000)
   })
 
-  it.fails('S18.1: getDuration() on a bare number with explicit "ms" output unit', () => {
+  it('S18.1: getDuration() on a bare number with explicit "ms" output unit', () => {
     const c = parse('timeout = 5000')
     expect(c.getDuration('timeout', 'ms')).toBe(5000)
   })
 
-  it.fails('S18.1: getDuration() on a bare number with "s" output unit gives seconds', () => {
+  it('S18.1: getDuration() on a bare number with "s" output unit gives seconds', () => {
     const c = parse('timeout = 5000')
     // 5000 ms → 5 s
     expect(c.getDuration('timeout', 's')).toBe(5)
+  })
+})
+
+// S18.1/S18.4 — HOCON_WS trimming (Unit A: trimHoconWs helper)
+// getDuration on value with ASCII whitespace already worked via stdlib trim.
+// getDuration("500") is RED — no-unit fallthrough missing.
+describe('S18.1/S18.4 - HOCON_WS trimming', () => {
+  it('trimHoconWs: getDuration on " 500 ms " (ASCII leading+trailing WS) works', () => {
+    const c = parse('a = " 500 ms "')
+    expect(c.getDuration('a')).toBe(500)
   })
 })
 
@@ -677,15 +687,35 @@ describe('S18.3 - unit name must be letters-only (HOCON spec L1287)', () => {
 // Spec L1290: "If a string value has no unit name, then it should be interpreted with the
 // default unit, as if it were a number."
 describe('S18.4 - string with no unit uses default unit (HOCON spec L1290)', () => {
-  it.fails('S18.4: getDuration() on string "5000" (no unit) treats it as milliseconds', () => {
+  it('S18.4: getDuration() on string "5000" (no unit) treats it as milliseconds', () => {
     const c = parse('timeout = "5000"')
     expect(c.getDuration('timeout')).toBe(5000)
   })
 
-  it.fails('S18.4: getDuration() on string "30" (no unit) with "s" output gives 0.03', () => {
+  it('S18.4: getDuration() on string "30" (no unit) with "s" output gives 0.03', () => {
     const c = parse('delay = "30"')
     // 30 ms → 0.03 s
     expect(c.getDuration('delay', 's')).toBeCloseTo(0.03)
+  })
+
+  it('S18.4: getDuration() on string "5000" with explicit "ms" output unit', () => {
+    const c = parse('a = "5000"')
+    expect(c.getDuration('a', 'ms')).toBe(5000)
+  })
+
+  it('S18.4: getBytes() on string "1024" (no unit) returns 1024 bytes', () => {
+    const c = parse('b = "1024"')
+    expect(c.getBytes('b')).toBe(1024)
+  })
+
+  it('S18.4: getBytes() on bare number 1024 returns 1024 bytes', () => {
+    const c = parse('b = 1024')
+    expect(c.getBytes('b')).toBe(1024)
+  })
+
+  it('S18.4: getDuration() on string with leading+trailing WS "  5000  " → 5000 ms', () => {
+    const c = parse('a = "  5000  "')
+    expect(c.getDuration('a')).toBe(5000)
   })
 })
 
