@@ -554,4 +554,12 @@ describe('spec compliance Phase 3 — substitution & include (parser-level)', ()
     expect(value.listSuffix).toBe(true)
     expect(value.optional).toBe(true)
   })
+
+  // --- S12.5 Unit E: substitution path ${include} is NOT reserved ----------
+  it('S12.5 Unit E: ${include} substitution path is not reserved (spec: reservation only applies to key positions)', () => {
+    const dollar = String.fromCharCode(36)
+    // Parsing should succeed — substitution paths bypass parseKey() entirely.
+    const node = parse('"include" = "v"\na = ' + dollar + '{include}')
+    expect(node.kind).toBe('object')
+  })
 })
