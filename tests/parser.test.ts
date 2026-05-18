@@ -2,6 +2,7 @@
 import { describe, it, expect } from 'vitest'
 import { tokenize } from '../src/internal/lexer/lexer.js'
 import { parseTokens } from '../src/internal/parser/parser.js'
+import { ParseError } from '../src/errors.js'
 import type { AstNode } from '../src/internal/parser/ast.js'
 
 function parse(input: string): AstNode {
@@ -428,6 +429,27 @@ describe('spec compliance Phase 2 — concatenation, paths, and +=', () => {
   // Regression anchor: quoted "include" = 1 must NOT throw (passes today).
   it('S12.5 Unit A: "include" = 1 should NOT throw (quoted bypasses reservation)', () => {
     expect(() => parse('"include" = 1')).not.toThrow()
+  })
+
+  // --- S12.5 Unit B: bare include + separator forms → ParseError("reserved") -
+  it('S12.5 Unit B: include = 1 throws ParseError with "reserved" message', () => {
+    expect(() => parse('include = 1')).toThrow(ParseError)
+    expect(() => parse('include = 1')).toThrow(/reserved/i)
+  })
+
+  it('S12.5 Unit B: include : 1 throws ParseError with "reserved" message', () => {
+    expect(() => parse('include : 1')).toThrow(ParseError)
+    expect(() => parse('include : 1')).toThrow(/reserved/i)
+  })
+
+  it('S12.5 Unit B: include += [1] throws ParseError with "reserved" message', () => {
+    expect(() => parse('include += [1]')).toThrow(ParseError)
+    expect(() => parse('include += [1]')).toThrow(/reserved/i)
+  })
+
+  it('S12.5 Unit B: include { x = 1 } throws ParseError with "reserved" message', () => {
+    expect(() => parse('include { x = 1 }')).toThrow(ParseError)
+    expect(() => parse('include { x = 1 }')).toThrow(/reserved/i)
   })
 })
 
