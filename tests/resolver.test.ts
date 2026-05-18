@@ -940,3 +940,98 @@ describe('S13a.3 - self-ref with no prior value → error (HOCON spec L767)', ()
     expect(() => resolveStr('a = ${b}\nb = ${a}')).toThrow(ResolveError)
   })
 })
+
+// ---- S13c: env-var list expansion — resolver unit tests (Unit C) -----------
+//
+// These tests use resolveStr(input, env) with explicit env injection.
+// process.env is never mutated. All inputs use String.fromCharCode(36)
+// concatenation to avoid IDE template-string lint warnings on ${...} literals.
+
+describe('S13c — env-var list expansion (resolver)', () => {
+  const D = String.fromCharCode(36) // '$' — avoids IDE template-string lint on ${...}
+
+  it('S13c.1/S13c.2: basic list expansion stops at first missing index', () => {
+    // LIST_0=a, LIST_1=b, LIST_2 absent → ["a","b"]
+    const v = resolveStr('x = ' + D + '{LIST[]}', { LIST_0: 'a', LIST_1: 'b' })
+    const x = obj(v).get('x')
+    expect(x?.kind).toBe('array')
+    if (x?.kind === 'array') {
+      expect(x.items).toEqual([
+        { kind: 'scalar', raw: 'a', valueType: 'string' },
+        { kind: 'scalar', raw: 'b', valueType: 'string' },
+      ])
+    }
+  })
+
+  it('S13c.2: stops at gap (LIST_0=a, LIST_2=c, no LIST_1) → ["a"]', () => {
+    const v = resolveStr('x = ' + D + '{LIST[]}', { LIST_0: 'a', LIST_2: 'c' })
+    const x = obj(v).get('x')
+    expect(x?.kind).toBe('array')
+    if (x?.kind === 'array') {
+      expect(x.items).toHaveLength(1)
+      expect(x.items[0]).toEqual({ kind: 'scalar', raw: 'a', valueType: 'string' })
+    }
+  })
+
+  it('S13c.3: required list with no _0 → ResolveError', () => {
+    // Scalar LIST=scalar set but no LIST_0 → S13c.5: must NOT fall back to scalar
+    expect(() => resolveStr('x = ' + D + '{LIST[]}', { LIST: 'scalar' })).toThrow(ResolveError)
+  })
+
+  it('S13c.4: optional list with no _0 → key removed (undefined)', () => {
+    const v = resolveStr('x = ' + D + '{?LIST[]}', { LIST: 'scalar' })
+    expect(obj(v).get('x')).toBeUndefined()
+  })
+
+  it('S13c.5: listSuffix=true suppresses scalar env fallback (required)', () => {
+    // LIST=scalar is set but LIST_0 is absent.
+    // Resolver MUST NOT return "scalar"; must throw ResolveError.
+    expect(() => resolveStr('x = ' + D + '{LIST[]}', { LIST: 'scalar' })).toThrow(ResolveError)
+  })
+
+  it('S13c.5: listSuffix=true suppresses scalar env fallback (optional)', () => {
+    // LIST=scalar is set but LIST_0 is absent.
+    // Resolver MUST NOT return "scalar"; must drop the key.
+    const v = resolveStr('x = ' + D + '{?LIST[]}', { LIST: 'scalar' })
+    expect(obj(v).get('x')).toBeUndefined()
+  })
+
+  it('E6: config-defined value wins over env-var list expansion', () => {
+    // Config defines MY_LIST = "config-val"; env has MY_LIST_0=env-val.
+    // The resolver returns the config value and never consults env.
+    const v = resolveStr('MY_LIST = "config-val"\nx = ' + D + '{MY_LIST[]}', { MY_LIST_0: 'env-val' })
+    expect(obj(v).get('x')).toEqual({ kind: 'scalar', raw: 'config-val', valueType: 'string' })
+  })
+
+  it('empty-string element is preserved (ev10 — stop is key-absent, not empty-string)', () => {
+    // LIST_0="" (present, empty), LIST_1=b, LIST_2 absent → ["", "b"]
+    const v = resolveStr('x = ' + D + '{LIST[]}', { LIST_0: '', LIST_1: 'b' })
+    const x = obj(v).get('x')
+    expect(x?.kind).toBe('array')
+    if (x?.kind === 'array') {
+      expect(x.items).toEqual([
+        { kind: 'scalar', raw: '', valueType: 'string' },
+        { kind: 'scalar', raw: 'b', valueType: 'string' },
+      ])
+    }
+  })
+
+  it('relativized fallback: no cross-base merging (fully-qualified wins)', () => {
+    // Inside an include prefixed at "outer", ${MY_LIST[]} relativizes to
+    // outer.MY_LIST_*. Since outer.MY_LIST_0 is present, the bare MY_LIST_* keys
+    // must NOT be appended. Result: ["from-outer"] only.
+    const inner = 'mylist = ' + D + '{MY_LIST[]}'
+    const v = resolveStr(
+      'outer {\n  include "inner.conf"\n}',
+      { 'outer.MY_LIST_0': 'from-outer', MY_LIST_0: 'from-bare', MY_LIST_1: 'extra' },
+      { '/inner.conf': inner },
+    )
+    const outerVal = obj(v).get('outer')
+    if (outerVal?.kind !== 'object') throw new Error('expected outer object')
+    const mylist = outerVal.fields.get('mylist')
+    expect(mylist?.kind).toBe('array')
+    if (mylist?.kind === 'array') {
+      expect(mylist.items).toEqual([{ kind: 'scalar', raw: 'from-outer', valueType: 'string' }])
+    }
+  })
+})
