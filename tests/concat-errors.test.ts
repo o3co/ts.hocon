@@ -75,3 +75,28 @@ describe('S10 concat type-check — ce01-ce15 fixture conformance', () => {
     })
   }
 })
+
+// ---- Fix #3b: concat type-mismatch errors must carry non-zero line/col ----
+describe('S10 concat type-mismatch errors carry source position', () => {
+  it('ce01 array+object error has non-zero line/col', () => {
+    // ce01-array-plus-object.conf: `a = [1] { b: 2 }` — concat on line 1, col 5
+    const conf = readFileSync(join(confDir, 'ce01-array-plus-object.conf'), 'utf-8')
+    let caught: unknown
+    try { parse(conf) } catch (e) { caught = e }
+    expect(caught).toBeInstanceOf(ResolveError)
+    const err = caught as ResolveError
+    expect(err.line).toBeGreaterThan(0)
+    expect(err.col).toBeGreaterThan(0)
+  })
+
+  it('ce06 scalar+object error has non-zero line/col', () => {
+    // ce06-scalar-plus-object.conf: `a = x { b: 1 }` — concat on line 1, col 5
+    const conf = readFileSync(join(confDir, 'ce06-scalar-plus-object.conf'), 'utf-8')
+    let caught: unknown
+    try { parse(conf) } catch (e) { caught = e }
+    expect(caught).toBeInstanceOf(ResolveError)
+    const err = caught as ResolveError
+    expect(err.line).toBeGreaterThan(0)
+    expect(err.col).toBeGreaterThan(0)
+  })
+})

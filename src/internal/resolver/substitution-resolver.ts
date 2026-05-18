@@ -74,7 +74,7 @@ export class SubstitutionResolver {
 
   private resolveVal(v: ResolverValue, scope: ResObj): HoconValue | undefined {
     if (isSubst(v)) return this.resolveSubst(v, scope)
-    if (isConcat(v)) return this.resolveConcat(v.nodes, scope)
+    if (isConcat(v)) return this.resolveConcat(v.nodes, scope, v.line, v.col)
     if (isAppend(v)) return this.resolveAppend(v, scope)
     if (isResObj(v)) return this.resolveResObj(v)
     const hv = v as HoconValue
@@ -309,7 +309,7 @@ export class SubstitutionResolver {
     return [full, bare]
   }
 
-  private resolveConcat(nodes: ResolverValue[], scope: ResObj): HoconValue {
+  private resolveConcat(nodes: ResolverValue[], scope: ResObj, line = 0, col = 0): HoconValue {
     const resolved = nodes
       .map((n) => this.resolveVal(n, scope))
       .filter((v): v is HoconValue => v !== undefined)
@@ -363,8 +363,8 @@ export class SubstitutionResolver {
         throw new ResolveError(
           'cannot concatenate array with object: value concatenation requires same-kind operands (S10.4)',
           '',
-          0,
-          0,
+          line,
+          col,
         )
       }
       if (left.kind === 'object' && right.kind === 'array') {
@@ -377,8 +377,8 @@ export class SubstitutionResolver {
         throw new ResolveError(
           'cannot concatenate object with array: value concatenation requires same-kind operands (S10.4)',
           '',
-          0,
-          0,
+          line,
+          col,
         )
       }
       if (left.kind === 'array' && right.kind === 'array') {
@@ -389,16 +389,16 @@ export class SubstitutionResolver {
         throw new ResolveError(
           `cannot concatenate ${left.kind} with ${right.kind}: arrays and objects may not appear in string value concatenation (S10.13)`,
           '',
-          0,
-          0,
+          line,
+          col,
         )
       }
       if (left.kind === 'object' || right.kind === 'object') {
         throw new ResolveError(
           `cannot concatenate ${left.kind} with ${right.kind}: arrays and objects may not appear in string value concatenation (S10.13)`,
           '',
-          0,
-          0,
+          line,
+          col,
         )
       }
       // Scalar + Scalar — string concat per S10
