@@ -2,6 +2,7 @@
 import { describe, it, expect } from 'vitest'
 import { tokenize } from '../src/internal/lexer/lexer.js'
 import { parseTokens } from '../src/internal/parser/parser.js'
+import { ParseError } from '../src/errors.js'
 import type { AstNode } from '../src/internal/parser/ast.js'
 
 function parse(input: string): AstNode {
@@ -415,13 +416,72 @@ describe('spec compliance Phase 2 — concatenation, paths, and +=', () => {
   })
 
   // --- S12.5: include may NOT begin a key path ----------------------------
-  // VIOLATION: parser accepts include.foo as a regular two-element path key.
-  it.fails('S12.5: include.foo = 1 is rejected because include may not begin a key path (spec L570)', () => {
+  it('S12.5: include.foo = 1 is rejected because include may not begin a key path (spec L570)', () => {
     expect(() => parse('include.foo = 1')).toThrow()
   })
 
-  it.fails('S12.5: include.foo.bar = 1 is rejected (spec L570)', () => {
+  it('S12.5: include.foo.bar = 1 is rejected (spec L570)', () => {
     expect(() => parse('include.foo.bar = 1')).toThrow()
+  })
+
+  // --- S12.5 Unit A: regression anchor + RED tests -----------------------
+  // Regression anchor: quoted "include" = 1 must NOT throw (passes today).
+  it('S12.5 Unit A: "include" = 1 should NOT throw (quoted bypasses reservation)', () => {
+    expect(() => parse('"include" = 1')).not.toThrow()
+  })
+
+  // --- S12.5 Unit B: bare include + separator forms → ParseError("reserved") -
+  it('S12.5 Unit B: include = 1 throws ParseError with "reserved" message', () => {
+    expect(() => parse('include = 1')).toThrow(ParseError)
+    expect(() => parse('include = 1')).toThrow(/reserved/i)
+  })
+
+  it('S12.5 Unit B: include : 1 throws ParseError with "reserved" message', () => {
+    expect(() => parse('include : 1')).toThrow(ParseError)
+    expect(() => parse('include : 1')).toThrow(/reserved/i)
+  })
+
+  it('S12.5 Unit B: include += [1] throws ParseError with "reserved" message', () => {
+    expect(() => parse('include += [1]')).toThrow(ParseError)
+    expect(() => parse('include += [1]')).toThrow(/reserved/i)
+  })
+
+  it('S12.5 Unit B: include { x = 1 } throws ParseError with "reserved" message', () => {
+    expect(() => parse('include { x = 1 }')).toThrow(ParseError)
+    expect(() => parse('include { x = 1 }')).toThrow(/reserved/i)
+  })
+
+  // --- S12.5 Unit C: post-PathParser guard for dotted include key paths ------
+  it('S12.5 Unit C: include.foo = 1 throws ParseError with "reserved" message', () => {
+    expect(() => parse('include.foo = 1')).toThrow(ParseError)
+    expect(() => parse('include.foo = 1')).toThrow(/reserved/i)
+  })
+
+  it('S12.5 Unit C: include.foo.bar = 1 throws ParseError with "reserved" message', () => {
+    expect(() => parse('include.foo.bar = 1')).toThrow(ParseError)
+    expect(() => parse('include.foo.bar = 1')).toThrow(/reserved/i)
+  })
+
+  it('S12.5 Unit C: a = { include.bar = 1 } throws ParseError (nested object body)', () => {
+    expect(() => parse('a = { include.bar = 1 }')).toThrow(ParseError)
+    expect(() => parse('a = { include.bar = 1 }')).toThrow(/reserved/i)
+  })
+
+  // --- S12.5 Unit D: valid cases that MUST NOT throw -----------------------
+  it('S12.5 Unit D: "include" = 1 should NOT throw (quoted first segment bypasses reservation)', () => {
+    expect(() => parse('"include" = 1')).not.toThrow()
+  })
+
+  it('S12.5 Unit D: "include".foo = 1 should NOT throw (quoted dotted form)', () => {
+    expect(() => parse('"include".foo = 1')).not.toThrow()
+  })
+
+  it('S12.5 Unit D: foo.include = 1 should NOT throw (non-initial position)', () => {
+    expect(() => parse('foo.include = 1')).not.toThrow()
+  })
+
+  it('S12.5 Unit D: a = include should NOT throw (value position, not key)', () => {
+    expect(() => parse('a = include')).not.toThrow()
   })
 })
 
@@ -493,5 +553,13 @@ describe('spec compliance Phase 3 — substitution & include (parser-level)', ()
     if (value.kind !== 'subst') throw new Error('expected subst')
     expect(value.listSuffix).toBe(true)
     expect(value.optional).toBe(true)
+  })
+
+  // --- S12.5 Unit E: substitution path ${include} is NOT reserved ----------
+  it('S12.5 Unit E: ${include} substitution path is not reserved (spec: reservation only applies to key positions)', () => {
+    const dollar = String.fromCharCode(36)
+    // Parsing should succeed — substitution paths bypass parseKey() entirely.
+    const node = parse('"include" = "v"\na = ' + dollar + '{include}')
+    expect(node.kind).toBe('object')
   })
 })

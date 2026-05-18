@@ -311,8 +311,8 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
   tests: tests/lightbend/testdata/equiv02/path-keys-weird-whitespace.conf (fixture)
   status: ✅
 - **S12.5** `include` may NOT begin a path expression in a key — §Paths as keys (L570)
-  tests: tests/parser.test.ts:419
-  status: ❌ (see #80) — parser accepts `include.foo = 1` as a two-element path key instead of rejecting it
+  tests: tests/parser.test.ts (S12.5 it blocks); tests/include-reservation.test.ts (ir01-ir14)
+  status: ✅ (Phase 6 #3e, closes #80)
 
 ## S13. Substitutions
 

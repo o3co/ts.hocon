@@ -76,6 +76,18 @@ class Parser {
 
       // include directive
       if (t.kind === 'unquoted' && t.value === 'include') {
+        // S12.5: bare `include` followed by a key-value separator is a key-path reservation error,
+        // not an include statement. Fire BEFORE advance() so we throw with the right message.
+        const next = this.peek(1)
+        if (
+          next.kind === 'equals' || next.kind === 'colon' ||
+          next.kind === 'plus_equals' || next.kind === 'lbrace'
+        ) {
+          throw new ParseError(
+            "'include' is reserved at the start of a key path expression; use \"include\" (quoted) to use it as a key",
+            t.line, t.col
+          )
+        }
         this.advance()
         fields.push(this.parseInclude())
         // trailing separator after include
@@ -87,7 +99,19 @@ class Parser {
 
       // key
       const keyPos = this.currentPos()
-      const key = this.parseKey()
+      const { segments: key, firstWasQuoted } = this.parseKey()
+
+      // S12.5: 'include' may not begin a key path expression (HOCON.md L570-572).
+      // Fires post-PathParser so it catches both `include = 1` (bare) and
+      // `include.foo = 1` (dotted, emitted as single unquoted token then split).
+      // Only triggers when the first segment came from an unquoted token (quoted
+      // "include" = 1 is allowed — firstWasQuoted bypasses this check).
+      if (key[0] === 'include' && !firstWasQuoted) {
+        throw new ParseError(
+          "'include' is reserved at the start of a key path expression; use \"include\".foo (quoted) or rename the key",
+          keyPos.line, keyPos.col
+        )
+      }
 
       // value separator (optional)
       this.skip('newline')
@@ -120,13 +144,15 @@ class Parser {
     return { kind: 'object', fields, pos: p }
   }
 
-  private parseKey(): string[] {
+  private parseKey(): { segments: string[]; firstWasQuoted: boolean } {
     const segments: string[] = []
     let trailingDot = false
+    let firstWasQuoted = false
     while (true) {
       const t = this.peek()
       if (t.kind === 'string') {
         this.advance()
+        if (segments.length === 0) firstWasQuoted = true
         segments.push(t.value) // quoted: no dot split
         trailingDot = false
       } else if (t.kind === 'unquoted') {
@@ -182,7 +208,7 @@ class Parser {
 
       break
     }
-    return segments
+    return { segments, firstWasQuoted }
   }
 
   private parseInclude(): AstField {
