@@ -1035,3 +1035,91 @@ describe('S13c — env-var list expansion (resolver)', () => {
     }
   })
 })
+
+// ---------------------------------------------------------------------------
+// S10 concat type-check tightening (Phase 6 #3b — ts#75, ts#77, ts#79)
+// joinPair must raise ResolveError for spec-disallowed type pairs.
+// ---------------------------------------------------------------------------
+describe('S10 concat type-check — joinPair throws on disallowed type pairs', () => {
+  // Builds a HOCON substitution reference without embedding ${ in the source,
+  // which avoids the no-template-curly-in-string lint rule.
+  const ref = (name: string) => `\${${name}}`
+
+  // --- Unit A: Array+Object / Object+Array when numericObjectToArray returns null ---
+  it('A1: array literal + non-numeric-keyed object literal throws ResolveError (S10.4)', () => {
+    expect(() => resolveStr('x = [1] { b: 2 }')).toThrow(ResolveError)
+  })
+
+  it('A2: non-numeric-keyed object literal + array literal throws ResolveError (S10.4)', () => {
+    expect(() => resolveStr('x = { b: 2 } [1]')).toThrow(ResolveError)
+  })
+
+  it('A3: array literal + subst resolving to non-numeric-keyed object throws ResolveError (S10.19)', () => {
+    const input = `obj = { b: 2 }\nx = [1] ${ref('obj')}`
+    expect(() => resolveStr(input)).toThrow(ResolveError)
+  })
+
+  it('A4: subst resolving to array + non-numeric-keyed object literal throws ResolveError (S10.19)', () => {
+    const input = `arr = [1]\nx = ${ref('arr')} { b: 2 }`
+    expect(() => resolveStr(input)).toThrow(ResolveError)
+  })
+
+  it('A-REG: array + numeric-keyed object still converts via S15 (regression guard)', () => {
+    // S15 bridge must remain intact; only the non-convertible path should error.
+    const input = `obj = {"0":"x","1":"y"}\nx = [1] ${ref('obj')}`
+    const v = resolveStr(input)
+    const x = obj(v).get('x')
+    expect(x?.kind).toBe('array')
+    if (x?.kind === 'array') {
+      expect(x.items).toHaveLength(3)
+    }
+  })
+
+  // --- Unit B: Array+Scalar / Scalar+Array throws ResolveError (S10.13) ---
+  it('B1: array literal + scalar throws ResolveError (S10.13)', () => {
+    expect(() => resolveStr('x = [1, 2] 3')).toThrow(ResolveError)
+  })
+
+  it('B2: scalar + array literal throws ResolveError (S10.13)', () => {
+    expect(() => resolveStr('x = 3 [1, 2]')).toThrow(ResolveError)
+  })
+
+  it('B-REG: array + array still concatenates (regression guard)', () => {
+    const v = resolveStr('x = [1] [2]')
+    const x = obj(v).get('x')
+    expect(x?.kind).toBe('array')
+    if (x?.kind === 'array') {
+      expect(x.items).toHaveLength(2)
+    }
+  })
+
+  // --- Unit C: Object+Scalar / Scalar+Object throws ResolveError (S10.13) ---
+  it('C1: object literal + unquoted scalar throws ResolveError (S10.13)', () => {
+    expect(() => resolveStr('x = { b: 1 } foo')).toThrow(ResolveError)
+  })
+
+  it('C2: unquoted scalar + object literal throws ResolveError (S10.13)', () => {
+    expect(() => resolveStr('x = foo { b: 1 }')).toThrow(ResolveError)
+  })
+
+  it('C3: string scalar + subst resolving to object throws ResolveError (S10.13)', () => {
+    const input = `obj = { b: 1 }\nx = foo ${ref('obj')}`
+    expect(() => resolveStr(input)).toThrow(ResolveError)
+  })
+
+  // --- Unit D: Optional substitution omission interaction ---
+  it('D1: optional-missing mid-concat throws ResolveError (S10.4 fires after omission)', () => {
+    // [1] <omitted-optional> {b:2} → post-omission fold is [1]+{b:2} → error
+    expect(() => resolveStr('x = [1] ${?missing} { b: 2 }')).toThrow(ResolveError)
+  })
+
+  it('D2: optional-missing at end resolves to [1] (single piece after omission, no error)', () => {
+    // [1] <omitted-optional> → single piece after omission → no joinPair call
+    const v = resolveStr('x = [1] ${?missing}')
+    const x = obj(v).get('x')
+    expect(x?.kind).toBe('array')
+    if (x?.kind === 'array') {
+      expect(x.items).toHaveLength(1)
+    }
+  })
+})
