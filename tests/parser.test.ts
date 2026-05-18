@@ -451,6 +451,22 @@ describe('spec compliance Phase 2 — concatenation, paths, and +=', () => {
     expect(() => parse('include { x = 1 }')).toThrow(ParseError)
     expect(() => parse('include { x = 1 }')).toThrow(/reserved/i)
   })
+
+  // --- S12.5 Unit C: post-PathParser guard for dotted include key paths ------
+  it('S12.5 Unit C: include.foo = 1 throws ParseError with "reserved" message', () => {
+    expect(() => parse('include.foo = 1')).toThrow(ParseError)
+    expect(() => parse('include.foo = 1')).toThrow(/reserved/i)
+  })
+
+  it('S12.5 Unit C: include.foo.bar = 1 throws ParseError with "reserved" message', () => {
+    expect(() => parse('include.foo.bar = 1')).toThrow(ParseError)
+    expect(() => parse('include.foo.bar = 1')).toThrow(/reserved/i)
+  })
+
+  it('S12.5 Unit C: a = { include.bar = 1 } throws ParseError (nested object body)', () => {
+    expect(() => parse('a = { include.bar = 1 }')).toThrow(ParseError)
+    expect(() => parse('a = { include.bar = 1 }')).toThrow(/reserved/i)
+  })
 })
 
 // Spec compliance Phase 3 (tracking issue #70): substitution & include (parser-level)
