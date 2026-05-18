@@ -215,8 +215,8 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
   tests: tests/resolver.test.ts:159
   status: ✅
 - **S10.4** Mixing arrays + objects in concat is an error — §Array and object concatenation (L385)
-  tests: tests/resolver.test.ts:627
-  status: ❌ (see #75) — resolver silently treats object as extra array element instead of erroring
+  tests: tests/resolver.test.ts (S10.4 it blocks), tests/concat-errors.test.ts (ce01, ce02, ce10, ce11, ce14)
+  status: ✅ — fixed in Phase 6 #3b; joinPair now throws ResolveError when numericObjectToArray returns null. Closes #75.
 - **S10.5** Inner whitespace between simple values preserved — §String value concatenation (L332)
   tests: tests/lightbend/testdata/equiv01/unquoted.conf (fixture)
   status: ✅
@@ -242,14 +242,14 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
   tests: tests/config.test.ts:172
   status: ✅
 - **S10.13** Array/object appearing in string concat is an error — §String value concatenation (L373)
-  tests: tests/resolver.test.ts:637
-  status: ❌ (see #77) — resolver silently wraps scalar + array into flat array instead of erroring
+  tests: tests/resolver.test.ts (S10.13 it blocks), tests/concat-errors.test.ts (ce03, ce04, ce06, ce12, ce13)
+  status: ✅ — fixed in Phase 6 #3b; joinPair now throws ResolveError for array+scalar, scalar+array, object+scalar, scalar+object. Closes #77.
 - **S10.14** Whitespace around obj/array substitutions is ignored — §Concatenation with whitespace (L440)
   tests: tests/resolver.test.ts:653,666
   status: ✅ — fixed alongside S15 concat work; `resolveConcat` array-concat branch now filters parser-inserted separator whitespace to match the existing object-concat behavior.
 - **S10.15** Quoted whitespace between obj/array substitutions is an error — §Concatenation with whitespace (L442)
-  tests: tests/resolver.test.ts:181
-  status: ✅
+  tests: tests/resolver.test.ts (S10.13 it blocks cover object+scalar, which includes quoted-whitespace-as-scalar cases)
+  status: ✅ — Phase 6 #3b raises ResolveError for object+scalar; prior wrong-pinning test removed.
 - **S10.16** Non-newline whitespace in arrays is concat, not separator — §Arrays without commas or newlines (L447)
   tests: tests/resolver.test.ts (S10.16 describe block)
   status: ✅
@@ -260,8 +260,8 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
   tests: tests/resolver.test.ts:214
   status: ✅
 - **S10.19** Mixing a substitution-resolved object with a literal array (or vice versa) is an error — §Array and object concatenation (L385-389)
-  tests: tests/resolver.test.ts:682
-  status: ❌ (see #79) — resolver silently treats as array concat instead of erroring
+  tests: tests/resolver.test.ts (S10.19 it blocks), tests/concat-errors.test.ts (ce07, ce08)
+  status: ✅ — fixed in Phase 6 #3b; substitution-resolved values participate in same joinPair type-check as literals. Closes #79.
 
 ## S11. Path expressions
 
