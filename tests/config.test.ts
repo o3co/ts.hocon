@@ -407,6 +407,22 @@ describe('getBytes', () => {
     expect(c.getBytes('size', 'KiB')).toBeCloseTo(1.1) // fractional KiB is fine
   })
 
+  // Unit D — negative byte size accessor rejection (Lightbend positive-only invariant)
+  it('D-RED: getBytes() on string "-1" throws ConfigError (negative byte size)', () => {
+    const c = parse('b = "-1"')
+    expect(() => c.getBytes('b')).toThrow(ConfigError)
+  })
+
+  it('D-RED: getBytes() on bare number -1 throws ConfigError (negative byte size)', () => {
+    const c = parse('b = -1')
+    expect(() => c.getBytes('b')).toThrow(ConfigError)
+  })
+
+  it('D-RED: getBytes() on string "1024" (positive) still returns 1024 (regression)', () => {
+    const c = parse('b = "1024"')
+    expect(c.getBytes('b')).toBe(1024)
+  })
+
   // S21.4 — single-letter byte abbreviations map to powers of 2 (java -Xmx convention)
   // Issue #89: these are not yet recognised by parseBytes()
   it.fails('S21.4: parses single-letter K as kibibytes (1024)', () => {
