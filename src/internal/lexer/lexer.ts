@@ -462,9 +462,9 @@ class Lexer {
     }
     // consume `]`
     this.advance()
-    // The caller's loop has broken; next must be `}` which is consumed by the
-    // parent `}` arm on the *next* iteration — but since we broke out of the
-    // loop, the parent code must consume `}`. We require it here directly.
+    // After `[]`, the only legal next character is `}` (closing the substitution).
+    // Verify and consume it here — the caller's segment-collection loop has
+    // already broken via `break`, so `}` is no longer reached by the outer arm.
     if (this.peek() !== '}') {
       const desc = this.peek() === '' ? 'EOF' : JSON.stringify(this.peek())
       throw new ParseError(

@@ -234,8 +234,12 @@ export class SubstitutionResolver {
         }
         // No _0 found in any candidate base — do NOT fall through to scalar fallback.
         if (s.optional) return undefined
+        // Don't append `[]` to `key` — after the listSuffix-aware cache key
+        // change (Codex C1 fix), `key` already ends in `[]`. Build the env-base
+        // name once from segments for the "(no environment variables …)" hint.
+        const envBase = s.segments.map((seg: Segment) => seg.text).join('.')
         throw new ResolveError(
-          `could not resolve substitution: \${${key}[]} (no environment variables ${s.segments.map((seg: Segment) => seg.text).join('.')}_0, …_1, … set)`,
+          `could not resolve substitution: \${${key}} (no environment variables ${envBase}_0, ${envBase}_1, … set)`,
           key,
           s.line,
           s.col,

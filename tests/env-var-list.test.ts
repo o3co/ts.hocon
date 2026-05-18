@@ -29,16 +29,23 @@ import { parseEnvSidecar } from './lightbend/env-sidecar.js'
 const dataDir = fileURLToPath(new URL('./lightbend/testdata/hocon/env-var-list', import.meta.url))
 const expectedDir = fileURLToPath(new URL('./lightbend/testdata/expected/env-var-list', import.meta.url))
 
-// Per-fixture gate: use it.skip when the expected output file is missing.
-// This covers two cases gracefully:
+// Per-fixture gate: use it.skip when the *test input* file is missing.
+// For success fixtures we additionally need the expected JSON, but for error
+// fixtures the only requirement is the `.conf` input (the test asserts
+// `.toThrow(ResolveError)` and does NOT consume the expected `.error` sidecar
+// — that sidecar exists only for traceability per xx.hocon's
+// fixture-conventions.md). Gating error tests on `.error` would unnecessarily
+// skip coverage when `make testdata` hasn't run.
+//
+// Both gates cover:
 //   1) Fresh checkout before `make testdata` has been run.
 //   2) ev12/ev13 follow-up fixtures that depend on xx.hocon PR merging first.
 function gateSuccess(name: string): typeof it | typeof it.skip {
+  if (!existsSync(join(dataDir, `${name}.conf`))) return it.skip
   return existsSync(join(expectedDir, `${name}-expected.json`)) ? it : it.skip
 }
 function gateError(name: string): typeof it | typeof it.skip {
-  // Error fixtures use a `.error` sidecar (xx.hocon convention).
-  return existsSync(join(expectedDir, `${name}.error`)) ? it : it.skip
+  return existsSync(join(dataDir, `${name}.conf`)) ? it : it.skip
 }
 
 // Success fixtures: parse, resolve, compare to expected JSON.
