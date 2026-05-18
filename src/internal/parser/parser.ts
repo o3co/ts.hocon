@@ -101,6 +101,18 @@ class Parser {
       const keyPos = this.currentPos()
       const { segments: key, firstWasQuoted } = this.parseKey()
 
+      // S12.5: 'include' may not begin a key path expression (HOCON.md L570-572).
+      // Fires post-PathParser so it catches both `include = 1` (bare) and
+      // `include.foo = 1` (dotted, emitted as single unquoted token then split).
+      // Only triggers when the first segment came from an unquoted token (quoted
+      // "include" = 1 is allowed — firstWasQuoted bypasses this check).
+      if (key[0] === 'include' && !firstWasQuoted) {
+        throw new ParseError(
+          "'include' is reserved at the start of a key path expression; use \"include\".foo (quoted) or rename the key",
+          keyPos.line, keyPos.col
+        )
+      }
+
       // value separator (optional)
       this.skip('newline')
       let append = false

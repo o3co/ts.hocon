@@ -416,12 +416,11 @@ describe('spec compliance Phase 2 — concatenation, paths, and +=', () => {
   })
 
   // --- S12.5: include may NOT begin a key path ----------------------------
-  // VIOLATION: parser accepts include.foo as a regular two-element path key.
-  it.fails('S12.5: include.foo = 1 is rejected because include may not begin a key path (spec L570)', () => {
+  it('S12.5: include.foo = 1 is rejected because include may not begin a key path (spec L570)', () => {
     expect(() => parse('include.foo = 1')).toThrow()
   })
 
-  it.fails('S12.5: include.foo.bar = 1 is rejected (spec L570)', () => {
+  it('S12.5: include.foo.bar = 1 is rejected (spec L570)', () => {
     expect(() => parse('include.foo.bar = 1')).toThrow()
   })
 
