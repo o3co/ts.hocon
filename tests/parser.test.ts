@@ -423,6 +423,12 @@ describe('spec compliance Phase 2 — concatenation, paths, and +=', () => {
   it.fails('S12.5: include.foo.bar = 1 is rejected (spec L570)', () => {
     expect(() => parse('include.foo.bar = 1')).toThrow()
   })
+
+  // --- S12.5 Unit A: regression anchor + RED tests -----------------------
+  // Regression anchor: quoted "include" = 1 must NOT throw (passes today).
+  it('S12.5 Unit A: "include" = 1 should NOT throw (quoted bypasses reservation)', () => {
+    expect(() => parse('"include" = 1')).not.toThrow()
+  })
 })
 
 // Spec compliance Phase 3 (tracking issue #70): substitution & include (parser-level)
