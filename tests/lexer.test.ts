@@ -455,4 +455,71 @@ describe('spec compliance Phase 1 — lexer-level', () => {
     expect(tokens).toHaveLength(1)
     expect(tokens[0].value).toBe('foo\x07bar')
   })
+
+  // ---- S13c: ${X[]} env-var list expansion — lexer tests (Unit A) ----------
+
+  it('S13c: ${X[]} sets listSuffix=true on subst payload', () => {
+    const [t] = tokenize('${MY_LIST[]}')  // eslint-disable-line no-template-curly-in-string
+    expect(t.kind).toBe('subst')
+    expect(t.subst?.segments.map(s => s.text)).toEqual(['MY_LIST'])
+    expect(t.subst?.listSuffix).toBe(true)
+    expect(t.subst?.optional).toBe(false)
+  })
+
+  it('S13c: ${?X[]} optional list suffix sets both optional and listSuffix', () => {
+    const [t] = tokenize('${?MY_LIST[]}')  // eslint-disable-line no-template-curly-in-string
+    expect(t.kind).toBe('subst')
+    expect(t.subst?.optional).toBe(true)
+    expect(t.subst?.listSuffix).toBe(true)
+  })
+
+  it('S13c: ${A.B[]} dotted path with list suffix', () => {
+    const [t] = tokenize('${A.B[]}')  // eslint-disable-line no-template-curly-in-string
+    expect(t.kind).toBe('subst')
+    expect(t.subst?.segments.map(s => s.text)).toEqual(['A', 'B'])
+    expect(t.subst?.listSuffix).toBe(true)
+  })
+
+  it('S13c: E7 space before [] is allowed', () => {
+    // '$' + '{X []}' avoids IDE template-string lint warning on the ${...} literal
+    const input = '$' + '{X []}'
+    const [t] = tokenize(input)
+    expect(t.kind).toBe('subst')
+    expect(t.subst?.segments.map(s => s.text)).toEqual(['X'])
+    expect(t.subst?.listSuffix).toBe(true)
+  })
+
+  it('S13c: E7 tab before [] is allowed', () => {
+    const input = '$' + '{X\t[]}'
+    const [t] = tokenize(input)
+    expect(t.kind).toBe('subst')
+    expect(t.subst?.segments.map(s => s.text)).toEqual(['X'])
+    expect(t.subst?.listSuffix).toBe(true)
+  })
+
+  it('S13c: regular subst still has listSuffix=false', () => {
+    const [t] = tokenize('${X}')  // eslint-disable-line no-template-curly-in-string
+    expect(t.kind).toBe('subst')
+    expect(t.subst?.listSuffix).toBe(false)
+  })
+
+  it('S13c: missing ] after [ is a lex error', () => {
+    expect(() => tokenize('${X[}')).toThrow(ParseError)  // eslint-disable-line no-template-curly-in-string
+  })
+
+  it('S13c: whitespace inside [] is a lex error', () => {
+    expect(() => tokenize('${X[ ]}')).toThrow(ParseError)  // eslint-disable-line no-template-curly-in-string
+  })
+
+  it('S13c: non-empty brackets is a lex error', () => {
+    expect(() => tokenize('${X[abc]}')).toThrow(ParseError)  // eslint-disable-line no-template-curly-in-string
+  })
+
+  it('S13c: no segment before [] is a lex error', () => {
+    expect(() => tokenize('${[]}')).toThrow(ParseError)  // eslint-disable-line no-template-curly-in-string
+  })
+
+  it('S13c: double suffix is a lex error', () => {
+    expect(() => tokenize('${X[][]}')).toThrow(ParseError)  // eslint-disable-line no-template-curly-in-string
+  })
 })
