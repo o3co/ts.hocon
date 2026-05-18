@@ -456,4 +456,42 @@ describe('spec compliance Phase 3 — substitution & include (parser-level)', ()
   it('S14a.9: include ${path} is a parse error (spec L959)', () => {
     expect(() => parse('include ${path}')).toThrow()
   })
+
+  // ---- S13c: listSuffix propagation through AST (Unit B) -------------------
+
+  it('S13c: subst node has listSuffix=true for list-suffix substitution', () => {
+    // Use String.fromCharCode(36) = '$' to avoid IDE template-string lint warning
+    const dollar = String.fromCharCode(36)
+    const node = parse('x = ' + dollar + '{MY_LIST[]}')
+    if (node.kind !== 'object') throw new Error('expected object')
+    const field = node.fields[0]
+    if (field === undefined) throw new Error('expected field')
+    const value = field.value
+    if (value.kind !== 'subst') throw new Error('expected subst')
+    expect(value.listSuffix).toBe(true)
+    expect(value.optional).toBe(false)
+  })
+
+  it('S13c: subst node has listSuffix=false for regular substitution', () => {
+    const dollar = String.fromCharCode(36)
+    const node = parse('x = ' + dollar + '{MY_LIST}')
+    if (node.kind !== 'object') throw new Error('expected object')
+    const field = node.fields[0]
+    if (field === undefined) throw new Error('expected field')
+    const value = field.value
+    if (value.kind !== 'subst') throw new Error('expected subst')
+    expect(value.listSuffix).toBe(false)
+  })
+
+  it('S13c: optional list-suffix subst node has both optional and listSuffix flags', () => {
+    const dollar = String.fromCharCode(36)
+    const node = parse('x = ' + dollar + '{?MY_LIST[]}')
+    if (node.kind !== 'object') throw new Error('expected object')
+    const field = node.fields[0]
+    if (field === undefined) throw new Error('expected field')
+    const value = field.value
+    if (value.kind !== 'subst') throw new Error('expected subst')
+    expect(value.listSuffix).toBe(true)
+    expect(value.optional).toBe(true)
+  })
 })

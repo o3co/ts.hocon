@@ -447,20 +447,21 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
 ### S13c. List values from environment variables
 
 - **S13c.1** `${X[]}` looks up `X_0`, `X_1`, ... env vars — §List values from env (L900)
-  tests: —
-  status: ❌ — not implemented; substitution lexer (src/internal/lexer/lexer.ts:333) rejects `[` / `]` inside `${...}` body and env fallback only resolves scalar values (src/internal/resolver/substitution-resolver.ts:220). `env-variables.conf` exists but is not wired into the Vitest Lightbend runner.
+  tests: tests/env-var-list.test.ts (ev01-basic); tests/resolver.test.ts (S13c describe block)
+  status: ✅ — lexer parses `[]` suffix (src/internal/lexer/lexer.ts `parseListSuffix`); resolver scans `NAME_0`, `NAME_1`, … (src/internal/resolver/substitution-resolver.ts `resolveEnvList`). Also honours E6 (config-wins) and E7 (whitespace before `[]`).
 - **S13c.2** Stops at first missing index — §List values from env (L905)
-  tests: —
-  status: ❌ — not implemented (see S13c.1)
+  tests: tests/env-var-list.test.ts (ev02-stops-at-gap); tests/resolver.test.ts (S13c describe block)
+  status: ✅ — stop condition is key-absent (not empty-string value); empty-string elements are preserved (ev10).
 - **S13c.3** `${X[]}` no elements → required error — §List values from env (L910)
-  tests: —
-  status: ❌ — not implemented (see S13c.1)
+  tests: tests/env-var-list.test.ts (ev03-required-no-elements, ev12a); tests/resolver.test.ts (S13c describe block)
+  status: ✅ — `resolveEnvList` returns undefined when no `_0` found; caller throws ResolveError for required form.
 - **S13c.4** `${?X[]}` no elements → undefined / removed — §List values from env (L912)
-  tests: —
-  status: ❌ — not implemented (see S13c.1)
+  tests: tests/env-var-list.test.ts (ev04-optional-no-elements, ev12b); tests/resolver.test.ts (S13c describe block)
+  status: ✅ — optional form returns undefined (key removed from result object).
 - **S13c.5** `[]` suffix supported only for env vars (not config / sys props) — §List values from env (L902)
-  tests: —
-  status: ❌ — not implemented (see S13c.1); constraint is moot when the `[]` suffix itself is rejected by the lexer
+  tests: tests/env-var-list.test.ts (ev12a, ev12b); tests/resolver.test.ts (S13c.5 scalar-suppression cases)
+  status: ✅ — when `listSuffix=true` and no `_0` is found, resolver does NOT fall through to scalar env fallback. S13c.5 enforcement is in `resolveSubst` (src/internal/resolver/substitution-resolver.ts) — the `s.listSuffix` branch returns before the scalar env path.
+  notes: E6 (config-defined wins, ev05) and E7 (whitespace before `[]`, ev09) are also implemented — see extra-spec-conventions.md.
 
 ## S14. Includes
 
