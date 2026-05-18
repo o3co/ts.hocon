@@ -1108,4 +1108,19 @@ describe('S10 concat type-check — joinPair throws on disallowed type pairs', (
       expect(x.items).toHaveLength(1)
     }
   })
+
+  // --- S10.15: quoted whitespace between subst-resolved containers (HOCON.md L442) ---
+  // S10.15 is structurally a special case of S10.13 (array/object + scalar in concat),
+  // but the spec calls it out explicitly because the typical user idiom is `${a} " " ${b}`
+  // where the `" "` looks like inter-substitution padding. Per L442 this must error
+  // regardless of whether the operands are literal or substitution-resolved.
+  it('S10.15: quoted whitespace between subst-resolved arrays throws (spec L442)', () => {
+    const input = `a = [1]\nb = [2]\nx = ${ref('a')} " " ${ref('b')}`
+    expect(() => resolveStr(input)).toThrow(ResolveError)
+  })
+
+  it('S10.15: quoted whitespace between subst-resolved objects throws (spec L442)', () => {
+    const input = `a = { p: 1 }\nb = { q: 2 }\nx = ${ref('a')} " " ${ref('b')}`
+    expect(() => resolveStr(input)).toThrow(ResolveError)
+  })
 })
