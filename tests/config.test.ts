@@ -292,9 +292,10 @@ describe('getDuration', () => {
     expect(() => c.getDuration('missing')).toThrow(ConfigError)
   })
 
-  it('throws on invalid duration', () => {
+  it('S18.1: bare number is treated as milliseconds (not an error)', () => {
+    // Previously expected to throw; fixed by S18.1 — bare numbers are ms per HOCON L1279.
     const c = parse('a = 123')
-    expect(() => c.getDuration('a')).toThrow(ConfigError)
+    expect(c.getDuration('a')).toBe(123)
   })
 
   it('throws on unknown unit', () => {
@@ -370,9 +371,10 @@ describe('getBytes', () => {
     expect(() => c.getBytes('missing')).toThrow(ConfigError)
   })
 
-  it('throws on invalid byte size', () => {
+  it('S18.1: bare number is treated as bytes (not an error)', () => {
+    // Previously expected to throw; fixed by S18.1 — bare numbers are bytes per HOCON L1341.
     const c = parse('a = 123')
-    expect(() => c.getBytes('a')).toThrow(ConfigError)
+    expect(c.getBytes('a')).toBe(123)
   })
 
   it('throws on unknown unit', () => {

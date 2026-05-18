@@ -1,5 +1,31 @@
 export const DECIMAL_NUMBER_RE = /^-?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/
 
+// WHOLE_NUMBER_RE: integer pre-classification per spec §Resolved decision 9.
+// Matches [+-]?[0-9]+ — used to select integer-fast-path vs fractional-fallback
+// (mirrors Lightbend SimpleConfig.isWholeNumber pattern).
+export const WHOLE_NUMBER_RE = /^[+-]?[0-9]+$/
+
+// trimHoconWs: strip HOCON_WS characters (L1283) from both ends of a string.
+// HOCON_WS = ASCII whitespace (0x09 HT, 0x0A LF, 0x0D CR, 0x20 SP) + BOM (0xFEFF).
+// Uses the HOCON_WS predicate (same codepoint set as the lexer's isHoconWhitespace)
+// rather than stdlib String.trim(), which in JS also strips NEL (U+0085) and other
+// Unicode space separators that HOCON treats as content, not whitespace.
+function trimHoconWs(s: string): string {
+  let start = 0
+  let end = s.length
+  while (start < end) {
+    const cp = s.charCodeAt(start)
+    if (cp === 0x09 || cp === 0x0A || cp === 0x0D || cp === 0x20 || cp === 0xFEFF) { start++; continue }
+    break
+  }
+  while (end > start) {
+    const cp = s.charCodeAt(end - 1)
+    if (cp === 0x09 || cp === 0x0A || cp === 0x0D || cp === 0x20 || cp === 0xFEFF) { end--; continue }
+    break
+  }
+  return s.slice(start, end)
+}
+
 const TRUTHY = new Set(['true', 'yes', 'on'])
 const FALSY = new Set(['false', 'no', 'off'])
 
@@ -32,22 +58,27 @@ const OUTPUT_DURATION_UNITS: Record<string, number> = {
 export type DurationUnit = 'ns' | 'us' | 'ms' | 's' | 'm' | 'h' | 'd'
 
 export function parseDuration(value: string, outputUnit: DurationUnit = 'ms'): number {
-  const trimmed = value.trim()
+  const trimmed = trimHoconWs(value)
   let i = 0
   while (i < trimmed.length) {
     const ch = trimmed[i]
-    if (ch !== '-' && ch !== '.' && (ch < '0' || ch > '9')) break
+    if (i === 0 && (ch === '-' || ch === '+')) { i++; continue }
+    if (ch !== '.' && (ch < '0' || ch > '9')) break
     i++
   }
   if (i === 0) return NaN
   const num = Number(trimmed.slice(0, i))
   if (Number.isNaN(num)) return NaN
-  const unit = trimmed.slice(i).trim().toLowerCase()
+  const unit = trimHoconWs(trimmed.slice(i)).toLowerCase()
+  const divisor = OUTPUT_DURATION_UNITS[outputUnit]
+  if (divisor === undefined) return NaN
+  // S18.1 + S18.4: bare number (no unit) → treat as default unit (ms)
+  if (unit === '') {
+    return num / divisor
+  }
   const mult = DURATION_UNITS[unit]
   if (mult === undefined) return NaN
   const ms = num * mult
-  const divisor = OUTPUT_DURATION_UNITS[outputUnit]
-  if (divisor === undefined) return NaN
   return ms / divisor
 }
 
@@ -77,17 +108,25 @@ const OUTPUT_BYTE_UNITS: Record<string, number> = {
 export type ByteUnit = 'B' | 'KB' | 'KiB' | 'MB' | 'MiB' | 'GB' | 'GiB' | 'TB' | 'TiB'
 
 export function parseBytes(value: string, outputUnit: ByteUnit = 'B'): number {
-  const trimmed = value.trim()
+  const trimmed = trimHoconWs(value)
   let i = 0
   while (i < trimmed.length) {
     const ch = trimmed[i]
-    if (ch !== '-' && ch !== '.' && (ch < '0' || ch > '9')) break
+    if (i === 0 && (ch === '-' || ch === '+')) { i++; continue }
+    if (ch !== '.' && (ch < '0' || ch > '9')) break
     i++
   }
   if (i === 0) return NaN
   const num = Number(trimmed.slice(0, i))
   if (Number.isNaN(num)) return NaN
-  const unit = trimmed.slice(i).trim()
+  const unit = trimHoconWs(trimmed.slice(i))
+  const divisor = OUTPUT_BYTE_UNITS[outputUnit]
+  if (divisor === undefined) return NaN
+  // S18.1 + S18.4: bare number (no unit) → treat as default unit (bytes)
+  // Use Math.trunc per Lightbend BigDecimal.toBigInteger (truncate toward zero)
+  if (unit === '') {
+    return Math.trunc(num) / divisor
+  }
   // Try exact match first (preserves KB vs KiB distinction)
   let mult = BYTE_UNITS[unit]
   // Try lowercase for long-form names (megabytes, Megabytes, MEGABYTES)
@@ -96,8 +135,6 @@ export function parseBytes(value: string, outputUnit: ByteUnit = 'B'): number {
   }
   if (mult === undefined) return NaN
   const bytes = num * mult
-  const divisor = OUTPUT_BYTE_UNITS[outputUnit]
-  if (divisor === undefined) return NaN
   const result = bytes / divisor
   return outputUnit === 'B' ? Math.round(result) : result
 }
