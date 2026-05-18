@@ -178,20 +178,9 @@ describe('Resolver - object concatenation deep merge', () => {
     expect(entries).toEqual({ deep: '1', other: '2' })
   })
 
-  it('should NOT deep-merge when explicit empty string separates objects', () => {
-    // a = {x:1} "" {y:2} — the "" is an explicit concat operand, so this is string concat
-    const v = resolveStr('a = {x:1} "" {y:2}')
-    const a = obj(v).get('a')
-    // Should be string concatenation, not object merge
-    expect(a?.kind).toBe('scalar')
-  })
-
-  it('should NOT deep-merge when explicit blank string separates objects', () => {
-    // a = {x:1} " " {y:2} — the " " is a user-authored value
-    const v = resolveStr('a = {x:1} " " {y:2}')
-    const a = obj(v).get('a')
-    expect(a?.kind).toBe('scalar')
-  })
+  // NOTE: '{x:1} "" {y:2}' and '{x:1} " " {y:2}' previously pinned silent object+scalar
+  // string-coercion, which is now spec-correctly an error (S10.13). Those tests were
+  // wrong-pinning and are removed as part of Phase 6 #3b (S10 type-check tightening).
 
   it('should deep-merge multiple concatenated objects', () => {
     const v = resolveStr('a = {x: 1, nested: {a: 1}} {y: 2, nested: {b: 2}} {z: 3, nested: {c: 3}}')
@@ -623,27 +612,25 @@ describe('include file() resolution', () => {
 
 describe('spec compliance Phase 2 — concatenation and += (resolver-level)', () => {
   // --- S10.4: mixing arrays + objects in concat is an error ----------------
-  // VIOLATION: resolver silently treats the object as an extra array element.
-  it.fails('S10.4: array then object literal in concat is an error (spec L385)', () => {
-    expect(() => resolveStr('x = [1,2] { a=1 }')).toThrow()
+  it('S10.4: array then object literal in concat is an error (spec L385)', () => {
+    expect(() => resolveStr('x = [1,2] { a=1 }')).toThrow(ResolveError)
   })
 
-  it.fails('S10.4: object literal then array in concat is an error (spec L385)', () => {
-    expect(() => resolveStr('x = { a=1 } [1,2]')).toThrow()
+  it('S10.4: object literal then array in concat is an error (spec L385)', () => {
+    expect(() => resolveStr('x = { a=1 } [1,2]')).toThrow(ResolveError)
   })
 
   // --- S10.13: array/object appearing in string concat is an error ---------
-  // VIOLATION: resolver silently wraps scalars + array into a flat array.
-  it.fails('S10.13: quoted string followed by array literal is an error (spec L373)', () => {
-    expect(() => resolveStr('x = "hello" [1,2]')).toThrow()
+  it('S10.13: quoted string followed by array literal is an error (spec L373)', () => {
+    expect(() => resolveStr('x = "hello" [1,2]')).toThrow(ResolveError)
   })
 
-  it.fails('S10.13: array literal followed by quoted string is an error (spec L373)', () => {
-    expect(() => resolveStr('x = [1,2] "hello"')).toThrow()
+  it('S10.13: array literal followed by quoted string is an error (spec L373)', () => {
+    expect(() => resolveStr('x = [1,2] "hello"')).toThrow(ResolveError)
   })
 
-  it.fails('S10.13: quoted string followed by object literal is an error (spec L373)', () => {
-    expect(() => resolveStr('x = "hello" { a=1 }')).toThrow()
+  it('S10.13: quoted string followed by object literal is an error (spec L373)', () => {
+    expect(() => resolveStr('x = "hello" { a=1 }')).toThrow(ResolveError)
   })
 
   // --- S10.14: whitespace around obj/array substitutions is ignored --------
@@ -678,17 +665,16 @@ describe('spec compliance Phase 2 — concatenation and += (resolver-level)', ()
   })
 
   // --- S10.19: substitution-resolved object + literal array → error --------
-  // VIOLATION: resolver silently treats as array concat, no error thrown.
-  it.fails('S10.19: subst resolving to object concatenated with literal array is an error (spec L385-389)', () => {
-    const s = (name: string) => '$' + '{' + name + '}'
-    const input = 'y = { a = 1 }\nx = ' + s('y') + ' [1,2]'
-    expect(() => resolveStr(input)).toThrow()
+  it('S10.19: subst resolving to object concatenated with literal array is an error (spec L385-389)', () => {
+    const r = (name: string) => `\${${name}}`
+    const input = `y = { a = 1 }\nx = ${r('y')} [1,2]`
+    expect(() => resolveStr(input)).toThrow(ResolveError)
   })
 
-  it.fails('S10.19: subst resolving to array concatenated with object literal is an error (spec L385-389)', () => {
-    const s = (name: string) => '$' + '{' + name + '}'
-    const input = 'y = [1,2]\nx = ' + s('y') + ' { a=1 }'
-    expect(() => resolveStr(input)).toThrow()
+  it('S10.19: subst resolving to array concatenated with object literal is an error (spec L385-389)', () => {
+    const r = (name: string) => `\${${name}}`
+    const input = `y = [1,2]\nx = ${r('y')} { a=1 }`
+    expect(() => resolveStr(input)).toThrow(ResolveError)
   })
 
   // --- S13b.2: += on non-array prior value → error -------------------------
@@ -1033,5 +1019,108 @@ describe('S13c — env-var list expansion (resolver)', () => {
     if (mylist?.kind === 'array') {
       expect(mylist.items).toEqual([{ kind: 'scalar', raw: 'from-outer', valueType: 'string' }])
     }
+  })
+})
+
+// ---------------------------------------------------------------------------
+// S10 concat type-check tightening (Phase 6 #3b — ts#75, ts#77, ts#79)
+// joinPair must raise ResolveError for spec-disallowed type pairs.
+// ---------------------------------------------------------------------------
+describe('S10 concat type-check — joinPair throws on disallowed type pairs', () => {
+  // Builds a HOCON substitution reference without embedding ${ in the source,
+  // which avoids the no-template-curly-in-string lint rule.
+  const ref = (name: string) => `\${${name}}`
+
+  // --- Unit A: Array+Object / Object+Array when numericObjectToArray returns null ---
+  it('A1: array literal + non-numeric-keyed object literal throws ResolveError (S10.4)', () => {
+    expect(() => resolveStr('x = [1] { b: 2 }')).toThrow(ResolveError)
+  })
+
+  it('A2: non-numeric-keyed object literal + array literal throws ResolveError (S10.4)', () => {
+    expect(() => resolveStr('x = { b: 2 } [1]')).toThrow(ResolveError)
+  })
+
+  it('A3: array literal + subst resolving to non-numeric-keyed object throws ResolveError (S10.19)', () => {
+    const input = `obj = { b: 2 }\nx = [1] ${ref('obj')}`
+    expect(() => resolveStr(input)).toThrow(ResolveError)
+  })
+
+  it('A4: subst resolving to array + non-numeric-keyed object literal throws ResolveError (S10.19)', () => {
+    const input = `arr = [1]\nx = ${ref('arr')} { b: 2 }`
+    expect(() => resolveStr(input)).toThrow(ResolveError)
+  })
+
+  it('A-REG: array + numeric-keyed object still converts via S15 (regression guard)', () => {
+    // S15 bridge must remain intact; only the non-convertible path should error.
+    const input = `obj = {"0":"x","1":"y"}\nx = [1] ${ref('obj')}`
+    const v = resolveStr(input)
+    const x = obj(v).get('x')
+    expect(x?.kind).toBe('array')
+    if (x?.kind === 'array') {
+      expect(x.items).toHaveLength(3)
+    }
+  })
+
+  // --- Unit B: Array+Scalar / Scalar+Array throws ResolveError (S10.13) ---
+  it('B1: array literal + scalar throws ResolveError (S10.13)', () => {
+    expect(() => resolveStr('x = [1, 2] 3')).toThrow(ResolveError)
+  })
+
+  it('B2: scalar + array literal throws ResolveError (S10.13)', () => {
+    expect(() => resolveStr('x = 3 [1, 2]')).toThrow(ResolveError)
+  })
+
+  it('B-REG: array + array still concatenates (regression guard)', () => {
+    const v = resolveStr('x = [1] [2]')
+    const x = obj(v).get('x')
+    expect(x?.kind).toBe('array')
+    if (x?.kind === 'array') {
+      expect(x.items).toHaveLength(2)
+    }
+  })
+
+  // --- Unit C: Object+Scalar / Scalar+Object throws ResolveError (S10.13) ---
+  it('C1: object literal + unquoted scalar throws ResolveError (S10.13)', () => {
+    expect(() => resolveStr('x = { b: 1 } foo')).toThrow(ResolveError)
+  })
+
+  it('C2: unquoted scalar + object literal throws ResolveError (S10.13)', () => {
+    expect(() => resolveStr('x = foo { b: 1 }')).toThrow(ResolveError)
+  })
+
+  it('C3: string scalar + subst resolving to object throws ResolveError (S10.13)', () => {
+    const input = `obj = { b: 1 }\nx = foo ${ref('obj')}`
+    expect(() => resolveStr(input)).toThrow(ResolveError)
+  })
+
+  // --- Unit D: Optional substitution omission interaction ---
+  it('D1: optional-missing mid-concat throws ResolveError (S10.4 fires after omission)', () => {
+    // [1] <omitted-optional> {b:2} → post-omission fold is [1]+{b:2} → error
+    expect(() => resolveStr('x = [1] ${?missing} { b: 2 }')).toThrow(ResolveError)
+  })
+
+  it('D2: optional-missing at end resolves to [1] (single piece after omission, no error)', () => {
+    // [1] <omitted-optional> → single piece after omission → no joinPair call
+    const v = resolveStr('x = [1] ${?missing}')
+    const x = obj(v).get('x')
+    expect(x?.kind).toBe('array')
+    if (x?.kind === 'array') {
+      expect(x.items).toHaveLength(1)
+    }
+  })
+
+  // --- S10.15: quoted whitespace between subst-resolved containers (HOCON.md L442) ---
+  // S10.15 is structurally a special case of S10.13 (array/object + scalar in concat),
+  // but the spec calls it out explicitly because the typical user idiom is `${a} " " ${b}`
+  // where the `" "` looks like inter-substitution padding. Per L442 this must error
+  // regardless of whether the operands are literal or substitution-resolved.
+  it('S10.15: quoted whitespace between subst-resolved arrays throws (spec L442)', () => {
+    const input = `a = [1]\nb = [2]\nx = ${ref('a')} " " ${ref('b')}`
+    expect(() => resolveStr(input)).toThrow(ResolveError)
+  })
+
+  it('S10.15: quoted whitespace between subst-resolved objects throws (spec L442)', () => {
+    const input = `a = { p: 1 }\nb = { q: 2 }\nx = ${ref('a')} " " ${ref('b')}`
+    expect(() => resolveStr(input)).toThrow(ResolveError)
   })
 })

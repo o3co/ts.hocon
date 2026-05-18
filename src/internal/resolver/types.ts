@@ -14,6 +14,10 @@ export type SubstPlaceholder = {
 export type ConcatPlaceholder = {
   _kind: 'concat-placeholder'
   nodes: ResolverValue[]
+  /** 1-based line of the concat value in the source file (from AST Concat pos). */
+  line: number
+  /** 1-based column of the concat value in the source file (from AST Concat pos). */
+  col: number
 }
 export type AppendPlaceholder = {
   _kind: 'append-placeholder'

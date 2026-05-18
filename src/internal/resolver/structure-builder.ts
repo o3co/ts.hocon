@@ -181,7 +181,7 @@ export class StructureBuilder {
       case 'subst':
         return { _kind: 'subst-placeholder', segments: ast.segments, optional: ast.optional, listSuffix: ast.listSuffix, line: ast.pos.line, col: ast.pos.col, prefixLen: 0 }
       case 'concat':
-        return { _kind: 'concat-placeholder', nodes: ast.nodes.map(n => this.astToResolverValue(n, pathPrefix)) }
+        return { _kind: 'concat-placeholder', nodes: ast.nodes.map(n => this.astToResolverValue(n, pathPrefix)), line: ast.pos.line, col: ast.pos.col }
       case 'include':
         return { kind: 'scalar', raw: 'null', valueType: 'null' } // handled by applyField; should not reach here
     }
@@ -210,7 +210,7 @@ export class StructureBuilder {
         for (const n of ast.nodes) {
           nodes.push(await this.astToResolverValueAsync(n, pathPrefix))
         }
-        return { _kind: 'concat-placeholder', nodes }
+        return { _kind: 'concat-placeholder', nodes, line: ast.pos.line, col: ast.pos.col }
       }
       case 'include':
         return { kind: 'scalar', raw: 'null', valueType: 'null' }
