@@ -31,6 +31,10 @@ const SUCCESS_FIXTURES = [
   'ev05-config-defined-wins',
   'ev06-concat-prepend',
   'ev07-concat-append',
+  // ev08: self-ref-lookback (S13a.13). The plan called for it.fails() tripwire,
+  // but ts.hocon's existing priorValues-based self-ref resolution correctly handles
+  // the 'x = ["x"]; x = ${?x} ${?LIST[]}' pattern — ev08 passes as-is. ✅
+  'ev08-self-append',
   'ev09-whitespace-before-suffix',
   'ev10-empty-string-element',
   'ev11-include-context',
@@ -44,11 +48,9 @@ const ERROR_FIXTURES = [
   'ev12a-list-suffix-suppresses-scalar-fallback-required',
 ]
 
-// ev08: self-ref-lookback (S13a.13) is currently broken.
-// it.fails asserts the test DOES fail — auto-flips to ✅ when 3f lands.
-const TRIPWIRE_FIXTURES = [
-  'ev08-self-append',
-]
+// No tripwire fixtures: ev08 passes with the existing self-ref-lookback implementation.
+// If S13a.13 cluster 3f reveals a deeper correctness issue with ev08, revisit then.
+const TRIPWIRE_FIXTURES: string[] = []
 
 describe('S13c — env-var list expansion conformance (ev01-ev13)', () => {
   for (const name of SUCCESS_FIXTURES) {
