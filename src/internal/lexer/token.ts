@@ -7,6 +7,7 @@ export interface Segment {
 export interface SubstPayload {
   readonly segments: Segment[]
   readonly optional: boolean
+  readonly listSuffix: boolean  // true when the substitution body ends with '[]' (S13c)
 }
 
 export type TokenKind =

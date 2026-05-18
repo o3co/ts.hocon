@@ -285,6 +285,10 @@ class Lexer {
   /**
    * Parse the body of a `${...}` substitution (called after `${` has been consumed).
    * Implements Appendix A state machine from the cross-language spec.
+   *
+   * S13c extension: if the segment-collection loop encounters `[`, it delegates to
+   * `parseListSuffix()` which consumes the literal `[]` and sets `listSuffix=true`.
+   * ASCII space/tab before `[` is buffered in `pendingWs` and discarded (E7).
    */
   private parseSubstBody(startLine: number, startCol: number): SubstPayload {
     // Check for optional sigil
@@ -304,6 +308,7 @@ class Lexer {
     const segments: Segment[] = []
     // Track last-seen dot position for trailing-dot error reporting
     let lastDot: [number, number] | null = null
+    let listSuffix = false
 
     while (true) {
       if (this.pos >= this.input.length) {
@@ -315,6 +320,20 @@ class Lexer {
         this.advance()
         pendingWs = '' // trailing WS discarded
         break // goto END
+      } else if (ch === '[') {
+        // S13c: `[]` suffix arm — fires at segment boundary (before `}`).
+        // `isUnquotedSubstChar` rejects `[` so mid-segment `[` never reaches here;
+        // this arm only fires when we are between segments or after the path text.
+        if (!curStarted && segments.length === 0) {
+          throw new ParseError('empty segment before \'[]\' suffix in substitution path', startLine, this.col)
+        }
+        // Flush in-progress segment (mirrors the `}` flush path).
+        if (curStarted) {
+          segments.push({ text: curText, line: curLine, col: curCol })
+        }
+        pendingWs = '' // discard E7 inter-token whitespace before `[`
+        listSuffix = this.parseListSuffix(startLine)
+        break // goto END (closing `}` is consumed next)
       } else if (ch === '"') {
         // QUOTED token
         const qLine = startLine // substitutions cannot span newlines, so same line
@@ -390,19 +409,55 @@ class Lexer {
       }
     }
 
-    // END validation
-    if (curStarted) {
-      segments.push({ text: curText, line: curLine, col: curCol })
-    } else if (segments.length === 0) {
-      // ${}
-      throw new ParseError('empty substitution path', startLine, startCol)
-    } else {
-      // trailing dot: ${foo.} — report at the offending dot position
-      const [errLine, errCol] = lastDot ?? [startLine, startCol]
-      throw new ParseError('empty segment in path', errLine, errCol)
+    // END validation (only reached via `}` break; `[` break guarantees curStarted flush)
+    if (!listSuffix) {
+      if (curStarted) {
+        segments.push({ text: curText, line: curLine, col: curCol })
+      } else if (segments.length === 0) {
+        // ${}
+        throw new ParseError('empty substitution path', startLine, startCol)
+      } else {
+        // trailing dot: ${foo.} — report at the offending dot position
+        const [errLine, errCol] = lastDot ?? [startLine, startCol]
+        throw new ParseError('empty segment in path', errLine, errCol)
+      }
     }
 
-    return { segments, optional }
+    return { segments, optional, listSuffix }
+  }
+
+  /**
+   * Consume the literal `[]` suffix inside a substitution body.
+   * Called after the `[` has been detected (but not yet consumed).
+   * Requires the next character to be `[`, then exactly `]`, then `}`.
+   * Whitespace inside `[]` is not permitted (per spec Decision §1).
+   * Returns true (always — only called when listSuffix path is taken).
+   */
+  private parseListSuffix(startLine: number): boolean {
+    // consume `[`
+    this.advance()
+    const afterBracket = this.peek()
+    if (afterBracket !== ']') {
+      const desc = afterBracket === '' ? 'EOF' : JSON.stringify(afterBracket)
+      throw new ParseError(
+        `expected ']' after '[' in substitution list suffix (got ${desc})`,
+        startLine, this.col
+      )
+    }
+    // consume `]`
+    this.advance()
+    // The caller's loop has broken; next must be `}` which is consumed by the
+    // parent `}` arm on the *next* iteration — but since we broke out of the
+    // loop, the parent code must consume `}`. We require it here directly.
+    if (this.peek() !== '}') {
+      const desc = this.peek() === '' ? 'EOF' : JSON.stringify(this.peek())
+      throw new ParseError(
+        `expected '}' after '[]' in substitution list suffix (got ${desc})`,
+        startLine, this.col
+      )
+    }
+    this.advance() // consume `}`
+    return true
   }
 }
 
