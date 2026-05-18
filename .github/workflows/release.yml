@@ -32,6 +32,13 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Fetch expected JSON
+        # xx.hocon ground-truth fixtures used by the conformance tests
+        # (e.g. tests/lightbend/testdata/expected/unquoted-starts/*.json).
+        # Without this step the test job fails with ENOENT before publish
+        # — see #98 release-time regression where v1.2.0 publish was blocked.
+        run: make testdata
+
       - name: Type check
         run: pnpm typecheck
 
