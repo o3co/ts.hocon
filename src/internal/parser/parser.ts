@@ -76,6 +76,18 @@ class Parser {
 
       // include directive
       if (t.kind === 'unquoted' && t.value === 'include') {
+        // S12.5: bare `include` followed by a key-value separator is a key-path reservation error,
+        // not an include statement. Fire BEFORE advance() so we throw with the right message.
+        const next = this.peek(1)
+        if (
+          next.kind === 'equals' || next.kind === 'colon' ||
+          next.kind === 'plus_equals' || next.kind === 'lbrace'
+        ) {
+          throw new ParseError(
+            "'include' is reserved at the start of a key path expression; use \"include\" (quoted) to use it as a key",
+            t.line, t.col
+          )
+        }
         this.advance()
         fields.push(this.parseInclude())
         // trailing separator after include
