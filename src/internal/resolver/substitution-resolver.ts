@@ -218,6 +218,24 @@ export class SubstitutionResolver {
         return result
       }
 
+      // S13c: env-var list expansion — when listSuffix=true, scan NAME_0, NAME_1, …
+      // This branch runs BEFORE the scalar env fallback and suppresses it (S13c.5).
+      if (s.listSuffix) {
+        const result = this.resolveEnvList(s)
+        if (result !== undefined) {
+          this.cache.set(key, result)
+          return result
+        }
+        // No _0 found in any candidate base — do NOT fall through to scalar fallback.
+        if (s.optional) return undefined
+        throw new ResolveError(
+          `could not resolve substitution: \${${key}[]} (no environment variables ${s.segments.map((seg: Segment) => seg.text).join('.')}_0, …_1, … set)`,
+          key,
+          s.line,
+          s.col,
+        )
+      }
+
       // Env var fallback — use raw dot-join (no quoting) to match Lightbend behavior
       const envKey = s.segments.map((seg: Segment) => seg.text).join('.')
       const envVal =
@@ -241,6 +259,44 @@ export class SubstitutionResolver {
     } finally {
       this.resolving.delete(key)
     }
+  }
+
+  /**
+   * S13c: scan environment for NAME_0, NAME_1, … and return an Array<Scalar(String)>.
+   *
+   * Candidate bases follow the same fully-qualified→bare order used by the scalar
+   * env fallback. The first base whose _0 key is present wins entirely — no
+   * cross-base merging (spec §Relativized fallback precedence rules).
+   *
+   * Returns the HoconValue Array if any candidate base has _0, or undefined if
+   * none do (caller applies optional/required handling).
+   */
+  private resolveEnvList(s: SubstPlaceholder): HoconValue | undefined {
+    const bases = this.candidateBases(s)
+    for (const base of bases) {
+      const key0 = base + '_0'
+      if (!(key0 in this.opts.env)) continue
+      // _0 is present — scan _0, _1, … until first absent index
+      const items: HoconValue[] = []
+      for (let i = 0; ; i++) {
+        const k = base + '_' + i
+        if (!(k in this.opts.env)) break
+        items.push({ kind: 'scalar', raw: this.opts.env[k] as string, valueType: 'string' })
+      }
+      return { kind: 'array', items }
+    }
+    return undefined
+  }
+
+  /**
+   * Return the candidate base names for env-var-list lookup, in precedence order.
+   * Mirrors the fully-qualified→bare fallback used by the scalar env path.
+   */
+  private candidateBases(s: SubstPlaceholder): string[] {
+    const full = s.segments.map((seg: Segment) => seg.text).join('.')
+    if (s.prefixLen === 0) return [full]
+    const bare = s.segments.slice(s.prefixLen).map((seg: Segment) => seg.text).join('.')
+    return [full, bare]
   }
 
   private resolveConcat(nodes: ResolverValue[], scope: ResObj): HoconValue {
