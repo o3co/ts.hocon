@@ -1,28 +1,36 @@
 export const DECIMAL_NUMBER_RE = /^-?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/
 
-// WHOLE_NUMBER_RE: integer pre-classification per spec §Resolved decision 9.
-// Matches [+-]?[0-9]+ — used to select integer-fast-path vs fractional-fallback
-// (mirrors Lightbend SimpleConfig.isWholeNumber pattern).
-export const WHOLE_NUMBER_RE = /^[+-]?[0-9]+$/
+// trimHoconWs: strip HOCON_WS characters from both ends of a string.
+// Mirrors isHoconWhitespace in src/internal/lexer/lexer.ts byte-for-byte.
+// HOCON_WS = Java Character.isWhitespace set
+//          ∪ { 0x00A0 NBSP, 0x2007 FIGURE SPACE, 0x202F NARROW NO-BREAK SPACE }
+//          ∪ { 0xFEFF BOM }
+// Do NOT use stdlib String.trim() — it strips NEL (U+0085) and other
+// Unicode space separators that HOCON does not classify as whitespace.
+function isHoconWs(cp: number): boolean {
+  // ASCII control whitespace: tab, LF, VT, FF, CR
+  if (cp === 0x09 || cp === 0x0A || cp === 0x0B || cp === 0x0C || cp === 0x0D) return true
+  // File/group/record/unit separators (0x1C-0x1F)
+  if (cp >= 0x1C && cp <= 0x1F) return true
+  // ASCII space, NBSP (0x00A0), BOM (0xFEFF)
+  if (cp === 0x20 || cp === 0xA0 || cp === 0xFEFF) return true
+  // Ogham space mark (Zs)
+  if (cp === 0x1680) return true
+  // En quad through hair space (Zs, 0x2000-0x200A)
+  if (cp >= 0x2000 && cp <= 0x200A) return true
+  // Line separator (Zl), paragraph separator (Zp), narrow no-break space (Zs),
+  // medium mathematical space (Zs)
+  if (cp === 0x2028 || cp === 0x2029 || cp === 0x202F || cp === 0x205F) return true
+  // Ideographic space (Zs)
+  if (cp === 0x3000) return true
+  return false
+}
 
-// trimHoconWs: strip HOCON_WS characters (L1283) from both ends of a string.
-// HOCON_WS = ASCII whitespace (0x09 HT, 0x0A LF, 0x0D CR, 0x20 SP) + BOM (0xFEFF).
-// Uses the HOCON_WS predicate (same codepoint set as the lexer's isHoconWhitespace)
-// rather than stdlib String.trim(), which in JS also strips NEL (U+0085) and other
-// Unicode space separators that HOCON treats as content, not whitespace.
 function trimHoconWs(s: string): string {
   let start = 0
   let end = s.length
-  while (start < end) {
-    const cp = s.charCodeAt(start)
-    if (cp === 0x09 || cp === 0x0A || cp === 0x0D || cp === 0x20 || cp === 0xFEFF) { start++; continue }
-    break
-  }
-  while (end > start) {
-    const cp = s.charCodeAt(end - 1)
-    if (cp === 0x09 || cp === 0x0A || cp === 0x0D || cp === 0x20 || cp === 0xFEFF) { end--; continue }
-    break
-  }
+  while (start < end && isHoconWs(s.charCodeAt(start))) { start++ }
+  while (end > start && isHoconWs(s.charCodeAt(end - 1))) { end-- }
   return s.slice(start, end)
 }
 

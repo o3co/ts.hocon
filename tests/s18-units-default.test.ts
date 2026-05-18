@@ -10,8 +10,9 @@
 // Period fixtures (up01-up05): SKIPPED — S20 ➖ out-of-scope for ts.hocon
 // (getPeriod is not implemented). These fixtures are inapplicable.
 //
-// Fixture path: xx.hocon is a sibling of ts.hocon under repos/
-// (tests/ → ts.hocon/ → repos/ → xx.hocon/testdata/hocon/units-default)
+// Fixture path: copied from xx.hocon into ts.hocon via `make testdata`.
+// Local path: tests/lightbend/testdata/hocon/units-default/
+// (safe for CI — no sibling-repo assumption)
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -19,8 +20,7 @@ import { describe, expect, it } from 'vitest'
 import { ConfigError } from '../src/errors.js'
 import { parse } from '../src/index.js'
 
-// 2 levels up from tests/: ts.hocon → repos → then xx.hocon sibling
-const fixtureDir = fileURLToPath(new URL('../../xx.hocon/testdata/hocon/units-default', import.meta.url))
+const fixtureDir = fileURLToPath(new URL('./lightbend/testdata/hocon/units-default', import.meta.url))
 
 function loadConf(filename: string): ReturnType<typeof parse> {
   const content = readFileSync(join(fixtureDir, filename), 'utf-8')
