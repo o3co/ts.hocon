@@ -93,6 +93,25 @@ describe('S13c — env-var list expansion conformance (ev01-ev13)', () => {
     })
   }
 
+  // Cache disambiguation regression: `${X}` and `${X[]}` resolve via different
+  // code paths and may produce different values. They MUST occupy distinct cache
+  // slots — otherwise whichever resolves first poisons the cache for the other.
+  // Discovered via multi-agent-review on rs.hocon S13c branch (Codex Critical C1);
+  // verified to affect ts.hocon as well. Pinned in both directions.
+  it('S13c cache: `${X}` then `${X[]}` produce distinct cached values', () => {  // eslint-disable-line no-template-curly-in-string
+    const r = parse('a = ${X}\nb = ${X[]}', {  // eslint-disable-line no-template-curly-in-string
+      env: { X: 'scalar-val', X_0: 'a', X_1: 'b' },
+    })
+    expect(r.toObject()).toEqual({ a: 'scalar-val', b: ['a', 'b'] })
+  })
+
+  it('S13c cache: `${X[]}` then `${X}` produce distinct cached values', () => {  // eslint-disable-line no-template-curly-in-string
+    const r = parse('a = ${X[]}\nb = ${X}', {  // eslint-disable-line no-template-curly-in-string
+      env: { X: 'scalar-val', X_0: 'a', X_1: 'b' },
+    })
+    expect(r.toObject()).toEqual({ a: ['a', 'b'], b: 'scalar-val' })
+  })
+
   for (const name of TRIPWIRE_FIXTURES) {
     // it.fails — this test currently FAILS (self-ref-lookback broken, S13a.13).
     // Vitest reports it as passing. When cluster 3f fixes S13a.13, the test will

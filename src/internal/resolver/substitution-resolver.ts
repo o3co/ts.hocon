@@ -99,7 +99,13 @@ export class SubstitutionResolver {
     s: SubstPlaceholder,
     scope: ResObj,
   ): HoconValue | undefined {
-    const key = segmentsToKey(s.segments)
+    // Cache key includes listSuffix to prevent `${X}` and `${X[]}` collisions:
+    // both resolve via different code paths (scalar fallback vs resolveEnvList)
+    // and can produce different values, so they must occupy distinct cache slots.
+    // Pin: tests/env-var-list.test.ts S13c cache-disambiguation regression.
+    const key = s.listSuffix
+      ? `${segmentsToKey(s.segments)}[]`
+      : segmentsToKey(s.segments)
 
     if (this.cache.has(key)) return this.cache.get(key)!
 
