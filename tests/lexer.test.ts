@@ -522,4 +522,33 @@ describe('spec compliance Phase 1 — lexer-level', () => {
   it('S13c: double suffix is a lex error', () => {
     expect(() => tokenize('${X[][]}')).toThrow(ParseError)  // eslint-disable-line no-template-curly-in-string
   })
+
+  it('S13c: trailing dot before [] is a lex error', () => {
+    // Convergent with go.hocon fix: `${X.[]}` is empty-segment-before-suffix.
+    expect(() => tokenize('${X.[]}')).toThrow(ParseError)  // eslint-disable-line no-template-curly-in-string
+  })
+
+  it('S13c: trailing dot + E7 space before [] is still a lex error', () => {
+    expect(() => tokenize('${X . []}')).toThrow(ParseError)  // eslint-disable-line no-template-curly-in-string
+  })
+
+  it('S13c: E7 NBSP (U+00A0) before [] is a lex error', () => {
+    // E7 narrow allow-list: only ASCII SPACE (0x20) and TAB (0x09).
+    expect(() => tokenize('${X []}')).toThrow(ParseError)  // eslint-disable-line no-template-curly-in-string
+  })
+
+  it('S13c: E7 CR (U+000D) before [] is a lex error', () => {
+    expect(() => tokenize('${X\r[]}')).toThrow(ParseError)  // eslint-disable-line no-template-curly-in-string
+  })
+
+  it('S13c: E7 em-space (Zs U+2003) before [] is a lex error', () => {
+    expect(() => tokenize('${X []}')).toThrow(ParseError)  // eslint-disable-line no-template-curly-in-string
+  })
+
+  it('S13c: quoted segment + [] is valid', () => {
+    const [t] = tokenize('${"a"[]}')  // eslint-disable-line no-template-curly-in-string
+    expect(t.kind).toBe('subst')
+    expect(t.subst?.listSuffix).toBe(true)
+    expect(t.subst?.segments).toEqual([{ text: 'a', line: 1, col: 3 }])
+  })
 })

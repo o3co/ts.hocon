@@ -324,14 +324,30 @@ class Lexer {
         // S13c: `[]` suffix arm — fires at segment boundary (before `}`).
         // `isUnquotedSubstChar` rejects `[` so mid-segment `[` never reaches here;
         // this arm only fires when we are between segments or after the path text.
-        if (!curStarted && segments.length === 0) {
+        if (!curStarted) {
+          // Either no segments at all (`${[]}`, `${ []}`) or a trailing dot just
+          // consumed (`${X.[]}`, `${X . []}`). Both are syntax errors: the suffix
+          // must follow a complete path segment. Convergent with go.hocon fix
+          // (cross-impl spec extra-spec E7 / S13c §B integration).
           throw new ParseError('empty segment before \'[]\' suffix in substitution path', startLine, this.col)
         }
-        // Flush in-progress segment (mirrors the `}` flush path).
-        if (curStarted) {
-          segments.push({ text: curText, line: curLine, col: curCol })
+        // E7: only ASCII SPACE (0x20) or TAB (0x09) are allowed between the path
+        // expression and `[`. Wider whitespace (NBSP, CR, Zs, BOM, …) is rejected
+        // to keep the suffix tokenizer conservative per spec extra-spec-conventions.md
+        // E7 ("narrow allow-list intentionally avoids semantic surprise"). General
+        // subst-body inter-segment whitespace is still broader (S6 set); this
+        // constraint only fires at the `[` arm.
+        for (const w of pendingWs) {
+          if (w !== ' ' && w !== '\t') {
+            throw new ParseError(
+              `only ASCII space or tab allowed between substitution path and '[]' suffix (got ${JSON.stringify(w)}, HOCON extra-spec E7)`,
+              startLine, this.col
+            )
+          }
         }
-        pendingWs = '' // discard E7 inter-token whitespace before `[`
+        // Flush in-progress segment (mirrors the `}` flush path).
+        segments.push({ text: curText, line: curLine, col: curCol })
+        pendingWs = '' // E7-conformant pendingWs is intentionally discarded
         listSuffix = this.parseListSuffix(startLine)
         break // goto END (closing `}` is consumed next)
       } else if (ch === '"') {
