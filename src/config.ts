@@ -49,6 +49,8 @@ export class Config {
     }
     const result = parseBytes(v.raw, unit)
     if (Number.isNaN(result)) throw new ConfigError(`invalid byte size at ${path}: ${JSON.stringify(v.raw)}`, path)
+    // Lightbend getBytesBigInteger positive-only invariant: byte sizes must be non-negative.
+    if (result < 0) throw new ConfigError(`byte size must be non-negative at ${path}: ${JSON.stringify(v.raw)}`, path)
     return result
   }
 
