@@ -466,6 +466,23 @@ describe('spec compliance Phase 2 — concatenation, paths, and +=', () => {
     expect(() => parse('a = { include.bar = 1 }')).toThrow(ParseError)
     expect(() => parse('a = { include.bar = 1 }')).toThrow(/reserved/i)
   })
+
+  // --- S12.5 Unit D: valid cases that MUST NOT throw -----------------------
+  it('S12.5 Unit D: "include" = 1 should NOT throw (quoted first segment bypasses reservation)', () => {
+    expect(() => parse('"include" = 1')).not.toThrow()
+  })
+
+  it('S12.5 Unit D: "include".foo = 1 should NOT throw (quoted dotted form)', () => {
+    expect(() => parse('"include".foo = 1')).not.toThrow()
+  })
+
+  it('S12.5 Unit D: foo.include = 1 should NOT throw (non-initial position)', () => {
+    expect(() => parse('foo.include = 1')).not.toThrow()
+  })
+
+  it('S12.5 Unit D: a = include should NOT throw (value position, not key)', () => {
+    expect(() => parse('a = include')).not.toThrow()
+  })
 })
 
 // Spec compliance Phase 3 (tracking issue #70): substitution & include (parser-level)
