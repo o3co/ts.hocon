@@ -721,6 +721,24 @@ describe('S18.4 - string with no unit uses default unit (HOCON spec L1290)', () 
   })
 })
 
+// Unit C — '+' sign support in scanner
+describe('S18 - plus-sign prefix support in parseDuration/parseBytes', () => {
+  it('getDuration: "+500 ms" (plus sign with unit) → 500 ms', () => {
+    const c = parse('a = "+500 ms"')
+    expect(c.getDuration('a')).toBe(500)
+  })
+
+  it('getDuration: "+500" (plus sign, no unit) → 500 ms', () => {
+    const c = parse('a = "+500"')
+    expect(c.getDuration('a')).toBe(500)
+  })
+
+  it('getBytes: "+1024" (plus sign, no unit) → 1024 bytes', () => {
+    const c = parse('a = "+1024"')
+    expect(c.getBytes('a')).toBe(1024)
+  })
+})
+
 // S19.8 — duration unit names are case sensitive, lowercase only (HOCON spec L1304)
 // Probe (2026-05-13): "5 MS" → 5, "5 Seconds" → 5000, "5 DAYS" → 432000000.
 // parseDuration applies .toLowerCase() to the unit before lookup, making it case-insensitive.
