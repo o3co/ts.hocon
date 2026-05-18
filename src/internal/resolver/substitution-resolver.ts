@@ -334,16 +334,20 @@ export class SubstitutionResolver {
     // True left-to-right pairwise fold per spec §"Multi-piece concat is left-to-right pairwise
     // (NORMATIVE)". This matches Lightbend ConfigConcatenation.consolidate semantics.
     //
-    // join_pair handles each type-pair:
-    //   Object + Object  → deep object-merge (S10.3)
-    //   Array  + Object  → numericObjectToArray on right, then array-concat (S15.3)
-    //   Object + Array   → numericObjectToArray on left, then array-concat (S15.3)
-    //   Array  + Array   → array-concat
-    //   others           → string concat (fallthrough)
-    //
     // Critically, Object + Object produces an object (not an array), so overlapping numeric
     // keys in adjacent objects are merged before the object side meets an array partner.
     // A single-pass "classify first, then iterate" loop gets this wrong for overlapping keys.
+    // Full type-pair matrix is enforced inside joinPair — see inline comments.
+    // joinPair — full type-pair matrix (NORMATIVE per spec S10.4, S10.13, S10.19):
+    //   Object + Object → deep-merge (S10.3)
+    //   Array  + Object → try numericObjectToArray; if None → ERROR (S10.4/S10.19)
+    //   Object + Array  → try numericObjectToArray; if None → ERROR (S10.4/S10.19)
+    //   Array  + Array  → array-concat
+    //   Array  + Scalar → ERROR (S10.13)
+    //   Scalar + Array  → ERROR (S10.13)
+    //   Object + Scalar → ERROR (S10.13)
+    //   Scalar + Object → ERROR (S10.13)
+    //   Scalar + Scalar → string-concat (S10)
     const joinPair = (left: HoconValue, right: HoconValue): HoconValue => {
       if (left.kind === 'object' && right.kind === 'object') {
         // S10.3: both objects — deep-merge (later value wins on duplicate keys)
@@ -355,8 +359,13 @@ export class SubstitutionResolver {
         if (converted !== null) {
           return { kind: 'array', items: [...left.items, ...converted] }
         }
-        // No eligible keys — treat as array+object mix (S10.4 path: push object as element)
-        return { kind: 'array', items: [...left.items, right] }
+        // Non-numeric-keyed object cannot convert — spec L385 forbids array+object mix
+        throw new ResolveError(
+          'cannot concatenate array with object: value concatenation requires same-kind operands (S10.4)',
+          '',
+          0,
+          0,
+        )
       }
       if (left.kind === 'object' && right.kind === 'array') {
         // S15.3: object + list — attempt numeric conversion on the object side
@@ -364,27 +373,36 @@ export class SubstitutionResolver {
         if (converted !== null) {
           return { kind: 'array', items: [...converted, ...right.items] }
         }
-        // No eligible keys — treat as object+array mix (S10.4 path: push object as element)
-        return { kind: 'array', items: [left, ...right.items] }
+        // Non-numeric-keyed object cannot convert — spec L385 forbids object+array mix
+        throw new ResolveError(
+          'cannot concatenate object with array: value concatenation requires same-kind operands (S10.4)',
+          '',
+          0,
+          0,
+        )
       }
       if (left.kind === 'array' && right.kind === 'array') {
         return { kind: 'array', items: [...left.items, ...right.items] }
       }
-      // Array + non-array (scalar/other) — preserve prior "array context wins" behavior:
-      // push the non-array element into the array. S10.13 (array+scalar → error) is a
-      // separate cluster (Phase 6 #?) and is out of scope here.
-      if (left.kind === 'array') {
-        return { kind: 'array', items: [...left.items, right] }
+      // Spec L373: arrays and objects cannot appear in string value concatenation (S10.13)
+      if (left.kind === 'array' || right.kind === 'array') {
+        throw new ResolveError(
+          `cannot concatenate ${left.kind} with ${right.kind}: arrays and objects may not appear in string value concatenation (S10.13)`,
+          '',
+          0,
+          0,
+        )
       }
-      if (right.kind === 'array') {
-        return { kind: 'array', items: [left, ...right.items] }
+      if (left.kind === 'object' || right.kind === 'object') {
+        throw new ResolveError(
+          `cannot concatenate ${left.kind} with ${right.kind}: arrays and objects may not appear in string value concatenation (S10.13)`,
+          '',
+          0,
+          0,
+        )
       }
-      // String concat (scalars, or scalar+object — the obj+scalar case keeps prior
-      // string-concat behavior since prior code reached string-concat too when no array
-      // was present).
-      const leftStr = left.kind === 'scalar' ? left.raw : JSON.stringify(left)
-      const rightStr = right.kind === 'scalar' ? right.raw : JSON.stringify(right)
-      return { kind: 'scalar', raw: leftStr + rightStr, valueType: 'string' }
+      // Scalar + Scalar — string concat per S10
+      return { kind: 'scalar', raw: left.raw + right.raw, valueType: 'string' }
     }
 
     // Pairwise left-to-right reduce over non-separator elements.
