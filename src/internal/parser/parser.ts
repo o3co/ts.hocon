@@ -87,7 +87,7 @@ class Parser {
 
       // key
       const keyPos = this.currentPos()
-      const key = this.parseKey()
+      const { segments: key, firstWasQuoted } = this.parseKey()
 
       // value separator (optional)
       this.skip('newline')
@@ -120,13 +120,15 @@ class Parser {
     return { kind: 'object', fields, pos: p }
   }
 
-  private parseKey(): string[] {
+  private parseKey(): { segments: string[]; firstWasQuoted: boolean } {
     const segments: string[] = []
     let trailingDot = false
+    let firstWasQuoted = false
     while (true) {
       const t = this.peek()
       if (t.kind === 'string') {
         this.advance()
+        if (segments.length === 0) firstWasQuoted = true
         segments.push(t.value) // quoted: no dot split
         trailingDot = false
       } else if (t.kind === 'unquoted') {
@@ -182,7 +184,7 @@ class Parser {
 
       break
     }
-    return segments
+    return { segments, firstWasQuoted }
   }
 
   private parseInclude(): AstField {
