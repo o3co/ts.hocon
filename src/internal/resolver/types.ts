@@ -6,6 +6,7 @@ export type SubstPlaceholder = {
   _kind: 'subst-placeholder'
   segments: Segment[]
   optional: boolean
+  listSuffix: boolean  // true when the substitution ends with '[]' (S13c)
   line: number
   col: number
   prefixLen: number  // 0 for normal, >0 for relativized (number of prefix segments)

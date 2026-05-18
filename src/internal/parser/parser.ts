@@ -290,7 +290,7 @@ class Parser {
           throw new ParseError(`internal: subst token missing payload`, t.line, t.col)
         }
         const payload = t.subst
-        node = { kind: 'subst', segments: payload.segments, optional: payload.optional, pos: { line: t.line, col: t.col } }
+        node = { kind: 'subst', segments: payload.segments, optional: payload.optional, listSuffix: payload.listSuffix, pos: { line: t.line, col: t.col } }
       } else if (t.kind === 'string' || t.kind === 'triple_string') {
         this.advance()
         node = { kind: 'scalar', raw: t.value, valueType: 'string', pos: { line: t.line, col: t.col } }

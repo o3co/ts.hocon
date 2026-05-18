@@ -8,7 +8,7 @@ export type AstNode =
   | { kind: 'array'; items: AstNode[]; pos: Pos }
   | { kind: 'scalar'; raw: string; valueType: ScalarValueType; pos: Pos; _separator?: boolean }
   | { kind: 'concat'; nodes: AstNode[]; pos: Pos }
-  | { kind: 'subst'; segments: Segment[]; optional: boolean; pos: Pos }
+  | { kind: 'subst'; segments: Segment[]; optional: boolean; listSuffix: boolean; pos: Pos }
   | { kind: 'include'; path: string; required: boolean; isFile?: boolean; pos: Pos }
 
 // key が空配列のとき include ディレクティブを表す（value は include ノード）
