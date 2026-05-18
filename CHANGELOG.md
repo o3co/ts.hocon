@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **S10.4/S10.13/S10.19 concat type-check tightening**: `joinPair` now throws `ResolveError` for spec-disallowed type combinations — `[1] {b:2}`, `[1, 2] 3`, `{b:1} x`, and substitution-resolved equivalents — instead of silently coercing. Lightbend-spec-conformant per HOCON.md L373/L385. Phase 6 #3b. Fixtures: `testdata/hocon/concat-errors/ce01–ce15`. Closes #75, #77, #79.
   Preserved unchanged: Object+Object merge (S10.3), Array+Array concat, the S15 numeric-keyed-object→array bridge (S15.3), and Scalar+Scalar string-concat.
 
+### Fixed
+
+- **S18.1 + S18.4 units default**: `getDuration()` and `getBytes()` now accept bare numbers and strings with no unit suffix, treating them as the family's default unit (milliseconds for duration, bytes for bytes). `getDuration(5000)` → 5000 ms; `getDuration("5000")` → 5000 ms; `getDuration("500.5")` → 500.5 ms (fractional accepted, Lightbend-faithful). `getBytes("1024")` → 1024; `getBytes("1024.5")` → 1024 (truncated via `Math.trunc`, matching Lightbend `BigDecimal.toBigInteger()`). `getBytes()` now rejects negative byte sizes (Lightbend positive-only accessor invariant). Whitespace stripping uses HOCON_WS predicate (`trimHoconWs` helper). `+` prefix now accepted in numeric strings. xx.hocon fixtures ud01–ud08, ub01–ub06, un01–un03 pass; up01–up05 (period) inapplicable — S20 ➖. Phase 6 #3d.
+
 ### Added
 
 - **S13c env-var list expansion** (`${X[]}` / `${?X[]}`): substitutions ending with a `[]` suffix now expand environment variables `X_0`, `X_1`, … (stopping at the first absent index) into a HOCON array. Required form with no elements throws `ResolveError`; optional form removes the key. Config-defined values win over the env-var list (E6 convention). ASCII space and tab between the path expression and `[]` are allowed (E7 convention: `${X []}` is equivalent to `${X[]}`). Pins S13c.1–S13c.5 as ✅. Fixtures: ev01–ev13 in `tests/lightbend/testdata/hocon/env-var-list/`.

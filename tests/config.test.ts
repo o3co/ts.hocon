@@ -292,9 +292,10 @@ describe('getDuration', () => {
     expect(() => c.getDuration('missing')).toThrow(ConfigError)
   })
 
-  it('throws on invalid duration', () => {
+  it('S18.1: bare number is treated as milliseconds (not an error)', () => {
+    // Previously expected to throw; fixed by S18.1 — bare numbers are ms per HOCON L1279.
     const c = parse('a = 123')
-    expect(() => c.getDuration('a')).toThrow(ConfigError)
+    expect(c.getDuration('a')).toBe(123)
   })
 
   it('throws on unknown unit', () => {
@@ -370,9 +371,10 @@ describe('getBytes', () => {
     expect(() => c.getBytes('missing')).toThrow(ConfigError)
   })
 
-  it('throws on invalid byte size', () => {
+  it('S18.1: bare number is treated as bytes (not an error)', () => {
+    // Previously expected to throw; fixed by S18.1 — bare numbers are bytes per HOCON L1341.
     const c = parse('a = 123')
-    expect(() => c.getBytes('a')).toThrow(ConfigError)
+    expect(c.getBytes('a')).toBe(123)
   })
 
   it('throws on unknown unit', () => {
@@ -403,6 +405,22 @@ describe('getBytes', () => {
   it('does not round when output unit is not bytes', () => {
     const c = parse('size = "1.1KiB"')
     expect(c.getBytes('size', 'KiB')).toBeCloseTo(1.1) // fractional KiB is fine
+  })
+
+  // Unit D — negative byte size accessor rejection (Lightbend positive-only invariant)
+  it('D-RED: getBytes() on string "-1" throws ConfigError (negative byte size)', () => {
+    const c = parse('b = "-1"')
+    expect(() => c.getBytes('b')).toThrow(ConfigError)
+  })
+
+  it('D-RED: getBytes() on bare number -1 throws ConfigError (negative byte size)', () => {
+    const c = parse('b = -1')
+    expect(() => c.getBytes('b')).toThrow(ConfigError)
+  })
+
+  it('D-RED: getBytes() on string "1024" (positive) still returns 1024 (regression)', () => {
+    const c = parse('b = "1024"')
+    expect(c.getBytes('b')).toBe(1024)
   })
 
   // S21.4 — single-letter byte abbreviations map to powers of 2 (java -Xmx convention)
@@ -633,21 +651,31 @@ describe('S14a.11 - quoted "include" is a normal key (HOCON spec L977)', () => {
 // parseDuration extracts digits → unit="" → DURATION_UNITS[""] is undefined → NaN → error.
 // Spec L1279: "if the value is a number, it is taken to be a number in the default unit."
 describe('S18.1 - bare number is in default unit (HOCON spec L1279)', () => {
-  it.fails('S18.1: getDuration() on a bare number treats it as milliseconds (default unit)', () => {
+  it('S18.1: getDuration() on a bare number treats it as milliseconds (default unit)', () => {
     const c = parse('timeout = 5000')
     // 5000 bare number → 5000 ms
     expect(c.getDuration('timeout')).toBe(5000)
   })
 
-  it.fails('S18.1: getDuration() on a bare number with explicit "ms" output unit', () => {
+  it('S18.1: getDuration() on a bare number with explicit "ms" output unit', () => {
     const c = parse('timeout = 5000')
     expect(c.getDuration('timeout', 'ms')).toBe(5000)
   })
 
-  it.fails('S18.1: getDuration() on a bare number with "s" output unit gives seconds', () => {
+  it('S18.1: getDuration() on a bare number with "s" output unit gives seconds', () => {
     const c = parse('timeout = 5000')
     // 5000 ms → 5 s
     expect(c.getDuration('timeout', 's')).toBe(5)
+  })
+})
+
+// S18.1/S18.4 — HOCON_WS trimming (Unit A: trimHoconWs helper)
+// getDuration on value with ASCII whitespace already worked via stdlib trim.
+// getDuration("500") is RED — no-unit fallthrough missing.
+describe('S18.1/S18.4 - HOCON_WS trimming', () => {
+  it('trimHoconWs: getDuration on " 500 ms " (ASCII leading+trailing WS) works', () => {
+    const c = parse('a = " 500 ms "')
+    expect(c.getDuration('a')).toBe(500)
   })
 })
 
@@ -677,15 +705,53 @@ describe('S18.3 - unit name must be letters-only (HOCON spec L1287)', () => {
 // Spec L1290: "If a string value has no unit name, then it should be interpreted with the
 // default unit, as if it were a number."
 describe('S18.4 - string with no unit uses default unit (HOCON spec L1290)', () => {
-  it.fails('S18.4: getDuration() on string "5000" (no unit) treats it as milliseconds', () => {
+  it('S18.4: getDuration() on string "5000" (no unit) treats it as milliseconds', () => {
     const c = parse('timeout = "5000"')
     expect(c.getDuration('timeout')).toBe(5000)
   })
 
-  it.fails('S18.4: getDuration() on string "30" (no unit) with "s" output gives 0.03', () => {
+  it('S18.4: getDuration() on string "30" (no unit) with "s" output gives 0.03', () => {
     const c = parse('delay = "30"')
     // 30 ms → 0.03 s
     expect(c.getDuration('delay', 's')).toBeCloseTo(0.03)
+  })
+
+  it('S18.4: getDuration() on string "5000" with explicit "ms" output unit', () => {
+    const c = parse('a = "5000"')
+    expect(c.getDuration('a', 'ms')).toBe(5000)
+  })
+
+  it('S18.4: getBytes() on string "1024" (no unit) returns 1024 bytes', () => {
+    const c = parse('b = "1024"')
+    expect(c.getBytes('b')).toBe(1024)
+  })
+
+  it('S18.4: getBytes() on bare number 1024 returns 1024 bytes', () => {
+    const c = parse('b = 1024')
+    expect(c.getBytes('b')).toBe(1024)
+  })
+
+  it('S18.4: getDuration() on string with leading+trailing WS "  5000  " → 5000 ms', () => {
+    const c = parse('a = "  5000  "')
+    expect(c.getDuration('a')).toBe(5000)
+  })
+})
+
+// Unit C — '+' sign support in scanner
+describe('S18 - plus-sign prefix support in parseDuration/parseBytes', () => {
+  it('getDuration: "+500 ms" (plus sign with unit) → 500 ms', () => {
+    const c = parse('a = "+500 ms"')
+    expect(c.getDuration('a')).toBe(500)
+  })
+
+  it('getDuration: "+500" (plus sign, no unit) → 500 ms', () => {
+    const c = parse('a = "+500"')
+    expect(c.getDuration('a')).toBe(500)
+  })
+
+  it('getBytes: "+1024" (plus sign, no unit) → 1024 bytes', () => {
+    const c = parse('a = "+1024"')
+    expect(c.getBytes('a')).toBe(1024)
   })
 })
 

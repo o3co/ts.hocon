@@ -662,14 +662,13 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
 ## S18. Units format
 
 - **S18.1** Number value taken as default unit — §Units format (L1279)
-  tests: tests/config.test.ts (S18.1 describe block)
-  status: ❌
-  notes: `getDuration()` on a bare number value (e.g. `timeout = 5000`) throws
-  "invalid duration". `parseDuration` extracts all digits, leaving `unit = ""`, and
-  `DURATION_UNITS[""]` is `undefined` → `NaN` → error. Spec L1279: "if the value is a
-  number, it is taken to be a number in the default unit." Fix: add an early-exit in
-  `parseDuration` that returns `num / divisor` when `unit` is the empty string.
-  Tests pinned with `it.fails`.
+  tests: tests/config.test.ts (S18.1 describe block), tests/s18-units-default.test.ts (ud01-ud08)
+  status: ✅
+  notes: Fixed in Phase 6 #3d (branch fix/s18-duration-default-unit). `parseDuration` and
+  `parseBytes` now include an `if (unit === '')` branch that returns `num / divisor` (duration,
+  default ms) or `Math.trunc(num) / divisor` (bytes, default B) before the unit-map lookup.
+  The same fix resolves S18.4. `trimHoconWs()` helper added to use HOCON_WS character set
+  instead of stdlib `trim()`. Scanner extended to accept `+` prefix.
 - **S18.2** String parsed as: optional ws + number + ws + unit + ws — §Units format (L1281-1294)
   tests: tests/config.test.ts:239
   status: ✅
@@ -682,13 +681,16 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
   tested inputs. ⚠️ would apply only if a non-letter unit string happened to match a
   map key — which is structurally impossible given the map's contents.
 - **S18.4** String with no unit → interpreted with default unit — §Units format (L1290)
-  tests: tests/config.test.ts (S18.4 describe block)
-  status: ❌
-  notes: `getDuration()` on a string with no unit suffix (e.g. `timeout = "5000"`) throws
-  "invalid duration". Same root cause as S18.1: `unit = ""` → not in `DURATION_UNITS`
-  → `NaN` → error. Spec L1290: "If a string value has no unit name, then it should be
-  interpreted with the default unit." Fix is the same as S18.1: handle empty-unit case
-  in `parseDuration`. Tests pinned with `it.fails`.
+  tests: tests/config.test.ts (S18.4 describe block), tests/s18-units-default.test.ts (ud01-ud08, ub01-ub06, un01-un03)
+  status: ✅
+  notes: Fixed in Phase 6 #3d alongside S18.1 — same fix site. The `if (unit === '')` branch
+  in `parseDuration`/`parseBytes` handles both number-value (S18.1) and string-value (S18.4)
+  paths, since both route `v.raw` through the same parse helper. Fractional duration strings
+  (e.g. `"500.5"`) accepted and returned as ms (Lightbend double-parse faithful). Fractional
+  byte strings (e.g. `"1024.5"`) accepted and truncated via `Math.trunc` (Lightbend
+  `BigDecimal.toBigInteger()` faithful). `getBytes()` rejects negative byte sizes
+  (Lightbend positive-only accessor invariant). xx.hocon fixtures ud01-ud08, ub01-ub06,
+  un01-un03 pass. Period fixtures up01-up05 inapplicable — `getPeriod` not implemented (S20 ➖).
 
 ## S19. Duration format
 
