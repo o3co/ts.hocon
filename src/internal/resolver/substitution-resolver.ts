@@ -29,6 +29,13 @@ export class SubstitutionResolver {
   // mid-iteration (i.e. we are inside found's own resolution), preventing the
   // "foofoo" double-count without misfiring when an external field looks up the
   // same concat via a substitution (multi-reviewer convergence fix).
+  //
+  // Spec deviation: the S13a.13 spec ★1 decision #1 specified path-equality
+  // preservation for self-ref detection. Round-2 multi-agent-review surfaced a
+  // false-positive on external lookups (`a = ${?a}foo; b = ${a}`), so the
+  // criterion was tightened to node-membership-in-iterating-set — strictly
+  // narrower than path-equality. Spec amendment deferred to a follow-up
+  // xx.hocon PR (see Phase 6 #3f close-out notes).
   private resolvingConcats = new WeakSet<object>()
 
   constructor(
