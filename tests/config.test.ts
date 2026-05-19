@@ -424,28 +424,28 @@ describe('getBytes', () => {
   })
 
   // S21.4 — single-letter byte abbreviations map to powers of 2 (java -Xmx convention)
-  // Issue #89: these are not yet recognised by parseBytes()
-  it.fails('S21.4: parses single-letter K as kibibytes (1024)', () => {
+  // Fixed in Phase 6 #3h: BYTE_UNITS now includes K/k/M/m/G/g/T/t/P/p/E/e entries.
+  it('S21.4: parses single-letter K as kibibytes (1024)', () => {
     const c = parse('size = "1K"')
     expect(c.getBytes('size')).toBe(1024)
   })
 
-  it.fails('S21.4: parses single-letter k (lowercase) as kibibytes', () => {
+  it('S21.4: parses single-letter k (lowercase) as kibibytes', () => {
     const c = parse('size = "1k"')
     expect(c.getBytes('size')).toBe(1024)
   })
 
-  it.fails('S21.4: parses single-letter M as mebibytes (1024^2)', () => {
+  it('S21.4: parses single-letter M as mebibytes (1024^2)', () => {
     const c = parse('size = "1M"')
     expect(c.getBytes('size')).toBe(1_048_576)
   })
 
-  it.fails('S21.4: parses single-letter G as gibibytes (1024^3)', () => {
+  it('S21.4: parses single-letter G as gibibytes (1024^3)', () => {
     const c = parse('size = "1G"')
     expect(c.getBytes('size')).toBe(1_073_741_824)
   })
 
-  it.fails('S21.4: parses single-letter T as tebibytes (1024^4)', () => {
+  it('S21.4: parses single-letter T as tebibytes (1024^4)', () => {
     const c = parse('size = "1T"')
     expect(c.getBytes('size')).toBe(1_099_511_627_776)
   })
@@ -622,13 +622,12 @@ describe('S1.1 - UTF-8 handling (HOCON spec L117)', () => {
 // Probe (2026-05-13): parse('') returns an empty Config without throwing.
 // Spec L130: "Empty files are invalid documents."
 describe('S3.1 - empty file is invalid (HOCON spec L130)', () => {
-  it.fails('S3.1: parse("") should throw — empty file is invalid per spec L130', () => {
-    // Currently returns an empty Config; spec requires an error.
+  // Fixed in Phase 6 #3h: buildResolveContext() now throws ParseError for empty/whitespace/comment-only input.
+  it('S3.1: parse("") should throw — empty file is invalid per spec L130', () => {
     expect(() => parse('')).toThrow()
   })
 
-  it.fails('S3.1: parse("   \\n  ") (whitespace-only) should throw — same rule', () => {
-    // Whitespace-only file has no root value, same as empty.
+  it('S3.1: parse("   \\n  ") (whitespace-only) should throw — same rule', () => {
     expect(() => parse('   \n  ')).toThrow()
   })
 })

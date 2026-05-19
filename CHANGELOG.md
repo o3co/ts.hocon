@@ -16,6 +16,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **S3.1 empty file rejection** (Phase 6 #3h): `parse('')`, `parse('   \n  ')`, `parse('# only a comment\n')`, and any other input that produces no semantic tokens now throw `ParseError("empty file is not a valid HOCON document (HOCON.md L130)")`. Previously `parse('')` returned an empty Config without throwing. Both `parse()` and `parseAsync()` are covered via the shared `buildResolveContext()` guard. Conformance fixtures ef01–ef06.
+
+- **S21.4 single-letter byte abbreviations** (Phase 6 #3h): `getBytes()` and `parseBytes()` now accept single-letter K/k/M/m/G/g/T/t/P/p/E/e as powers-of-two per HOCON.md L1385 (java -Xmx convention). Lightbend typesafe-config 1.4.3 verified: `1K=1024`, `1M=1048576`, etc. Values that would exceed `Number.MAX_SAFE_INTEGER` (e.g. `1E` = 2^60 ≈ 1.15e18 > 2^53-1) throw `RangeError`. Multi-letter units (KB/MB/etc.) remain SI decimal and are unaffected. Z/Y deferred (require BigInt accessor). Conformance fixtures bsl01–bsl09.
+
+- **S23.4 .properties object-wins rule** (Phase 6 #3h): `parseProperties()` now sorts keys before inserting via `setNested`, and `setNested` guards last-segment writes so an existing object is never overwritten by a scalar. Both orderings of conflicting keys (`a=hello;a.b=world` and `a.b=world;a=hello`) now produce `{a:{b:"world"}}` (object wins per HOCON.md L1485). Deep nesting cases (pc03/pc04) also correct. Conformance fixtures pc01–pc04.
+
 - **S18.1 + S18.4 units default**: `getDuration()` and `getBytes()` now accept bare numbers and strings with no unit suffix, treating them as the family's default unit (milliseconds for duration, bytes for bytes). `getDuration(5000)` → 5000 ms; `getDuration("5000")` → 5000 ms; `getDuration("500.5")` → 500.5 ms (fractional accepted, Lightbend-faithful). `getBytes("1024")` → 1024; `getBytes("1024.5")` → 1024 (truncated via `Math.trunc`, matching Lightbend `BigDecimal.toBigInteger()`). `getBytes()` now rejects negative byte sizes (Lightbend positive-only accessor invariant). Whitespace stripping uses HOCON_WS predicate (`trimHoconWs` helper). `+` prefix now accepted in numeric strings. xx.hocon fixtures ud01–ud08, ub01–ub06, un01–un03 pass; up01–up05 (period) inapplicable — S20 ➖. Phase 6 #3d.
 
 ### Added

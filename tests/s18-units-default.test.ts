@@ -97,13 +97,9 @@ describe('S18.4 + S18.1 — bytes no-unit fallthrough (ub01-ub06)', () => {
     expect(() => c.getBytes('b')).toThrow(ConfigError)
   })
 
-  // ub05: "1024K" — S21.4 ❌ (single-letter 'K' unit not yet implemented).
-  // This fixture demonstrates that the unit-present code path is reached (no default-unit
-  // confusion), but the single-letter 'K' abbreviation is out of scope for S18 work.
-  it.fails('ub05: "1024K" single-letter K — S21.4 ❌ out-of-scope; unit-present path reached but K unrecognized', () => {
+  // ub05: "1024K" — S21.4 ✅ fixed in Phase 6 #3h.
+  it('ub05: "1024K" single-letter K → getBytes("b") = 1048576 (1024 × 1024 per S21.4)', () => {
     const c = loadConf('ub05-bytes-with-unit.conf')
-    // S21.4 would map K → 1024 (kibibytes per Java -Xmx convention).
-    // For now this throws — tracked separately under S21.4.
     expect(c.getBytes('b')).toBe(1_024 * 1_024)
   })
 

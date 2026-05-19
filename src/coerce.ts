@@ -100,6 +100,16 @@ const BYTE_UNITS: Record<string, number> = {
   GiB: 1_073_741_824, gibibyte: 1_073_741_824, gibibytes: 1_073_741_824,
   TB: 1_000_000_000_000, terabyte: 1_000_000_000_000, terabytes: 1_000_000_000_000,
   TiB: 1_099_511_627_776, tebibyte: 1_099_511_627_776, tebibytes: 1_099_511_627_776,
+  // S21.4 — HOCON.md L1385: single-letter abbreviations → powers of two (java -Xmx convention).
+  // Lightbend typesafe-config 1.4.3 verified: 1K=1024, 1M=1048576, etc.
+  // Both upper- and lowercase accepted per Lightbend behaviour.
+  // Z/Y (2^70/2^80) are deferred — they overflow MAX_SAFE_INTEGER and require BigInt accessor.
+  K: 1_024, k: 1_024,
+  M: 1_024 ** 2, m: 1_024 ** 2,
+  G: 1_024 ** 3, g: 1_024 ** 3,
+  T: 1_024 ** 4, t: 1_024 ** 4,
+  P: 1_024 ** 5, p: 1_024 ** 5,
+  E: 1_024 ** 6, e: 1_024 ** 6,
   // lowercase short-form aliases
   b: 1,
   kb: 1_000, kib: 1_024,
@@ -143,6 +153,12 @@ export function parseBytes(value: string, outputUnit: ByteUnit = 'B'): number {
   }
   if (mult === undefined) return NaN
   const bytes = num * mult
+  // S21.4 overflow guard: JS number is float64 (MAX_SAFE_INTEGER = 2^53-1 ≈ 9.0e15).
+  // Values like 1E (2^60 ≈ 1.15e18) exceed MAX_SAFE_INTEGER and cannot be represented
+  // exactly — throw rather than silently return an imprecise result.
+  if (Math.abs(bytes) > Number.MAX_SAFE_INTEGER) {
+    throw new RangeError('byte size overflows representable range (max 2^53-1 bytes)')
+  }
   const result = bytes / divisor
   return outputUnit === 'B' ? Math.round(result) : result
 }

@@ -2,9 +2,24 @@ import { tokenize } from './internal/lexer/lexer.js'
 import { parseTokens } from './internal/parser/parser.js'
 import { resolve, resolveAsync } from './internal/resolver/resolver.js'
 import { Config } from './config.js'
+import { ParseError } from './errors.js'
 import type { ResolveOptions } from './internal/resolver/resolver.js'
+import type { Token } from './internal/lexer/token.js'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
+
+/**
+ * Returns true iff the token stream contains at least one content token —
+ * i.e. a token that is not 'eof' or 'newline'. The lexer does not emit
+ * separate whitespace or comment tokens (they are consumed inline), so a
+ * stream that is only eof/newline tokens came from an empty, whitespace-only,
+ * or comment-only document.
+ *
+ * HOCON.md L130: "Empty files are invalid documents."
+ */
+function hasContentTokens(tokens: Token[]): boolean {
+  return tokens.some(t => t.kind !== 'eof' && t.kind !== 'newline')
+}
 
 export type ParseOptions = {
   baseDir?: string
@@ -29,6 +44,12 @@ async function defaultReadFile(filePath: string): Promise<string> {
 
 function buildResolveContext(input: string, opts: ParseOptions): { ast: ReturnType<typeof parseTokens>, resolveOpts: ResolveOptions } {
   const tokens = tokenize(input)
+  // S3.1 — HOCON.md L130: empty files (including whitespace-only and comment-only) are invalid.
+  // The lexer strips whitespace and comments inline without emitting tokens for them, so a stream
+  // with only 'newline' and 'eof' tokens means the document has zero semantic content.
+  if (!hasContentTokens(tokens)) {
+    throw new ParseError('empty file is not a valid HOCON document (HOCON.md L130)', 1, 1)
+  }
   const ast = parseTokens(tokens)
   const resolveOpts: ResolveOptions = {
     env: getEnv(opts),

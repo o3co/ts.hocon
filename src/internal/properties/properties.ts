@@ -3,6 +3,12 @@ import type { HoconValue } from '../../value.js'
 export function parseProperties(input: string): Record<string, unknown> {
   const root: Record<string, unknown> = Object.create(null)
 
+  // Collect (key, value) pairs first so we can sort before inserting.
+  // S23.4 — HOCON.md L1485: when a key conflict exists between a scalar ("a=hello")
+  // and an object expansion ("a.b=world"), the object must always win.
+  // Sorting keys gives a single deterministic processing order regardless of input
+  // line order (mirrors go.hocon's sort.Strings(keys) and spec L1476-1479 intent).
+  const pairs: [string, string][] = []
   for (const line of input.split('\n')) {
     const trimmed = line.trim()
     if (trimmed === '' || trimmed.startsWith('#') || trimmed.startsWith('!')) continue
@@ -14,6 +20,13 @@ export function parseProperties(input: string): Record<string, unknown> {
     const value = trimmed.slice(sepIdx + 1).trim()
     if (key === '') continue
 
+    pairs.push([key, value])
+  }
+
+  // Sort by key so conflict-direction is input-order independent.
+  pairs.sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)
+
+  for (const [key, value] of pairs) {
     setNested(root, key.split('.'), value)
   }
 
@@ -41,6 +54,9 @@ function setNested(obj: Record<string, unknown>, segments: string[], value: stri
   }
   const last = segments[segments.length - 1]
   if (last === undefined || DANGEROUS_KEYS.has(last)) return
+  // S23.4 — HOCON.md L1485: object must always win over scalar.
+  // If the last segment already holds an object, do not overwrite it with a scalar.
+  if (typeof current[last] === 'object' && current[last] !== null) return
   current[last] = value
 }
 
