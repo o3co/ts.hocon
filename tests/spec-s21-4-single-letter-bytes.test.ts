@@ -84,3 +84,31 @@ describe('S21.4 — single-letter byte abbreviations → powers of two (HOCON.md
     expect(parseBytes('1MB')).toBe(1_000_000)
   })
 })
+
+describe('S21.4 — unit-less overflow guard (invariant parity with with-unit path)', () => {
+  // Number.MAX_SAFE_INTEGER = 2^53 - 1 = 9007199254740991
+  // The guard is: Math.abs(bytes) > MAX_SAFE_INTEGER → throw
+  // So 9007199254740992 (= 2^53 = MAX_SAFE_INTEGER + 1) must throw.
+  it('S21.4 unitless: parseBytes("9007199254740992") throws RangeError (2^53 = MAX_SAFE_INTEGER+1)', () => {
+    expect(() => parseBytes('9007199254740992')).toThrow(RangeError)
+  })
+
+  // 9007199254740991 = MAX_SAFE_INTEGER — must succeed
+  it('S21.4 unitless: parseBytes("9007199254740991") succeeds (MAX_SAFE_INTEGER, exactly on limit)', () => {
+    expect(parseBytes('9007199254740991')).toBe(9_007_199_254_740_991)
+  })
+
+  // Symmetry: same magnitudes with "B" suffix must match unit-less behaviour
+  it('S21.4 symmetry: parseBytes("9007199254740992B") throws RangeError — same as unit-less', () => {
+    expect(() => parseBytes('9007199254740992B')).toThrow(RangeError)
+  })
+
+  it('S21.4 symmetry: parseBytes("9007199254740991B") succeeds — same as unit-less', () => {
+    expect(parseBytes('9007199254740991B')).toBe(9_007_199_254_740_991)
+  })
+
+  // Negative side — overflow guard must apply to abs value
+  it('S21.4 unitless: parseBytes("-9007199254740992") throws RangeError (negative overflow)', () => {
+    expect(() => parseBytes('-9007199254740992')).toThrow(RangeError)
+  })
+})

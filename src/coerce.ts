@@ -142,8 +142,15 @@ export function parseBytes(value: string, outputUnit: ByteUnit = 'B'): number {
   if (divisor === undefined) return NaN
   // S18.1 + S18.4: bare number (no unit) → treat as default unit (bytes)
   // Use Math.trunc per Lightbend BigDecimal.toBigInteger (truncate toward zero)
+  // S21.4 overflow guard applies to unit-less path too: a bare integer like
+  // 9007199254740993 (2^53+1) cannot be represented exactly in float64 and must
+  // throw rather than silently return an imprecise result.
   if (unit === '') {
-    return Math.trunc(num) / divisor
+    const bytes = Math.trunc(num)
+    if (Math.abs(bytes) > Number.MAX_SAFE_INTEGER) {
+      throw new RangeError('byte size overflows representable range (max 2^53-1 bytes)')
+    }
+    return bytes / divisor
   }
   // Try exact match first (preserves KB vs KiB distinction)
   let mult = BYTE_UNITS[unit]
