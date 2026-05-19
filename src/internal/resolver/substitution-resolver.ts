@@ -24,6 +24,12 @@ import {
 export class SubstitutionResolver {
   private resolving = new Set<string>()
   private cache = new Map<string, HoconValue>()
+  // Tracks ConcatPlaceholder nodes currently being iterated by resolveConcat.
+  // Used by isSelfRef detection: fires only when found === a concat currently
+  // mid-iteration (i.e. we are inside found's own resolution), preventing the
+  // "foofoo" double-count without misfiring when an external field looks up the
+  // same concat via a substitution (multi-reviewer convergence fix).
+  private resolvingConcats = new WeakSet<object>()
 
   constructor(
     private root: ResObj,
@@ -74,7 +80,17 @@ export class SubstitutionResolver {
 
   private resolveVal(v: ResolverValue, scope: ResObj): HoconValue | undefined {
     if (isSubst(v)) return this.resolveSubst(v, scope)
-    if (isConcat(v)) return this.resolveConcat(v.nodes, scope, v.line, v.col)
+    if (isConcat(v)) {
+      // Mark this ConcatPlaceholder as mid-iteration so that resolveSubst can
+      // detect a true self-ref (the substitution's found value IS this concat,
+      // currently being iterated) vs an external lookup of the same field.
+      this.resolvingConcats.add(v)
+      try {
+        return this.resolveConcat(v.nodes, scope, v.line, v.col)
+      } finally {
+        this.resolvingConcats.delete(v)
+      }
+    }
     if (isAppend(v)) return this.resolveAppend(v, scope)
     if (isResObj(v)) return this.resolveResObj(v)
     const hv = v as HoconValue
@@ -89,10 +105,6 @@ export class SubstitutionResolver {
       }
     }
     return hv
-  }
-
-  private segmentsEqual(a: Segment[], b: Segment[]): boolean {
-    return a.length === b.length && a.every((seg, i) => seg.text === b[i]?.text)
   }
 
   private resolveSubst(
@@ -149,50 +161,46 @@ export class SubstitutionResolver {
     try {
       const found = lookupPath(this.root, s.segments)
       if (found !== undefined) {
-        // Only fall back to prior value for actual self-referential substitutions
-        // (e.g. b=${b}), not for any substitution found during lookup.
-        if (isSubst(found) || isConcat(found)) {
-          const isSelfRef = isSubst(found)
-            ? this.segmentsEqual(found.segments, s.segments)
-            : isConcat(found) &&
-              found.nodes.some(
-                (n: ResolverValue) => isSubst(n) && this.segmentsEqual(n.segments, s.segments),
-              )
-          if (isSelfRef) {
-            let prior: ResolverValue | undefined
-            if (s.segments.length > 1) {
-              // Multi-segment path (e.g. ${?foo.a} or relativized ${?a} with prefix):
-              // look up prior in the parent scope at the leaf key.
-              const leafSeg = s.segments[s.segments.length - 1]?.text ?? ''
-              const parentScope = lookupResObj(
-                this.root,
-                s.segments.slice(0, s.segments.length - 1),
-              )
-              prior = parentScope?.priorValues.get(leafSeg)
-            } else {
-              const rootSeg = s.segments[0]?.text ?? ''
-              prior =
-                scope.priorValues.get(rootSeg) ??
-                this.root.priorValues.get(rootSeg)
-            }
-            if (prior !== undefined) {
-              const result = this.resolveVal(prior, scope)
-              if (result !== undefined) this.cache.set(key, result)
-              return result
-            }
-            // Spec L841: no prior value + self-ref → short-circuit.
-            // Do NOT fall through to resolveVal(found) — found is the current
-            // concat-in-progress, which would produce "foofoo" instead of "foo".
-            // Optional yields undefined (concat-layer omits it per Phase 6 #3b).
-            // Required raises an error (same as any other unresolved required subst).
-            if (s.optional) return undefined
-            throw new ResolveError(
-              `could not resolve substitution: \${${key}}`,
-              key,
-              s.line,
-              s.col,
+        // S13a.13 / spec L841: if `found` is a ConcatPlaceholder that is currently
+        // mid-iteration (its nodes are being evaluated by an outer resolveConcat that
+        // called resolveSubst on one of those nodes), then this substitution IS a
+        // self-ref inside that concat.  Short-circuit to prior (or no-prior) to avoid
+        // the outer concat double-counting its own literal suffix (e.g. "foofoo" instead
+        // of "foo" for a = ${?a}foo with no prior a).
+        //
+        // Critically, resolvingConcats.has(found) is FALSE when an *external* field
+        // (e.g. b = ${a}) looks up field a — found is not mid-iteration there, so
+        // resolveVal(found) proceeds normally and the cycle guard inside handles any
+        // internal self-ref correctly.  This is the multi-reviewer convergence fix
+        // (go.hocon + rs.hocon independently flagged the regression).
+        if (isConcat(found) && this.resolvingConcats.has(found)) {
+          let prior: ResolverValue | undefined
+          if (s.segments.length > 1) {
+            const leafSeg = s.segments[s.segments.length - 1]?.text ?? ''
+            const parentScope = lookupResObj(
+              this.root,
+              s.segments.slice(0, s.segments.length - 1),
             )
+            prior = parentScope?.priorValues.get(leafSeg)
+          } else {
+            const rootSeg = s.segments[0]?.text ?? ''
+            prior =
+              scope.priorValues.get(rootSeg) ??
+              this.root.priorValues.get(rootSeg)
           }
+          if (prior !== undefined) {
+            const result = this.resolveVal(prior, scope)
+            if (result !== undefined) this.cache.set(key, result)
+            return result
+          }
+          // No prior: short-circuit (spec L841).
+          if (s.optional) return undefined
+          throw new ResolveError(
+            `could not resolve substitution: \${${key}}`,
+            key,
+            s.line,
+            s.col,
+          )
         }
         let result = this.resolveVal(found, scope)
         // Delayed merge in substitution context: if the resolved value is an object

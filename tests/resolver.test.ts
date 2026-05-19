@@ -1202,4 +1202,14 @@ describe('S13a.13: self-ref look-back no-prior short-circuit (spec L841, #84)', 
       throw new Error('expected foo to be an object')
     }
   })
+
+  // --- external-ref regression guard (multi-reviewer convergence P1) ---
+  // go.hocon and rs.hocon independently flagged: a = ${?a}foo; b = ${a}
+  // isSelfRef detection must NOT fire when resolving ${a} from b's RHS,
+  // even though a's stored value is a concat containing ${?a}.
+  it('S13a.13: b = ${a} resolves correctly when a = ${?a}foo (no prior a)', () => {  // eslint-disable-line no-template-curly-in-string
+    const r = resolveStr('a = ${?a}foo\nb = ${a}')  // eslint-disable-line no-template-curly-in-string
+    expect(obj(r).get('a')).toEqual({ kind: 'scalar', raw: 'foo', valueType: 'string' })
+    expect(obj(r).get('b')).toEqual({ kind: 'scalar', raw: 'foo', valueType: 'string' })
+  })
 })
