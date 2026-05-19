@@ -3,6 +3,7 @@ import { ResolveError } from '../../errors.js'
 import type { AstNode } from '../parser/ast.js'
 import { tokenize } from '../lexer/lexer.js'
 import { parseTokens } from '../parser/parser.js'
+import { assertNonEmptyDocument } from '../parser/empty-check.js'
 import { propertiesToHoconValue } from '../properties/properties.js'
 import {
   type ResObj,
@@ -141,7 +142,10 @@ export class IncludeLoader {
       return hoconValueToResObj(propertiesToHoconValue(content))
     }
 
-    const ast = parseTokens(tokenize(content))
+    const tokens = tokenize(content)
+    // S3.1 — HOCON.md L130: empty included files are invalid documents.
+    assertNonEmptyDocument(tokens, candidate)
+    const ast = parseTokens(tokens)
     return this.onBuildResObj(ast, {
       env,
       baseDir: nodePath.dirname(candidate),
@@ -172,7 +176,10 @@ export class IncludeLoader {
       return hoconValueToResObj(propertiesToHoconValue(content))
     }
 
-    const ast = parseTokens(tokenize(content))
+    const tokens = tokenize(content)
+    // S3.1 — HOCON.md L130: empty included files are invalid documents.
+    assertNonEmptyDocument(tokens, candidate)
+    const ast = parseTokens(tokens)
     return this.onBuildResObjAsync(ast, {
       env,
       baseDir: nodePath.dirname(candidate),

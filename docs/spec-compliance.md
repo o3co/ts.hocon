@@ -69,12 +69,11 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
 ## S3. Omit root braces
 
 - **S3.1** Empty file is invalid — §Omit root braces (L130)
-  tests: tests/config.test.ts (S3.1 describe block)
-  status: ❌
-  notes: `parse('')` and `parse('   \n  ')` both return an empty Config without throwing.
-  Spec L130: "Empty files are invalid documents." The parser accepts empty input as an
-  empty object at the AST level; the fix requires a guard in `parse()` or `parseTokens()`.
-  Tests pinned with `it.fails`.
+  tests: tests/spec-s3-1-empty-file.test.ts; tests/conformance/empty-file.test.ts; tests/config.test.ts (S3.1 describe block)
+  status: ✅
+  notes: Fixed in Phase 6 #3h. `buildResolveContext()` in `src/parse.ts` now checks the
+  token stream after `tokenize()` and throws `ParseError` if only EOF/newline tokens are
+  present (covers empty, whitespace-only, comment-only, BOM-only input).
 - **S3.2** Root non-object/non-array is invalid (when explicitly enclosed) — §Omit root braces (L131)
   tests: tests/parser.test.ts:355
   status: ✅
@@ -755,9 +754,11 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
   tests: tests/config.test.ts:323; tests/config.test.ts:333
   status: ✅
 - **S21.4** Single-letter abbreviations → powers of 2 (java -Xmx convention) — §Size in bytes format (L1385)
-  tests: tests/config.test.ts:410
-  status: ❌
-  `getBytes()` throws `invalid byte size` for `1K`, `1k`, `1M`, `1G`, `1T`, etc. The spec (L1374–L1390) lists K/k, M/m, G/g, T/t, P/p, E/e, Z/z, Y/y as aliases for the corresponding powers-of-two IEC units. See issue #89.
+  tests: tests/spec-s21-4-single-letter-bytes.test.ts; tests/conformance/byte-single-letter.test.ts; tests/config.test.ts (S21.4 block); tests/s18-units-default.test.ts (ub05)
+  status: ✅
+  notes: Fixed in Phase 6 #3h. `BYTE_UNITS` in `src/coerce.ts` now includes K/k/M/m/G/g/T/t/P/p/E/e
+  as powers-of-two per HOCON.md L1385 (Lightbend typesafe-config 1.4.3 verified). Values exceeding
+  `Number.MAX_SAFE_INTEGER` (e.g. 1E = 2^60) throw `RangeError`. Z/Y deferred (overflow BigInt scope).
 - **S21.5** Fractional values supported (`0.5M`) — §Units format (L1281-1294) + §Size in bytes (L1335-1342)
   tests: tests/config.test.ts:384
   status: ✅
@@ -792,14 +793,12 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
   tests: tests/properties.test.ts:37; tests/parse.test.ts:386
   status: ✅
 - **S23.4** Object wins over string on conflicting key — §Java properties (L1485)
-  tests: tests/properties.test.ts (S23.4 describe block)
-  status: ❌
-  notes: `setNested` in `properties.ts` overwrites an existing object value with a string
-  when the string key appears after the dotted key. Probe: `"a.b=world\na=hello"` →
-  `{a:"hello"}`. Spec L1485: "the object must always win." Fix: add a guard in `setNested`
-  that skips assignment when the existing value at the last segment is already an object.
+  tests: tests/spec-s23-4-properties-object-wins.test.ts; tests/conformance/properties-conflict.test.ts; tests/properties.test.ts (S23.4 describe block)
+  status: ✅
+  notes: Fixed in Phase 6 #3h. `parseProperties()` in `src/internal/properties/properties.ts`
+  now collects all pairs and sorts by key before calling `setNested`, ensuring input-order
+  independence. `setNested` last-segment write guards on existing-object presence (object wins).
   The reverse order (string first, dotted key second) already works correctly.
-  Tests pinned with `it.fails`.
 - **S23.5** Multi-line values (backslash continuation) — §Note on Java properties similarity (L1587)
   out-of-scope: declared in each implementation's README — the `.properties` reader supports only basic `key=value` syntax to avoid pulling a full Java properties parser into a non-JVM library.
   tests: —

@@ -84,10 +84,9 @@ describe('S23.4 - object wins over string on conflicting key in properties (HOCO
     expect(result).toEqual({ a: { b: 'world' } })
   })
 
-  it.fails('S23.4: dotted key followed by string key → object must still win (spec L1485)', () => {
-    // a.b=world creates { a: { b: 'world' } }, then a=hello overwrites a with a string.
-    // Spec L1485: "the object must always win in this case."
-    // Currently: { a: 'hello' } — string wins. Bug: setNested does not protect existing objects.
+  it('S23.4: dotted key followed by string key → object must still win (spec L1485)', () => {
+    // Fixed in Phase 6 #3h: sort + last-segment object guard in setNested.
+    // a.b=world creates { a: { b: 'world' } }, then a=hello is discarded (object wins).
     const result = parseProperties('a.b=world\na=hello')
     expect(result).toEqual({ a: { b: 'world' } })
   })
