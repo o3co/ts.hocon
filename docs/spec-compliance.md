@@ -426,8 +426,8 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
   tests: tests/resolver.test.ts:93
   status: ✅
 - **S13a.13** `a = ${?a}foo` resolves to `"foo"` (look-back undefined) — §Self-Referential (L841)
-  tests: tests/resolver.test.ts:774 (it.fails)
-  status: ❌ (see #84) — resolver produces `"foofoo"` instead of `"foo"`; self-ref picks up the trailing literal as prior value
+  tests: tests/resolver.test.ts:766, tests/s13a13-self-ref-lookback.test.ts (sr01–sr11)
+  status: ✅ Fix landed in cluster 3f via resolver short-circuit when no prior value exists (see #84).
 - **S13a.14** Mutually-referring object fields (`bar.a = ${foo.d}; foo.c = ${bar.b}`) resolve lazily without false cycle — §Self-Referential (L825-834)
   tests: tests/resolver.test.ts:227
   status: ✅
