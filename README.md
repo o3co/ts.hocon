@@ -2,7 +2,7 @@
 
 [![npm](https://img.shields.io/npm/v/@o3co/ts.hocon.svg)](https://www.npmjs.com/package/@o3co/ts.hocon)
 [![CI](https://github.com/o3co/ts.hocon/actions/workflows/test.yml/badge.svg)](https://github.com/o3co/ts.hocon/actions/workflows/test.yml)
-[![codecov](https://codecov.io/gh/o3co/ts.hocon/branch/main/graph/badge.svg)](https://codecov.io/gh/o3co/ts.hocon)
+[![codecov](https://codecov.io/gh/o3co/ts.hocon/branch/develop/graph/badge.svg)](https://codecov.io/gh/o3co/ts.hocon)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
 A [Lightbend HOCON](https://github.com/lightbend/config/blob/main/HOCON.md) parser for TypeScript. See [Spec Compliance](#spec-compliance) for the current conformance rate.
