@@ -160,7 +160,9 @@ export class SubstitutionResolver {
               )
           if (isSelfRef) {
             let prior: ResolverValue | undefined
-            if (s.prefixLen > 0) {
+            if (s.segments.length > 1) {
+              // Multi-segment path (e.g. ${?foo.a} or relativized ${?a} with prefix):
+              // look up prior in the parent scope at the leaf key.
               const leafSeg = s.segments[s.segments.length - 1]?.text ?? ''
               const parentScope = lookupResObj(
                 this.root,
@@ -178,6 +180,18 @@ export class SubstitutionResolver {
               if (result !== undefined) this.cache.set(key, result)
               return result
             }
+            // Spec L841: no prior value + self-ref → short-circuit.
+            // Do NOT fall through to resolveVal(found) — found is the current
+            // concat-in-progress, which would produce "foofoo" instead of "foo".
+            // Optional yields undefined (concat-layer omits it per Phase 6 #3b).
+            // Required raises an error (same as any other unresolved required subst).
+            if (s.optional) return undefined
+            throw new ResolveError(
+              `could not resolve substitution: \${${key}}`,
+              key,
+              s.line,
+              s.col,
+            )
           }
         }
         let result = this.resolveVal(found, scope)
