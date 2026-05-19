@@ -763,9 +763,7 @@ describe('spec compliance Phase 3 — substitution & include (resolver-level)', 
   // # not externally observable — internal memoization semantics
 
   // --- S13a.13: a = ${?a}foo resolves to "foo" when a not previously set -----
-  // VIOLATION: resolver gives "foofoo" — the self-ref picks up "foo" as its prior value,
-  // then the concat produces "foo" + "foo" = "foofoo".
-  it.fails('S13a.13: a = ${?a}foo resolves to "foo" when a not previously assigned (spec L841, see #84)', () => {
+  it('S13a.13: a = ${?a}foo resolves to "foo" when a not previously assigned (spec L841, see #84)', () => {
     const r = resolveStr('a = ${?a}foo')
     const a = obj(r).get('a')
     expect(a).toEqual({ kind: 'scalar', raw: 'foo', valueType: 'string' })
@@ -1122,5 +1120,86 @@ describe('S10 concat type-check — joinPair throws on disallowed type pairs', (
   it('S10.15: quoted whitespace between subst-resolved objects throws (spec L442)', () => {
     const input = `a = { p: 1 }\nb = { q: 2 }\nx = ${ref('a')} " " ${ref('b')}`
     expect(() => resolveStr(input)).toThrow(ResolveError)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// S13a.13: self-ref look-back short-circuit (no-prior cases)
+// spec L841: a = ${?a}foo → "foo" (no prior a)
+// ---------------------------------------------------------------------------
+describe('S13a.13: self-ref look-back no-prior short-circuit (spec L841, #84)', () => {
+  // --- no-prior optional cases (the fix) ---
+  it('a = ${?a}foo (no prior) → "foo"', () => {
+    const r = resolveStr('a = ${?a}foo')
+    expect(obj(r).get('a')).toEqual({ kind: 'scalar', raw: 'foo', valueType: 'string' })
+  })
+
+  it('a = bar${?a} (no prior, leading literal) → "bar"', () => {
+    const r = resolveStr('a = bar${?a}')
+    expect(obj(r).get('a')).toEqual({ kind: 'scalar', raw: 'bar', valueType: 'string' })
+  })
+
+  it('a = bar${?a}foo (no prior, both sides) → "barfoo"', () => {
+    const r = resolveStr('a = bar${?a}foo')
+    expect(obj(r).get('a')).toEqual({ kind: 'scalar', raw: 'barfoo', valueType: 'string' })
+  })
+
+  // --- with-prior regressions ---
+  it('a = "x"; a = ${?a}foo (with prior) → "xfoo"', () => {
+    const r = resolveStr('a = "x"\na = ${?a}foo')
+    expect(obj(r).get('a')).toEqual({ kind: 'scalar', raw: 'xfoo', valueType: 'string' })
+  })
+
+  // --- required self-ref cases ---
+  it('a = ${a}foo (required, no prior) → ResolveError', () => {
+    expect(() => resolveStr('a = ${a}foo')).toThrow(ResolveError)
+  })
+
+  it('a = "x"; a = ${a}foo (required, with prior) → "xfoo"', () => {
+    const r = resolveStr('a = "x"\na = ${a}foo')
+    expect(obj(r).get('a')).toEqual({ kind: 'scalar', raw: 'xfoo', valueType: 'string' })
+  })
+
+  // --- array variants ---
+  it('a = ${?a} [2] (no prior, array) → [2]', () => {
+    const r = resolveStr('a = ${?a} [2]')
+    const a = obj(r).get('a')
+    expect(a?.kind).toBe('array')
+    if (a?.kind === 'array') {
+      expect(a.items).toHaveLength(1)
+      expect(a.items[0]).toEqual({ kind: 'scalar', raw: '2', valueType: 'number' })
+    }
+  })
+
+  it('a = [1]; a = ${?a} [2] (with prior, array) → [1, 2]', () => {
+    const r = resolveStr('a = [1]\na = ${?a} [2]')
+    const a = obj(r).get('a')
+    expect(a?.kind).toBe('array')
+    if (a?.kind === 'array') {
+      expect(a.items).toHaveLength(2)
+      expect(a.items[0]).toEqual({ kind: 'scalar', raw: '1', valueType: 'number' })
+      expect(a.items[1]).toEqual({ kind: 'scalar', raw: '2', valueType: 'number' })
+    }
+  })
+
+  // --- nested path variants ---
+  it('foo.a = ${?foo.a}bar (no prior, nested) → foo.a = "bar"', () => {
+    const r = resolveStr('foo.a = ${?foo.a}bar')
+    const foo = obj(r).get('foo')
+    if (foo?.kind === 'object') {
+      expect(foo.fields.get('a')).toEqual({ kind: 'scalar', raw: 'bar', valueType: 'string' })
+    } else {
+      throw new Error('expected foo to be an object')
+    }
+  })
+
+  it('foo.a = "x"; foo.a = ${?foo.a}bar (with prior, nested) → foo.a = "xbar"', () => {
+    const r = resolveStr('foo.a = "x"\nfoo.a = ${?foo.a}bar')
+    const foo = obj(r).get('foo')
+    if (foo?.kind === 'object') {
+      expect(foo.fields.get('a')).toEqual({ kind: 'scalar', raw: 'xbar', valueType: 'string' })
+    } else {
+      throw new Error('expected foo to be an object')
+    }
   })
 })
