@@ -14,7 +14,7 @@
 // We compare directly against the parsed expected JSON sidecar.
 
 import { describe, it, expect } from 'vitest'
-import { readdirSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parseProperties } from '../../src/internal/properties/properties.js'
@@ -27,6 +27,15 @@ const expectedDir = fileURLToPath(
 )
 
 describe('S23.4 conformance — properties-conflict fixtures (pc01-pc04)', () => {
+  // Both dirs come from `pnpm fetch-testdata` (xx.hocon submodule) and are
+  // `.gitignore`d. Skip the suite in fresh checkouts so missing fixtures don't
+  // surface as confusing fs errors. Same skip-guard pattern as
+  // tests/conformance/empty-file.test.ts and tests/concat-errors.test.ts.
+  if (!existsSync(fixtureDir) || !existsSync(expectedDir)) {
+    it.skip('fixtures unavailable — run `pnpm fetch-testdata`', () => {})
+    return
+  }
+
   const entries = readdirSync(fixtureDir)
     .sort()
     .filter(f => f.endsWith('.properties'))

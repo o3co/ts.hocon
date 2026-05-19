@@ -799,7 +799,6 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
   now collects all pairs and sorts by key before calling `setNested`, ensuring input-order
   independence. `setNested` last-segment write guards on existing-object presence (object wins).
   The reverse order (string first, dotted key second) already works correctly.
-  Tests pinned with `it.fails`.
 - **S23.5** Multi-line values (backslash continuation) — §Note on Java properties similarity (L1587)
   out-of-scope: declared in each implementation's README — the `.properties` reader supports only basic `key=value` syntax to avoid pulling a full Java properties parser into a non-JVM library.
   tests: —
