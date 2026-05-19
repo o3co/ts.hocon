@@ -130,8 +130,11 @@ export class SubstitutionResolver {
 
     if (this.resolving.has(key)) {
       // Cycle detected: try prior value for self-referential substitutions.
+      // Use s.segments.length > 1 (same criterion as the resolvingConcats short-circuit
+      // below) to correctly handle dotted-path-at-root (e.g. ${foo.a} where prefixLen=0
+      // but segments.length=2).
       let prior: ResolverValue | undefined
-      if (s.prefixLen > 0) {
+      if (s.segments.length > 1) {
         const leafSeg = s.segments[s.segments.length - 1]?.text ?? ''
         const parentScope = lookupResObj(
           this.root,

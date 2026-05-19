@@ -13,7 +13,7 @@
 // Fixture path: tests/lightbend/testdata/hocon/self-ref-lookback/
 // Expected JSON: tests/lightbend/testdata/expected/self-ref-lookback/
 import { describe, it, expect } from 'vitest'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parse } from '../src/index.js'
@@ -25,6 +25,16 @@ const confDir = fileURLToPath(
 const expectedDir = fileURLToPath(
   new URL('./lightbend/testdata/expected/self-ref-lookback', import.meta.url),
 )
+
+// Per-fixture gate: skip when input or expected JSON is missing (e.g. fresh
+// checkout before `make testdata` has run).
+function gateSuccess(name: string): typeof it | typeof it.skip {
+  if (!existsSync(join(confDir, `${name}.conf`))) return it.skip
+  return existsSync(join(expectedDir, `${name}-expected.json`)) ? it : it.skip
+}
+function gateError(name: string): typeof it | typeof it.skip {
+  return existsSync(join(confDir, `${name}.conf`)) ? it : it.skip
+}
 
 // Success fixtures: parse, resolve, compare to xx.hocon expected JSON.
 const SUCCESS_FIXTURES = [
@@ -47,7 +57,7 @@ const ERROR_FIXTURES = [
 
 describe('S13a.13 — self-ref look-back conformance (sr01-sr11)', () => {
   for (const name of SUCCESS_FIXTURES) {
-    it(`${name}: parses and resolves to expected JSON`, () => {
+    gateSuccess(name)(`${name}: parses and resolves to expected JSON`, () => {
       const content = readFileSync(join(confDir, `${name}.conf`), 'utf-8')
       const expected = JSON.parse(
         readFileSync(join(expectedDir, `${name}-expected.json`), 'utf-8'),
@@ -58,9 +68,31 @@ describe('S13a.13 — self-ref look-back conformance (sr01-sr11)', () => {
   }
 
   for (const name of ERROR_FIXTURES) {
-    it(`${name}: parse/resolve throws ResolveError`, () => {
+    gateError(name)(`${name}: parse/resolve throws ResolveError`, () => {
       const content = readFileSync(join(confDir, `${name}.conf`), 'utf-8')
       expect(() => parse(content)).toThrow(ResolveError)
     })
   }
+})
+
+// Inline smoke tests for dotted-path-at-root cycle scenarios (Fix 2 alignment).
+// These exercise the cycle-guard branch (resolving.has(key)), which previously
+// used s.prefixLen > 0 (wrong for dotted-path-at-root where prefixLen=0 but
+// segments.length=2).  After the fix both branches use s.segments.length > 1.
+// subst() builds a HOCON substitution token without embedding '${' in a string
+// literal, which avoids both the no-template-curly-in-string lint warning and
+// the prefer-template lint warning simultaneously.
+function subst(path: string, optional = false): string {
+  const mark = optional ? '?': ''
+  return `${'$'}{${mark}${path}}`
+}
+describe('S13a.13 — dotted-path-at-root cycle-guard alignment', () => {
+  it('foo.a = ${foo.a} (required, no prior) — ResolveError', () => {
+    expect(() => parse(`foo.a = ${subst('foo.a')}`)).toThrow(ResolveError)
+  })
+
+  it('foo.a = "x"; foo.a = ${foo.a} (required, prior) — resolves to "x"', () => {
+    const config = parse(`foo.a = "x"\nfoo.a = ${subst('foo.a')}`)
+    expect(config.toObject()).toEqual({ foo: { a: 'x' } })
+  })
 })
