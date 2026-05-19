@@ -6,9 +6,9 @@
 // Expected JSON in tests/lightbend/testdata/expected/env-var-list/.
 // Env-var sidecar parsing: tests/lightbend/env-sidecar.ts.
 //
-// ev08 promoted from tripwire to SUCCESS after multi-impl probe (ts/rs/go all pass
-// naturally): the `x = ["x"]; x = ${?x} ${?LIST[]}` pattern has a clear prior value
-// for `x`, so it does not exercise the S13a.13 "no prior value" look-back gap.
+// ev08 passes naturally (ts/rs/go all pass): the `x = ["x"]; x = ${?x} ${?LIST[]}` pattern
+// has a clear prior value for `x`, so it does not exercise the S13a.13 "no prior value"
+// look-back case (that case is now fixed in cluster 3f, see tests/s13a13-self-ref-lookback.test.ts).
 // ev12a/ev12b/ev13 pin S13c.5 and isolated optional-list-direct — these are
 // follow-up fixtures shipped via xx.hocon#feature/s13c-env-var-list-followup-fixtures
 // (PR pending merge). Until that PR merges to xx.hocon/main, `make testdata` will
@@ -56,9 +56,7 @@ const SUCCESS_FIXTURES = [
   'ev05-config-defined-wins',
   'ev06-concat-prepend',
   'ev07-concat-append',
-  // ev08: self-ref-lookback (S13a.13). The plan called for it.fails() tripwire,
-  // but ts.hocon's existing priorValues-based self-ref resolution correctly handles
-  // the 'x = ["x"]; x = ${?x} ${?LIST[]}' pattern — ev08 passes as-is. ✅
+  // ev08: x = ["x"]; x = ${?x} ${?LIST[]} — prior value exists, passes naturally. ✅
   'ev08-self-append',
   'ev09-whitespace-before-suffix',
   'ev10-empty-string-element',
@@ -73,9 +71,6 @@ const ERROR_FIXTURES = [
   'ev12a-list-suffix-suppresses-scalar-fallback-required',
 ]
 
-// No tripwire fixtures: ev08 passes with the existing self-ref-lookback implementation.
-// If S13a.13 cluster 3f reveals a deeper correctness issue with ev08, revisit then.
-const TRIPWIRE_FIXTURES: string[] = []
 
 describe('S13c — env-var list expansion conformance (ev01-ev13)', () => {
   for (const name of SUCCESS_FIXTURES) {
@@ -119,17 +114,4 @@ describe('S13c — env-var list expansion conformance (ev01-ev13)', () => {
     expect(r.toObject()).toEqual({ a: ['a', 'b'], b: 'scalar-val' })
   })
 
-  for (const name of TRIPWIRE_FIXTURES) {
-    // it.fails — this test currently FAILS (self-ref-lookback broken, S13a.13).
-    // Vitest reports it as passing. When cluster 3f fixes S13a.13, the test will
-    // start passing on its own, and it.fails will then FAIL — surfacing the flip
-    // in CI so we can remove the tripwire and mark ev08 as ✅.
-    it.fails(`${name}: tripwire for S13a.13 self-ref-lookback (cluster 3f); auto-flips when 3f lands`, () => {
-      const env = parseEnvSidecar(join(dataDir, `${name}.env`))
-      const conf = readFileSync(join(dataDir, `${name}.conf`), 'utf-8')
-      const expected = JSON.parse(readFileSync(join(expectedDir, `${name}-expected.json`), 'utf-8'))
-      const config = parse(conf, { env })
-      expect(config.toObject()).toEqual(expected)
-    })
-  }
 })
