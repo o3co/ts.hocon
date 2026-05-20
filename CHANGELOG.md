@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-05-21
+
+v1.3 is a spec-compliance bugfix release. The implementation has been corrected to match the HOCON spec and Lightbend typesafe-config reference behavior across several previously-divergent areas (concat type-checking, `include` key reservation, leading-`-` value-position lexing, leading-zero number canonicalization, single-letter byte units, empty-file rejection, `.properties` object-wins, duration/bytes default unit). The spec did not change; the parser was simply wrong in places.
+
+A subset of these fixes change observable runtime behavior. Configs that relied on the previously-incorrect lenience need updating — read the `### Breaking` and `### Fixed` sections below if your CI fails to upgrade cleanly. We elected MINOR (not MAJOR) because no API or architectural changes occurred; v2.0 is reserved for parser/lexer rewrites or similar structural shifts.
+
 ### Breaking
 
 - **E8 amendment — `a = 01` resolves to number `1` (was `"01"` string)** (xx.hocon [#31](https://github.com/o3co/xx.hocon/issues/31), [#32](https://github.com/o3co/xx.hocon/pull/32)). xx.hocon's E8 was rewritten 2026-05-20 (commit `dd102e8`) to adopt Lightbend's pragmatic reading of HOCON.md L270-276 ("begin" = value-position begin, not token-position). ts.hocon now matches Lightbend on the leading-zero numeric literal (Lightbend `Long.parseLong("01") = 1`, JS `Number("01") === 1`). Other E8 changes are additive (see *Changed* below); only F3 (`01` → number) is a value-type change BREAKING. Phase 6 #3c Phase 3 (relax of the strict posture introduced in Phase 6 #3c Phase 2, [#96](https://github.com/o3co/ts.hocon/pull/96)+[#97](https://github.com/o3co/ts.hocon/pull/97)).
