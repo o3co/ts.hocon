@@ -9,10 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Breaking
 
+- **E8 amendment — `a = 01` resolves to number `1` (was `"01"` string)** (xx.hocon [#31](https://github.com/o3co/xx.hocon/issues/31), [#32](https://github.com/o3co/xx.hocon/pull/32)). xx.hocon's E8 was rewritten 2026-05-20 (commit `dd102e8`) to adopt Lightbend's pragmatic reading of HOCON.md L270-276 ("begin" = value-position begin, not token-position). ts.hocon now matches Lightbend on the leading-zero numeric literal (Lightbend `Long.parseLong("01") = 1`, JS `Number("01") === 1`). Other E8 changes are additive (see *Changed* below); only F3 (`01` → number) is a value-type change BREAKING. Phase 6 #3c Phase 3 (relax of the strict posture introduced in Phase 6 #3c Phase 2, [#96](https://github.com/o3co/ts.hocon/pull/96)+[#97](https://github.com/o3co/ts.hocon/pull/97)).
+
 - **S12.5 include-key reservation**: `include = 1`, `include.foo = 1`, `include : 1`, `include += [1]`, and `include { }` in key position now throw `ParseError` ("'include' is reserved at the start of a key path expression"). Quoted form `"include" = 1` and non-initial `foo.include = 1` are unaffected. Fixtures ir01-ir14. Phase 6 #3e. Closes #80.
 
 - **S10.4/S10.13/S10.19 concat type-check tightening**: `joinPair` now throws `ResolveError` for spec-disallowed type combinations — `[1] {b:2}`, `[1, 2] 3`, `{b:1} x`, and substitution-resolved equivalents — instead of silently coercing. Lightbend-spec-conformant per HOCON.md L373/L385. Phase 6 #3b. Fixtures: `testdata/hocon/concat-errors/ce01–ce15`. Closes #75, #77, #79.
   Preserved unchanged: Object+Object merge (S10.3), Array+Array concat, the S15 numeric-keyed-object→array bridge (S15.3), and Scalar+Scalar string-concat.
+
+### Changed
+
+- **E8 amendment — value-position `-` and concat-continuation relaxation** (xx.hocon [#31](https://github.com/o3co/xx.hocon/issues/31), [#32](https://github.com/o3co/xx.hocon/pull/32), commit `dd102e8`). The strict reject at the main tokenize loop's unquoted-start branch (`src/internal/lexer/lexer.ts`) has been removed. New behaviors (all additive — previously-erroring inputs now parse successfully):
+  - `a = -foo` lexes as unquoted `"-foo"` (was `ParseError`).
+  - `a = -` lexes as unquoted `"-"` (was `ParseError`).
+  - `b = ${a}-bar` (and symmetric concat-continuation cases: `${a}--bar`, `${a}-1`, `${a}1bar`, `${a}.bar`, `${a}_bar`, `"foo"-bar`, `"foo".bar`, `"foo"1bar`, `${a}-${a}`, `${a}-${b}`, `foo-${a}`, `"foo"-${a}`) resolves to the value-concat string (was `ParseError`).
+  - `+` rejection retained in both value-start and concat-continuation positions (HOCON `+=` operator reservation, unchanged).
+  - Path-element strict checks preserved (out of E8 scope): `parseSubstBody`'s segment-start `-` check and `parseKey`'s per-segment `-` check still reject `${-foo}` and `a.-foo = 1` respectively.
+  - New conformance fixtures `us17`–`us30` (14 cases) pin the cross-impl behavior alongside the existing `us01`–`us16` set.
+  - Conformance test `tests/s8-unquoted-starts.test.ts` reorganized — `SUCCESS_FIXTURES` now includes us02/us03/us13 + us17-us30; `ERROR_FIXTURES` removed (was us02/us03); `KNOWN_GAP_FIXTURES` slimmed to us15 only (`1e+x` `+` reservation gap).
 
 ### Fixed
 

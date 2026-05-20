@@ -411,23 +411,32 @@ describe('spec compliance Phase 1 — lexer-level', () => {
     expect(tokens.some(t => t.kind === 'newline')).toBe(true)
   })
 
-  // --- S8.6: unquoted string cannot begin with 0-9 or - --------------------
-  // Spec L270. Already-known violation tracked in docs/spec-compliance.md.
-  // Tests go through full parse(), not just tokenize(), so a fix at either
-  // the lexer (isUnquotedStart) OR the parser (scalarValueType rejection of
-  // non-number digit/hyphen tokens) layer will flip these to red.
-  it.fails('S8.6: digit-starting unquoted string is rejected (e.g. 123abc)', () => {
-    expect(() => parse('x = 123abc')).toThrow(ParseError)
+  // --- S8.6 / E8: unquoted string begin rules (post-E8 amendment) ---------
+  // E8 amendment (xx.hocon#31 / commit dd102e8) reads HOCON.md L270-276
+  // "begin" as value-position begin (first component of a concatenation),
+  // not token-position begin at any lexer offset. At value-start:
+  //   - the lexer reads the entire run as a single unquoted token (no
+  //     separate number token kind); numeric coercion happens later via
+  //     DECIMAL_NUMBER_RE in the parser/coerce layer. Tokens that don't
+  //     match (e.g. `123abc`) stay as strings.
+  //   - `-` not followed by a digit is treated as the start of an unquoted
+  //     run (the strict reject at the lexer was removed per E8).
+  // (Lightbend's reference uses Java parseLong/parseFloat with fallback;
+  // observable behavior matches, but ts.hocon's mechanism is regex-coerce.)
+  // Path-element rules (substitution body, dotted key segments) remain
+  // strict — covered in tests/s8-unquoted-starts.test.ts.
+  it('E8 value-start: 123abc resolves to unquoted "123abc"', () => {
+    // The lexer reads "123abc" as a single unquoted token; the parser/
+    // coerce layer tests DECIMAL_NUMBER_RE which rejects the trailing
+    // letters, so the value stays a string.
+    expect(parse('x = 123abc').toObject()).toEqual({ x: '123abc' })
   })
 
-  it('S8.6: hyphen-starting unquoted string is rejected (e.g. -foo)', () => {
-    // -123 is a valid number literal; -foo is not, and per spec L270 the
-    // unquoted form is rejected at lex time. Enforcement site: the main
-    // tokenize loop's unquoted-start branch (src/internal/lexer/lexer.ts,
-    // immediately after the isUnquotedStart predicate dispatches), with a
-    // symmetric check in parseSubstBody. The predicate itself still returns
-    // true for '-'; the value-level rejection is in the dispatcher. See #73.
-    expect(() => parse('x = -foo')).toThrow(ParseError)
+  it('E8 value-start: -foo resolves to unquoted "-foo"', () => {
+    // `-` not followed by a digit is not a valid JSON-number prefix, so it
+    // falls outside L270's disallow scope and starts an unquoted run.
+    // Lightbend reference produces {"x":"-foo"}.
+    expect(parse('x = -foo').toObject()).toEqual({ x: '-foo' })
   })
 
   // --- S8.7: no escape sequences in unquoted strings -----------------------
