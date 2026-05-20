@@ -415,15 +415,20 @@ describe('spec compliance Phase 1 — lexer-level', () => {
   // E8 amendment (xx.hocon#31 / commit dd102e8) reads HOCON.md L270-276
   // "begin" as value-position begin (first component of a concatenation),
   // not token-position begin at any lexer offset. At value-start:
-  //   - digit-leading runs use Java numeric semantics (parseLong/parseFloat
-  //     with unquoted-fallback on parse failure).
+  //   - the lexer reads the entire run as a single unquoted token (no
+  //     separate number token kind); numeric coercion happens later via
+  //     DECIMAL_NUMBER_RE in the parser/coerce layer. Tokens that don't
+  //     match (e.g. `123abc`) stay as strings.
   //   - `-` not followed by a digit is treated as the start of an unquoted
-  //     run.
+  //     run (the strict reject at the lexer was removed per E8).
+  // (Lightbend's reference uses Java parseLong/parseFloat with fallback;
+  // observable behavior matches, but ts.hocon's mechanism is regex-coerce.)
   // Path-element rules (substitution body, dotted key segments) remain
   // strict — covered in tests/s8-unquoted-starts.test.ts.
   it('E8 value-start: 123abc resolves to unquoted "123abc"', () => {
-    // parseLong("123abc") fails; parseFloat consumes "123" and stops; the
-    // greedy lexer + numeric-fallback produces unquoted concat "123abc".
+    // The lexer reads "123abc" as a single unquoted token; the parser/
+    // coerce layer tests DECIMAL_NUMBER_RE which rejects the trailing
+    // letters, so the value stays a string.
     expect(parse('x = 123abc').toObject()).toEqual({ x: '123abc' })
   })
 

@@ -175,7 +175,7 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
   tests: tests/lightbend/testdata/equiv01/unquoted.conf (fixture)
   status: ✅
 - **S8.6** Unquoted string cannot begin with `0-9` or `-` — §Unquoted strings (L270)
-  tests: tests/s8-unquoted-starts.test.ts (29 xx.hocon fixtures: us01–us14, us16, us17–us30 success + us15 known gap; plus 3 path-rule regressions and 9 E8 explicit assertions); tests/lexer.test.ts (E8 value-start positive tests for `-foo` and `123abc`)
+  tests: tests/s8-unquoted-starts.test.ts (xx.hocon fixtures: 29 success — us01–us14, us16, us17–us30 — and 1 known gap — us15; plus 3 path-rule regressions and 9 E8 explicit assertions); tests/lexer.test.ts (E8 value-start positive tests for `-foo` and `123abc`)
   status: ✅ (post-E8 amendment) — xx.hocon E8 rewritten 2026-05-20 (xx.hocon#31 / commit dd102e8) adopts Lightbend's pragmatic reading of HOCON.md L270-276 ("begin" = value-position begin, not token-position). ts.hocon now matches:
   - Value-start `-` not followed by a digit → unquoted text (was lex error). RFC 8259 JSON-number requires a digit after `-`; bare `-` / `-foo` therefore fall outside L270's disallow scope. Lightbend reference produces `{"x":"-foo"}` / `{"x":"-"}`.
   - Value-start digit-leading runs → coerced via `Number()` at the value layer (e.g. `a = 01` → `{"a": 1}`). ts.hocon has no separate `number` token kind, so coercion happens at resolve time on the unquoted token. F3 `01` BREAKING (was `"01"` string under the strict pre-E8 reading).
