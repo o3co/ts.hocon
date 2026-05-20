@@ -173,25 +173,18 @@ class Lexer {
         continue
       }
 
-      // Unquoted string (stops at terminators and $)
+      // Unquoted string (stops at terminators and $).
+      //
+      // E8 amendment (xx.hocon#31 / xx.hocon@dd102e8): leading '-' (not
+      // followed by a digit) is admitted as the start of an unquoted run —
+      // L270 is read as "begin a JSON-number-shaped sequence", and per
+      // RFC 8259 `-` alone is not a valid JSON number prefix. Digit-leading
+      // runs are also a single unquoted token here; numeric coercion (incl.
+      // leading-zero normalization `01` → `1`) happens at the value layer.
+      // The path-element rules in parseSubstBody (segment start) and parseKey
+      // (dotted segments) remain strict — they police path-element
+      // composition, not value-position unquoted strings.
       if (isUnquotedStart(ch)) {
-        // S8.6 (HOCON.md L270–276): an unquoted string starting with '-' MUST
-        // be followed by a digit (so the run BEGINS what could be a number
-        // literal — full number validity is not enforced here; e.g. '-1foo'
-        // is permitted as a single unquoted token because '-1' starts a valid
-        // number prefix). Bare '-' and '-foo' / '-bar' inputs are lex errors.
-        // Digit-leading runs (e.g. '123abc') intentionally remain a single
-        // unquoted token — ts.hocon has no separate number token, so spec
-        // compliance for digit-leading runs is provided behaviorally via
-        // value coercion (the resolved string value matches Lightbend's
-        // value-concat result). See docs/spec-compliance.md §S8.6.
-        if (ch === '-' && !isDecimalDigit(this.peek(1))) {
-          const after = this.peek(1) === '' ? 'EOF' : JSON.stringify(this.peek(1))
-          throw new ParseError(
-            `unquoted string cannot begin with '-' unless followed by a digit (got '-' then ${after}, HOCON.md L270-276)`,
-            sl, sc
-          )
-        }
         let value = ''
         while (this.pos < this.input.length && isUnquotedContinue(this.peek(), () => this.peek(1))) {
           value += this.advance()
