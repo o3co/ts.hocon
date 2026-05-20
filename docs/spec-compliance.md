@@ -174,7 +174,7 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
 - **S8.5** Embedded `true`/`false`/`null`/number become string content — §Unquoted strings (L266)
   tests: tests/lightbend/testdata/equiv01/unquoted.conf (fixture)
   status: ✅
-- **S8.6** Unquoted string cannot begin with `0-9` or `-` — §Unquoted strings (L270)
+- **S8.6** Unquoted string cannot begin with `0-9` or `-` — §Unquoted strings (L270) *(spec wording is verbatim; the implementation follows the E8 / Lightbend reading — see status note below)*
   tests: tests/s8-unquoted-starts.test.ts (xx.hocon fixtures: 29 success — us01–us14, us16, us17–us30 — and 1 known gap — us15; plus 3 path-rule regressions and 9 E8 explicit assertions); tests/lexer.test.ts (E8 value-start positive tests for `-foo` and `123abc`)
   status: ✅ (post-E8 amendment) — xx.hocon E8 rewritten 2026-05-20 (xx.hocon#31 / commit dd102e8) adopts Lightbend's pragmatic reading of HOCON.md L270-276 ("begin" = value-position begin, not token-position). ts.hocon now matches:
   - Value-start `-` not followed by a digit → unquoted text (was lex error). RFC 8259 JSON-number requires a digit after `-`; bare `-` / `-foo` therefore fall outside L270's disallow scope. Lightbend reference produces `{"x":"-foo"}` / `{"x":"-"}`.
@@ -182,7 +182,7 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
   - Concat-continuation after value-tokens (e.g. `b = ${a}-bar` → `"foo-bar"`) now accepted — the strict `-` reject at the main tokenize loop's unquoted-start branch has been removed (src/internal/lexer/lexer.ts).
   - `+` rejection retained in both value-start and concat-continuation positions (HOCON `+=` operator reservation).
   - Path-element strict checks preserved (out of E8 scope): `parseSubstBody`'s segment-start `-` check (src/internal/lexer/lexer.ts) and the dotted-key segment check in `parseKey` (src/internal/parser/parser.ts) — these police path-element composition, not value-position unquoted strings. Tests `${-foo}` and `a.-foo = 1` still throw `ParseError`.
-  - Known gap: us15 `a = 1e+x` (Lightbend errors on `+` at the value-parser layer; ts.hocon lexer currently accepts `+` mid-unquoted run except when followed by `=`). Tracked as `it.fails` tripwire in the conformance file ([#73](https://github.com/o3co/ts.hocon/issues/73)).
+  - Known gap (out of S8.6 scope): us15 `a = 1e+x` concerns the `+` reservation enforced mid-token at the value-parser layer in Lightbend — that is a separate spec rule from S8.6's *begin-character* constraint. Lightbend errors here; ts.hocon's lexer currently accepts `+` mid-unquoted run except when followed by `=`. Tracked as `it.fails` tripwire in the conformance file ([#73](https://github.com/o3co/ts.hocon/issues/73)). S8.6 itself is fully covered, so the ✅ status reflects the scope of this S-item.
 - **S8.7** No escape sequences in unquoted strings — §Unquoted strings (L253)
   tests: tests/lexer.test.ts:385
   status: ✅
