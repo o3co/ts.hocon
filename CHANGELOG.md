@@ -72,7 +72,7 @@ xx.hocon [#33](https://github.com/o3co/xx.hocon/issues/33), [#36](https://github
 
 ### Changed
 
-- `IncludeQualifier` AST type refactored from a boolean `isFile` flag to a discriminated union (`kind: 'bare' | 'file' | 'url' | 'classpath' | 'package'`). Internal change; not part of the documented public AST surface.
+- `IncludeQualifier` AST type refactored from a boolean `isFile` flag to a discriminated union (`kind: 'bare' | 'file' | 'package'`; `url` / `classpath` qualifiers are rejected with a `ParseError` rather than represented in the AST). Internal change; not part of the documented public AST surface.
 
 ### Fixed — E12 must-fix follow-up bundle (PR [#118](https://github.com/o3co/ts.hocon/pull/118))
 
