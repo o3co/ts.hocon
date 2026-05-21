@@ -1,11 +1,80 @@
 import { coerceBoolean, coerceNumber, parseBytes, parseDuration } from './coerce.js'
 import type { ByteUnit, DurationUnit } from './coerce.js'
-import { ConfigError } from './errors.js'
+import { ConfigError, NotResolvedError } from './errors.js'
+import {
+  buildPartialHoconFromResObj,
+  containsPlaceholders,
+  hoconValueToResObj,
+  resolveTree,
+} from './internal/resolver/resolver.js'
+import { mergeUnresolved } from './internal/resolver/types.js'
+import type { ResObj, ResolveOptions as InternalResolveOptions } from './internal/resolver/types.js'
 import { numericObjectToArray } from './value/numeric-array.js'
 import type { HoconValue, ScalarValueType } from './value.js'
 
 export class Config {
-  constructor(private readonly root: HoconValue & { kind: 'object' }) {}
+  /** @internal resolved flag: true when no substitution placeholders remain. */
+  private readonly _resolved: boolean
+  /** @internal base directory for re-runs (file-parsed configs). */
+  readonly _parseBaseDir: string | undefined
+  /** @internal origin description for error messages. */
+  readonly _originDescription: string | undefined
+  /** @internal ResObj tree for deferred-resolution path. Set when resolved=false. */
+  readonly _resObjRoot: ResObj | undefined
+  /** @internal ResolveOptions stored for the resolve() call. */
+  private readonly _resolveOpts: InternalResolveOptions | undefined
+
+  constructor(
+    private readonly root: HoconValue & { kind: 'object' },
+    opts?: {
+      resolved?: boolean
+      parseBaseDir?: string
+      originDescription?: string
+      resObjRoot?: ResObj
+      resolveOpts?: InternalResolveOptions
+    }
+  ) {
+    this._resolved = opts?.resolved ?? true
+    this._parseBaseDir = opts?.parseBaseDir
+    this._originDescription = opts?.originDescription
+    this._resObjRoot = opts?.resObjRoot
+    this._resolveOpts = opts?.resolveOpts
+  }
+
+  /** Returns true when the Config's value tree contains no unresolved
+   *  substitution placeholders. Whole-config granularity (E12 decision 11). */
+  isResolved(): boolean {
+    return this._resolved
+  }
+
+  /** @internal Test-only: construct a resolved Config from a HoconValue. */
+  static _fromResolvedValue(
+    root: HoconValue & { kind: 'object' },
+    opts?: { originDescription?: string }
+  ): Config {
+    return new Config(root, { resolved: true, originDescription: opts?.originDescription })
+  }
+
+  /** @internal Construct an unresolved Config carrying a ResObj tree.
+   *  Used by parseStringWithOptions (deferred path) in T6. */
+  static _fromUnresolvedResObj(
+    tree: ResObj,
+    opts: {
+      parseBaseDir?: string
+      originDescription?: string
+      resolved: boolean
+      resolveOpts: InternalResolveOptions
+    }
+  ): Config {
+    const partialRoot = buildPartialHoconFromResObj(tree)
+    return new Config(partialRoot, {
+      resolved: opts.resolved,
+      parseBaseDir: opts.parseBaseDir,
+      originDescription: opts.originDescription,
+      resObjRoot: tree,
+      resolveOpts: opts.resolveOpts,
+    })
+  }
 
   get(path: string): unknown {
     const v = this.lookupNode(path)
@@ -56,14 +125,20 @@ export class Config {
 
   getConfig(path: string): Config {
     const v = this.lookupNode(path)
-    if (v === undefined) throw new ConfigError(`path not found: ${path}`, path)
+    if (v === undefined) {
+      if (!this._resolved) throw new NotResolvedError(path)
+      throw new ConfigError(`path not found: ${path}`, path)
+    }
     if (v.kind !== 'object') throw new ConfigError(`expected object at ${path}`, path)
-    return new Config(v)
+    return new Config(v, { resolved: this._resolved })
   }
 
   getList(path: string): unknown[] {
     const v = this.lookupNode(path)
-    if (v === undefined) throw new ConfigError(`path not found: ${path}`, path)
+    if (v === undefined) {
+      if (!this._resolved) throw new NotResolvedError(path)
+      throw new ConfigError(`path not found: ${path}`, path)
+    }
     // S15: if the value is a numerically-keyed object, convert to array before type check.
     // Empty objects and objects with no eligible integer keys return null → fall through to error.
     if (v.kind === 'object') {
@@ -82,13 +157,139 @@ export class Config {
     return [...this.root.fields.keys()]
   }
 
-  withFallback(fallback: Config): Config {
-    const merged = deepMergeHocon(this.root, fallback.root)
-    return new Config(merged)
+  withFallback(fallback: Config | undefined): Config {
+    if (fallback == null) return this
+
+    const selfTree = this._resObjRoot ?? hoconValueToResObj(this.root)
+    const fbTree = fallback._resObjRoot ?? hoconValueToResObj(fallback.root)
+    const merged = mergeUnresolved(selfTree, fbTree)
+    const hasPlaceholders = containsPlaceholders(merged)
+    const partialRoot = buildPartialHoconFromResObj(merged)
+    return new Config(partialRoot, {
+      resolved: !hasPlaceholders,
+      parseBaseDir: this._parseBaseDir,
+      originDescription: this._originDescription,
+      resObjRoot: merged,
+      resolveOpts: this._resolveOpts ?? fallback._resolveOpts,
+    })
+  }
+
+  /**
+   * Runs substitution resolution (phase 2) on the stored unresolved tree.
+   * Idempotent: calling resolve() on an already-resolved Config returns an
+   * equivalent resolved Config.
+   *
+   * opts.allowUnresolved (default false) — when true, leaves unresolved
+   * non-optional placeholders in place rather than throwing.
+   * opts.useSystemEnvironment (default true) — when false, env var lookups
+   * are suppressed (hermetic resolution).
+   *
+   * E12 decision 3.
+   */
+  resolve(opts: import('./parse.js').ResolveOptions = {}): Config {
+    if (this._resolved) {
+      // Idempotent: already resolved — return fresh equivalent Config.
+      return new Config(this.root, {
+        resolved: true,
+        parseBaseDir: this._parseBaseDir,
+        originDescription: this._originDescription,
+      })
+    }
+    const tree = this._resObjRoot
+    if (!tree) {
+      // No ResObj stored (legacy path) — treat as resolved.
+      return new Config(this.root, { resolved: true })
+    }
+
+    const resolveOpts: InternalResolveOptions = {
+      ...(this._resolveOpts ?? { env: {}, baseDir: undefined, readFileSync: () => { throw new Error('no files') } }),
+      allowUnresolved: opts.allowUnresolved ?? false,
+      useSystemEnvironment: opts.useSystemEnvironment ?? true,
+    }
+
+    const resolved = resolveTree(tree, resolveOpts)
+    if (resolved.kind !== 'object') throw new Error('resolve: expected object root')
+
+    // If allowUnresolved=true, result may still have placeholders — produce partial HoconValue.
+    if (opts.allowUnresolved && containsPlaceholders(tree)) {
+      const partialRoot = buildPartialHoconFromResObj(tree)
+      return new Config(partialRoot, {
+        resolved: false,
+        parseBaseDir: this._parseBaseDir,
+        originDescription: this._originDescription,
+        resObjRoot: tree,
+        resolveOpts,
+      })
+    }
+
+    return new Config(resolved as HoconValue & { kind: 'object' }, {
+      resolved: true,
+      parseBaseDir: this._parseBaseDir,
+      originDescription: this._originDescription,
+    })
+  }
+
+  /**
+   * Resolves receiver substitutions using source as lookup context.
+   * Source's keys are NOT merged into the result — differs from
+   * `this.withFallback(source).resolve()` which includes source keys.
+   *
+   * Precondition (E12 decision 10): source must be resolved. If
+   * source.isResolved() is false, throws NotResolvedError.
+   *
+   * On an already-resolved receiver, resolveWith is a no-op (returns an
+   * equivalent resolved Config, source keys not included).
+   *
+   * E12 decisions 9, 10.
+   */
+  resolveWith(source: Config, opts: import('./parse.js').ResolveOptions = {}): Config {
+    if (!source.isResolved()) {
+      throw new NotResolvedError('source')
+    }
+    if (this._resolved) {
+      // Idempotent: already resolved — source keys not included.
+      return new Config(this.root, {
+        resolved: true,
+        parseBaseDir: this._parseBaseDir,
+        originDescription: this._originDescription,
+      })
+    }
+
+    const receiverTree = this._resObjRoot ?? hoconValueToResObj(this.root)
+    const srcTree = hoconValueToResObj(source.root)
+    const merged = mergeUnresolved(receiverTree, srcTree)
+
+    const resolveOpts: InternalResolveOptions = {
+      ...(this._resolveOpts ?? { env: {}, baseDir: undefined, readFileSync: () => { throw new Error('no files') } }),
+      allowUnresolved: opts.allowUnresolved ?? false,
+      useSystemEnvironment: opts.useSystemEnvironment ?? true,
+    }
+
+    const resolved = resolveTree(merged, resolveOpts)
+    if (resolved.kind !== 'object') throw new Error('resolveWith: expected object root')
+
+    // Filter: keep only paths that exist in the receiver's shape.
+    const filtered = filterByReceiverShape(resolved, this.root)
+    return new Config(filtered as HoconValue & { kind: 'object' }, {
+      resolved: true,
+      parseBaseDir: this._parseBaseDir,
+      originDescription: this._originDescription,
+    })
   }
 
   toObject(): unknown {
     return hoconToJs(this.root)
+  }
+
+  /**
+   * @internal Test-only: renders this resolved Config's value tree as canonical
+   * JSON (sorted keys, no whitespace). Used by Layer-2 fixture tests to compare
+   * against Lightbend ground truth. NOT part of the public API.
+   *
+   * Throws if the Config is unresolved (contains placeholders).
+   */
+  _renderJSONForTest(): string {
+    return renderHoconAsJSON(this.root)
   }
 
   private lookupNode(path: string): HoconValue | undefined {
@@ -105,7 +306,14 @@ export class Config {
 
   private requireScalar(path: string): { raw: string; valueType: ScalarValueType } {
     const v = this.lookupNode(path)
-    if (v === undefined) throw new ConfigError(`path not found: ${path}`, path)
+    if (v === undefined) {
+      // Short-circuit for resolved configs: plain "path not found".
+      if (this._resolved) {
+        throw new ConfigError(`path not found: ${path}`, path)
+      }
+      // Unresolved config: a missing path means the key holds a placeholder.
+      throw new NotResolvedError(path)
+    }
     if (v.kind !== 'scalar') throw new ConfigError(`expected scalar at ${path}, got ${v.kind}`, path)
     return v
   }
@@ -172,18 +380,62 @@ function hoconToJs(v: HoconValue): unknown {
   }
 }
 
-function deepMergeHocon(
-  receiver: HoconValue & { kind: 'object' },
-  fallback: HoconValue & { kind: 'object' },
+/**
+ * filterByReceiverShape — recursively keeps only paths from `resolved` that
+ * exist in `receiverShape`. This prevents source keys from leaking into the
+ * resolveWith result. Must be recursive — top-level-only filtering leaks
+ * nested source keys under shared top-level keys (C3 multi-reviewer
+ * convergence lesson). E12 decision 9.
+ */
+function filterByReceiverShape(
+  resolved: HoconValue & { kind: 'object' },
+  receiverShape: HoconValue & { kind: 'object' },
 ): HoconValue & { kind: 'object' } {
-  const merged = new Map(fallback.fields)
-  for (const [k, v] of receiver.fields) {
-    const fb = merged.get(k)
-    if (fb?.kind === 'object' && v.kind === 'object') {
-      merged.set(k, deepMergeHocon(v, fb))
+  const fields = new Map<string, HoconValue>()
+  for (const [k, rv] of resolved.fields) {
+    if (!receiverShape.fields.has(k)) continue
+    const receiverVal = receiverShape.fields.get(k)!
+    if (rv.kind === 'object' && receiverVal.kind === 'object') {
+      fields.set(k, filterByReceiverShape(rv, receiverVal))
     } else {
-      merged.set(k, v)
+      fields.set(k, rv)
     }
   }
-  return { kind: 'object', fields: merged }
+  return { kind: 'object', fields }
+}
+
+/**
+ * renderHoconAsJSON — renders a resolved HoconValue tree as canonical JSON
+ * (sorted-key objects, no whitespace). Used by _renderJSONForTest.
+ */
+function renderHoconAsJSON(v: HoconValue): string {
+  switch (v.kind) {
+    case 'scalar': {
+      switch (v.valueType) {
+        case 'null': return 'null'
+        case 'boolean': return v.raw
+        case 'number': {
+          const n = Number(v.raw)
+          if (Number.isFinite(n)) return v.raw
+          return JSON.stringify(v.raw)
+        }
+        case 'string': return JSON.stringify(v.raw)
+      }
+      break
+    }
+    case 'array': {
+      const items = v.items.map(renderHoconAsJSON)
+      return `[${items.join(',')}]`
+    }
+    case 'object': {
+      const keys = [...v.fields.keys()].sort()
+      const pairs = keys.map(k => {
+        const val = v.fields.get(k)!
+        return `${JSON.stringify(k)}:${renderHoconAsJSON(val)}`
+      })
+      return `{${pairs.join(',')}}`
+    }
+  }
+  // Should never reach here for valid HoconValue.
+  throw new Error(`renderHoconAsJSON: unsupported value kind (unresolved placeholder?)`)
 }
