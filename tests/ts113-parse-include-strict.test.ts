@@ -39,11 +39,11 @@ describe('ts#113 — parseQuotedPathSkipWrapper must not skip arbitrary tokens',
     expect(() => parse('include file () b = "x"')).toThrow(ParseError)
   })
 
-  it('rejects file ("path") , b = "x" — comma after string', () => {
+  it('accepts file ("path") , b = "x" — comma after string ends the include', () => {
+    // Trailing comma + b = "x" is valid HOCON: the include statement ends at the
+    // comma, and `b = "x"` is the next field. The path-skip wrapper must stop at
+    // the comma rather than swallowing the following field.
     expect(() => parse('include file ("path") , b = "x"')).not.toThrow(ParseError)
-    // Note: trailing comma + b = "x" is valid HOCON because the include ends at
-    // the comma. Other test cases below validate "stuff after include path but
-    // before newline/comma" is rejected.
   })
 
   it('rejects bare include followed by non-string token', () => {
