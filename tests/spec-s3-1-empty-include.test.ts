@@ -50,7 +50,7 @@ describe('S3.1 — included file is empty/comment-only (Lightbend-compat carve-o
   })
 
   it('include: BOM-only included file is no-op', () => {
-    const files = { 'bom.conf': '﻿' }
+    const files = { 'bom.conf': '\uFEFF' }
     const cfg = parse('include "bom.conf"\na = 1', { readFileSync: fileReader(files) })
     expect(cfg.getNumber('a')).toBe(1)
   })

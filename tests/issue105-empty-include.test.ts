@@ -53,7 +53,7 @@ describe('go.hocon#105 cross-impl — empty/comment-only include is no-op', () =
 
   it('Unicode-whitespace-only include is a no-op (NBSP, en-quad, line sep)', () => {
     const files = new Map<string, string>([
-      ['/virtual/uws.conf', '   \n'],
+      ['/virtual/uws.conf', '\u00A0\u2000\u2028\n'],
     ])
     const cfg = buildParseWithFiles(files)('include "/virtual/uws.conf"\na = 1\n')
     expect(cfg.getNumber('a')).toBe(1)
@@ -61,7 +61,7 @@ describe('go.hocon#105 cross-impl — empty/comment-only include is no-op', () =
 
   it('BOM-only include is a no-op', () => {
     const files = new Map<string, string>([
-      ['/virtual/bom.conf', '﻿\n'],
+      ['/virtual/bom.conf', '\uFEFF\n'],
     ])
     const cfg = buildParseWithFiles(files)('include "/virtual/bom.conf"\na = 1\n')
     expect(cfg.getNumber('a')).toBe(1)
