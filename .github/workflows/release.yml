@@ -27,7 +27,19 @@ jobs:
           cache: pnpm
 
       - name: Set version from tag
-        run: pnpm version "${GITHUB_REF#refs/tags/v}" --no-git-tag-version --no-commit-hooks
+        # Idempotent: skip the bump if package.json is already at the tag's
+        # version. `pnpm version X` errors with "Version not changed" if the
+        # current version equals X, which broke v1.4.0 publish when the
+        # release-prep PR pre-bumped package.json (see scope AGENTS.md
+        # "Release version-bump convention").
+        run: |
+          TAG_VERSION="${GITHUB_REF#refs/tags/v}"
+          CURRENT=$(node -p "require('./package.json').version")
+          if [ "$TAG_VERSION" != "$CURRENT" ]; then
+            pnpm version "$TAG_VERSION" --no-git-tag-version --no-commit-hooks
+          else
+            echo "package.json already at $CURRENT — skipping bump"
+          fi
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
