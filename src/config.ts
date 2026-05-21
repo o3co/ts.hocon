@@ -7,7 +7,7 @@ import {
   hoconValueToResObj,
   resolveTree,
 } from './internal/resolver/resolver.js'
-import { mergeUnresolved } from './internal/resolver/types.js'
+import { isAppend, isConcat, isResObj, isSubst, mergeUnresolved } from './internal/resolver/types.js'
 import type { ResObj, ResolveOptions as InternalResolveOptions } from './internal/resolver/types.js'
 import { numericObjectToArray } from './value/numeric-array.js'
 import type { HoconValue, ScalarValueType } from './value.js'
@@ -210,15 +210,17 @@ export class Config {
     const resolved = resolveTree(tree, resolveOpts)
     if (resolved.kind !== 'object') throw new Error('resolve: expected object root')
 
-    // If allowUnresolved=true, result may still have placeholders — produce partial HoconValue.
-    if (opts.allowUnresolved && containsPlaceholders(tree)) {
-      const partialRoot = buildPartialHoconFromResObj(tree)
-      return new Config(partialRoot, {
-        resolved: false,
+    // If allowUnresolved=true, some fields may still be SubstPlaceholders
+    // (returned as HoconValue by the resolver via `s as unknown as HoconValue`).
+    // Strip them out so getters throw NotResolvedError for those paths.
+    if (opts.allowUnresolved) {
+      const { stripped, hadPlaceholders } = stripPlaceholderFields(resolved)
+      return new Config(stripped, {
+        resolved: !hadPlaceholders,
         parseBaseDir: this._parseBaseDir,
         originDescription: this._originDescription,
-        resObjRoot: tree,
-        resolveOpts,
+        resObjRoot: hadPlaceholders ? tree : undefined,
+        resolveOpts: hadPlaceholders ? resolveOpts : undefined,
       })
     }
 
@@ -268,8 +270,12 @@ export class Config {
     const resolved = resolveTree(merged, resolveOpts)
     if (resolved.kind !== 'object') throw new Error('resolveWith: expected object root')
 
-    // Filter: keep only paths that exist in the receiver's shape.
-    const filtered = filterByReceiverShape(resolved, this.root)
+    // Filter: keep only paths that exist in the receiver's original shape.
+    // Use receiverTree (the ResObj with placeholder keys included) to build
+    // the shape — this.root omits placeholder keys, which would wrongly filter
+    // them out even after they've been resolved by source.
+    const receiverShapeForFilter = resObjToKeyShape(receiverTree)
+    const filtered = filterByReceiverShape(resolved, receiverShapeForFilter)
     return new Config(filtered as HoconValue & { kind: 'object' }, {
       resolved: true,
       parseBaseDir: this._parseBaseDir,
@@ -378,6 +384,56 @@ function hoconToJs(v: HoconValue): unknown {
       return obj
     }
   }
+}
+
+/**
+ * resObjToKeyShape — converts a ResObj to a HoconValue-shaped object that
+ * includes ALL keys (even placeholder-valued ones) as synthetic scalars.
+ * Used by resolveWith to build the receiver's key shape for filtering —
+ * this.root omits placeholder keys, but we want to include them in the
+ * filter so that resolved values for those keys appear in the result.
+ */
+function resObjToKeyShape(tree: ResObj): HoconValue & { kind: 'object' } {
+  const fields = new Map<string, HoconValue>()
+  for (const [k, v] of tree.fields) {
+    if (isSubst(v) || isConcat(v) || isAppend(v)) {
+      // Placeholder: represent as a synthetic scalar so the key is present in the shape.
+      fields.set(k, { kind: 'scalar', raw: '', valueType: 'null' })
+    } else if (isResObj(v)) {
+      fields.set(k, resObjToKeyShape(v))
+    } else {
+      fields.set(k, v as HoconValue)
+    }
+  }
+  return { kind: 'object', fields }
+}
+
+/**
+ * stripPlaceholderFields — removes fields that are SubstPlaceholders masquerading
+ * as HoconValues (the resolver returns `s as unknown as HoconValue` when
+ * allowUnresolved=true). Returns the cleaned object and whether any were stripped.
+ */
+function stripPlaceholderFields(
+  v: HoconValue & { kind: 'object' },
+): { stripped: HoconValue & { kind: 'object' }; hadPlaceholders: boolean } {
+  const fields = new Map<string, HoconValue>()
+  let hadPlaceholders = false
+  for (const [k, val] of v.fields) {
+    // SubstPlaceholders are tagged with _kind; HoconValues have `kind`.
+    if ((val as { _kind?: string })._kind === 'subst-placeholder' ||
+        (val as { _kind?: string })._kind === 'concat-placeholder' ||
+        (val as { _kind?: string })._kind === 'append-placeholder') {
+      hadPlaceholders = true
+      // Omit the field — getter will throw NotResolvedError.
+    } else if (val.kind === 'object') {
+      const inner = stripPlaceholderFields(val)
+      if (inner.hadPlaceholders) hadPlaceholders = true
+      fields.set(k, inner.stripped)
+    } else {
+      fields.set(k, val)
+    }
+  }
+  return { stripped: { kind: 'object', fields }, hadPlaceholders }
 }
 
 /**
