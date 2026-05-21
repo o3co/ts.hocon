@@ -32,12 +32,30 @@ export type ResObj = {
 
 export type ResolverValue = HoconValue | SubstPlaceholder | ConcatPlaceholder | AppendPlaceholder | ResObj
 
+/**
+ * Custom resolver for `include package("id", "file")`.
+ * Receives the identifier, the file argument, and (if known) the absolute path
+ * of the including `.conf` file. Must return an absolute path or throw.
+ *
+ * When not provided, the default resolver uses `createRequire(import.meta.url)`
+ * which works in both CJS and ESM Node contexts.
+ */
+export type PackageResolver = (
+  identifier: string,
+  file: string,
+  includingFile: string | undefined,
+) => string
+
 export type ResolveOptions = {
   env: Record<string, string>
   baseDir: string | undefined
   readFileSync: (filePath: string) => string
   readFile?: (filePath: string) => Promise<string>
   includeStack?: string[]
+  /** Override the starting directory for `require.resolve` used by the default package resolver. */
+  resolveFrom?: string | string[]
+  /** Custom resolver for `include package(...)`. When provided, takes full control; `resolveFrom` is ignored. */
+  packageResolver?: PackageResolver
 }
 
 // Track parser-inserted separator whitespace values without leaking _separator

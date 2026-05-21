@@ -1,17 +1,38 @@
-import { tokenize } from './internal/lexer/lexer.js'
-import { parseTokens } from './internal/parser/parser.js'
-import { assertNonEmptyDocument } from './internal/parser/empty-check.js'
-import { resolve, resolveAsync } from './internal/resolver/resolver.js'
-import { Config } from './config.js'
-import type { ResolveOptions } from './internal/resolver/resolver.js'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
+import { Config } from './config.js'
+import { assertNonEmptyDocument } from './internal/parser/empty-check.js'
+import { tokenize } from './internal/lexer/lexer.js'
+import { parseTokens } from './internal/parser/parser.js'
+import { resolve, resolveAsync } from './internal/resolver/resolver.js'
+import type { ResolveOptions } from './internal/resolver/resolver.js'
 
 export type ParseOptions = {
   baseDir?: string
   env?: Record<string, string>
   readFile?: (filePath: string) => Promise<string>
   readFileSync?: (filePath: string) => string
+  /**
+   * Override the starting directory (or directories) used when resolving
+   * `include package("id", "file")` via Node module resolution.
+   *
+   * Default: `path.dirname(includingConfFile)` when known, `process.cwd()` otherwise.
+   * Ignored when `packageResolver` is also provided.
+   */
+  resolveFrom?: string | string[]
+  /**
+   * Custom resolver for `include package("id", "file")`.
+   * Receives the identifier, file argument, and (if known) the absolute path of the
+   * including `.conf` file. Must return an absolute path or throw.
+   *
+   * When provided, takes full control of resolution; `resolveFrom` is ignored.
+   * Use this for Yarn Berry PnP, bundler contexts, edge runtimes, or test isolation.
+   *
+   * Note: on macOS/Windows (case-insensitive filesystems), the default resolver may
+   * resolve case-insensitively for intermediate path segments. Use a custom
+   * `packageResolver` for strict cross-platform enforcement.
+   */
+  packageResolver?: (identifier: string, file: string, includingFile: string | undefined) => string
 }
 
 function getEnv(opts: ParseOptions): Record<string, string> {
@@ -28,7 +49,7 @@ async function defaultReadFile(filePath: string): Promise<string> {
   return fs.promises.readFile(filePath, 'utf-8')
 }
 
-function buildResolveContext(input: string, opts: ParseOptions): { ast: ReturnType<typeof parseTokens>, resolveOpts: ResolveOptions } {
+function buildResolveContext(input: string, opts: ParseOptions): { ast: ReturnType<typeof parseTokens>; resolveOpts: ResolveOptions } {
   const tokens = tokenize(input)
   // S3.1 — HOCON.md L130: empty files (including whitespace-only and comment-only) are invalid.
   // Delegated to the shared assertNonEmptyDocument helper so the same guard fires
@@ -40,6 +61,8 @@ function buildResolveContext(input: string, opts: ParseOptions): { ast: ReturnTy
     baseDir: opts.baseDir,
     readFileSync: opts.readFileSync ?? defaultReadFileSync,
     readFile: opts.readFile,
+    resolveFrom: opts.resolveFrom,
+    packageResolver: opts.packageResolver,
   }
   return { ast, resolveOpts }
 }
