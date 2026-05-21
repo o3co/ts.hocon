@@ -255,7 +255,12 @@ class Parser {
 
       if (innerPrefix === 'file' || innerPrefix.startsWith('file(') ||
           (innerPrefix === '' && nextTok.kind === 'unquoted' && (nextTok.value === 'file(' || nextTok.value === 'file'))) {
-        // required(file("path"))
+        // required(file("path")) — consume the unbundled `file` keyword here so the
+        // path-skip helper does not have to allow qualifier names in its allowlist
+        // (Copilot review thread on PR #118).
+        if (innerPrefix === '') {
+          this.advance()
+        }
         const path = this.parseQuotedPathSkipWrapper(t)
         return this.makeIncludeField({ kind: 'file' }, path, true, p)
       }
@@ -344,14 +349,12 @@ class Parser {
   }
 
   private isIncludeWrapperToken(tok: Token): boolean {
-    if (tok.kind !== 'unquoted') return false
-    const v = tok.value
-    if (v === '(' || v === ')') return true
-    if (v === 'file' || v === 'file(') return true
-    if (v === 'package' || v === 'package(') return true
-    if (v === 'url' || v === 'url(') return true
-    if (v === 'classpath' || v === 'classpath(') return true
-    return false
+    // Pre-path only allows bare `(` — the lexer-split form of `qualifier(`
+    // contributes its own paren. Qualifier keywords are consumed at the
+    // call site (file branch advances them explicitly; bare-required has
+    // no qualifier). Allowing qualifier names or `)` here would let
+    // malformed inputs slip past the path-skip loop silently.
+    return tok.kind === 'unquoted' && tok.value === '('
   }
 
   /**

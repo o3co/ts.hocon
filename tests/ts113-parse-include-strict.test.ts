@@ -50,3 +50,29 @@ describe('ts#113 — parseQuotedPathSkipWrapper must not skip arbitrary tokens',
     expect(() => parse('include 42')).toThrow(ParseError)
   })
 })
+
+describe('ts#113 — Copilot review feedback (PR #118): pre-path wrapper allowlist must be narrow', () => {
+  it('rejects required( ) "x" — closing-paren before quoted path (silent-pass risk)', () => {
+    expect(() => parse('include required( ) "x"')).toThrow(ParseError)
+  })
+
+  it('rejects file ) "x" — closing-paren before quoted path', () => {
+    expect(() => parse('include file ) "x"')).toThrow(ParseError)
+  })
+
+  it('rejects required ( url ("a.conf")) — url keyword silently swallowed (whitespace-nested)', () => {
+    expect(() => parse('include required ( url ("a.conf"))')).toThrow(ParseError)
+  })
+
+  it('rejects required ( classpath ("a.conf")) — classpath keyword silently swallowed', () => {
+    expect(() => parse('include required ( classpath ("a.conf"))')).toThrow(ParseError)
+  })
+
+  it('still accepts required(file("path")) — bundled file qualifier inside required', () => {
+    expect(() => parse('include required(file("path"))\n')).not.toThrow(ParseError)
+  })
+
+  it('still accepts required( file("path") ) — file qualifier with one space after required(', () => {
+    expect(() => parse('include required( file("path") )\n')).not.toThrow(ParseError)
+  })
+})
