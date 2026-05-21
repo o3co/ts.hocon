@@ -233,35 +233,53 @@ class Parser {
 
       this.advance()
 
-      // innerPrefix is the content after "required(" when the lexer bundles them
+      // innerPrefix is the content after "required(" when the lexer bundles them.
+      // Valid shapes: "", "file(", "package(", "url(", "classpath(", or a bare-path
+      // form where the next token is the quoted string. Anything else (e.g. "fileX(",
+      // "packagex(", ")") is an unknown qualifier name and must be rejected.
       const innerPrefix = t.value.startsWith('required(') ? t.value.slice('required('.length) : ''
-      if (innerPrefix.startsWith('url') || innerPrefix.startsWith('classpath')) {
+      if (innerPrefix === 'url' || innerPrefix.startsWith('url(') ||
+          innerPrefix === 'classpath' || innerPrefix.startsWith('classpath(')) {
         throw new ParseError('include url(...) and classpath(...) are not supported', t.line, t.col)
       }
 
       const nextTok = this.peek()
 
-      if (innerPrefix.startsWith('package') ||
-          (nextTok.kind === 'unquoted' && (nextTok.value === 'package(' || nextTok.value.startsWith('package(')))) {
+      if (innerPrefix === 'package' || innerPrefix.startsWith('package(') ||
+          (innerPrefix === '' && nextTok.kind === 'unquoted' && (nextTok.value === 'package(' || nextTok.value.startsWith('package(')))) {
         // required(package("id", "file"))
-        // When innerPrefix already contains "package(", the lexer bundled it into the
-        // required( token — so the current position is already at the first string arg.
-        // When it's a separate token, consumePackageToken=true advances past it first.
-        const consumePackageToken = !innerPrefix.startsWith('package')
+        const consumePackageToken = innerPrefix === ''
         const { qualifier, path } = this.parsePackageArgs(consumePackageToken)
         return this.makeIncludeField(qualifier, path, true, p)
       }
 
-      if (innerPrefix.startsWith('file') ||
-          (nextTok.kind === 'unquoted' && (nextTok.value === 'file(' || nextTok.value === 'file' || nextTok.value.startsWith('file(')))) {
-        // required(file("path"))
+      if (innerPrefix === 'file' || innerPrefix.startsWith('file(') ||
+          (innerPrefix === '' && nextTok.kind === 'unquoted' && (nextTok.value === 'file(' || nextTok.value === 'file'))) {
+        // required(file("path")) — consume the unbundled `file` keyword here so the
+        // path-skip helper does not have to allow qualifier names in its allowlist
+        // (Copilot review thread on PR #118).
+        if (innerPrefix === '') {
+          this.advance()
+        }
         const path = this.parseQuotedPathSkipWrapper(t)
         return this.makeIncludeField({ kind: 'file' }, path, true, p)
       }
 
-      if (nextTok.kind === 'unquoted' && (nextTok.value === 'url' || nextTok.value.startsWith('url(') ||
+      if (innerPrefix === '' && nextTok.kind === 'unquoted' && (nextTok.value === 'url' || nextTok.value.startsWith('url(') ||
           nextTok.value === 'classpath' || nextTok.value.startsWith('classpath('))) {
         throw new ParseError('include url(...) and classpath(...) are not supported', nextTok.line, nextTok.col)
+      }
+
+      // After all qualifier branches: any leftover innerPrefix is malformed.
+      // Common shapes we reject:
+      //   - "required()" → innerPrefix=")" (empty required, no path)
+      //   - "required(fileX(" / "required(packagex(" → innerPrefix=unknown qualifier name
+      if (innerPrefix !== '') {
+        if (innerPrefix === ')') {
+          throw new ParseError('include required(...) must contain a path', t.line, t.col)
+        }
+        const name = innerPrefix.replace(/\(.*$/, '').replace(/\).*$/, '')
+        throw new ParseError(`unknown include qualifier inside required(): "${name}"`, t.line, t.col)
       }
 
       // required("path") — bare with wrapper
@@ -302,15 +320,41 @@ class Parser {
   }
 
   /**
-   * Skip past any wrapper tokens (qualifier name, open paren) to find the first quoted
-   * string, consume it, then skip trailing tokens to end-of-statement. Returns the string value.
+   * Skip past include-syntax wrapper tokens to find the quoted path string.
+   * Strict: only allows `(`, `)`, and bare qualifier keywords (file / file( /
+   * package / package( / url / url( / classpath / classpath() between the
+   * directive and the quoted path. Anything else is a parse error rather than
+   * silently swallowed (see ts#113).
    */
   private parseQuotedPathSkipWrapper(errTok: Token): string {
-    while (this.peek().kind !== 'string' && this.peek().kind !== 'eof') this.advance()
-    if (this.peek().kind === 'eof') throw new ParseError('expected include path', errTok.line, errTok.col)
+    while (this.isIncludeWrapperToken(this.peek())) this.advance()
+    if (this.peek().kind !== 'string') {
+      const tok = this.peek()
+      if (tok.kind === 'eof') throw new ParseError('expected include path', errTok.line, errTok.col)
+      const desc = tok.kind === 'unquoted' ? `unquoted "${tok.value}"` : tok.kind
+      throw new ParseError(`expected quoted include path, got ${desc}`, tok.line, tok.col)
+    }
     const path = this.advance().value
-    while (this.peek().kind !== 'newline' && this.peek().kind !== 'rbrace' && this.peek().kind !== 'eof' && this.peek().kind !== 'comma') this.advance()
+    // After the path, only closing `)` wrapper tokens are valid before the
+    // statement boundary (newline/comma/rbrace/eof).
+    while (this.peek().kind === 'unquoted' && (this.peek().value === ')' || this.peek().value === '))')) {
+      this.advance()
+    }
+    const after = this.peek()
+    if (after.kind !== 'newline' && after.kind !== 'rbrace' && after.kind !== 'eof' && after.kind !== 'comma') {
+      const desc = after.kind === 'unquoted' ? `unquoted "${after.value}"` : after.kind
+      throw new ParseError(`unexpected token after include path: ${desc}`, after.line, after.col)
+    }
     return path
+  }
+
+  private isIncludeWrapperToken(tok: Token): boolean {
+    // Pre-path only allows bare `(` — the lexer-split form of `qualifier(`
+    // contributes its own paren. Qualifier keywords are consumed at the
+    // call site (file branch advances them explicitly; bare-required has
+    // no qualifier). Allowing qualifier names or `)` here would let
+    // malformed inputs slip past the path-skip loop silently.
+    return tok.kind === 'unquoted' && tok.value === '('
   }
 
   /**

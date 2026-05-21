@@ -6,6 +6,7 @@ import {
   containsPlaceholders,
   hoconValueToResObj,
   resolveTree,
+  valContainsPlaceholders,
 } from './internal/resolver/resolver.js'
 import { isAppend, isConcat, isResObj, isSubst, mergeUnresolved } from './internal/resolver/types.js'
 import type { ResObj, ResolveOptions as InternalResolveOptions } from './internal/resolver/types.js'
@@ -126,7 +127,9 @@ export class Config {
   getConfig(path: string): Config {
     const v = this.lookupNode(path)
     if (v === undefined) {
-      if (!this._resolved) throw new NotResolvedError(path)
+      if (!this._resolved && this._resObjRootSubtreeHasPlaceholders(path)) {
+        throw new NotResolvedError(path)
+      }
       throw new ConfigError(`path not found: ${path}`, path)
     }
     if (v.kind !== 'object') throw new ConfigError(`expected object at ${path}`, path)
@@ -142,7 +145,9 @@ export class Config {
   getList(path: string): unknown[] {
     const v = this.lookupNode(path)
     if (v === undefined) {
-      if (!this._resolved) throw new NotResolvedError(path)
+      if (!this._resolved && this._resObjRootSubtreeHasPlaceholders(path)) {
+        throw new NotResolvedError(path)
+      }
       throw new ConfigError(`path not found: ${path}`, path)
     }
     // T2: check _resObjRoot subtree for unresolved placeholders in the array case.
@@ -365,8 +370,9 @@ export class Config {
       if (isResObj(val)) {
         cur = val
       } else {
-        // Leaf value at this path — check if it or its contents are placeholders
-        return isSubst(val) || isConcat(val) || isAppend(val)
+        // Leaf value at this path — placeholder directly, or a HoconValue
+        // (e.g. array) whose contents include placeholders.
+        return valContainsPlaceholders(val)
       }
     }
     // cur is now the ResObj at the given path — check for any placeholders in it
@@ -376,12 +382,13 @@ export class Config {
   private requireScalar(path: string): { raw: string; valueType: ScalarValueType } {
     const v = this.lookupNode(path)
     if (v === undefined) {
-      // Short-circuit for resolved configs: plain "path not found".
-      if (this._resolved) {
-        throw new ConfigError(`path not found: ${path}`, path)
+      // Distinguish placeholder paths (NotResolvedError) from truly-missing
+      // paths (ConfigError) — even on unresolved configs, a path absent from
+      // _resObjRoot is genuinely not present.
+      if (!this._resolved && this._resObjRootSubtreeHasPlaceholders(path)) {
+        throw new NotResolvedError(path)
       }
-      // Unresolved config: a missing path means the key holds a placeholder.
-      throw new NotResolvedError(path)
+      throw new ConfigError(`path not found: ${path}`, path)
     }
     if (v.kind !== 'scalar') throw new ConfigError(`expected scalar at ${path}, got ${v.kind}`, path)
     return v
