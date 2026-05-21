@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Cross-impl regression tests for include ordering ([go.hocon#106](https://github.com/o3co/go.hocon/issues/106))**. Pin Lightbend-equivalent semantics for `include` directives — scalar override, parent-after-include, self-referential append through include, both-object deep-merge, nested-include scope isolation, and sequential includes — so the existing correct behaviour does not regress when the merge logic is touched. No production-code change; `ts.hocon`'s `deepMergeResObjInto` already implements src-wins + prior-capture.
 
+### Changed — include path
+
+- **Empty / comment-only / whitespace-only included files contribute an empty config** ([go.hocon#105](https://github.com/o3co/go.hocon/issues/105), Lightbend compatibility). Previously, `include "empty.conf"` (or comment-only / whitespace-only / BOM-only content) errored with `empty file is not a valid HOCON document (HOCON.md L130)`. This blocked the common optional-override-file pattern. The carve-out is **narrow** — applies only to the file-include code path (`loadSingle` / `loadSingleAsync`); top-level empty parses (`parse("")`) and E11 package includes (which already had their own zero-byte carve-out) are unchanged. Reported via go.hocon by [@cgordon](https://github.com/cgordon); cross-impl with [go.hocon PR #110](https://github.com/o3co/go.hocon/pull/110) and [rs.hocon PR #108](https://github.com/o3co/rs.hocon/pull/108).
+
 ## [1.4.0] - 2026-05-21
 
 ### Added — E12 deferred substitution resolution (closes [#99](https://github.com/o3co/ts.hocon/issues/99))

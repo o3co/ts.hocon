@@ -1,7 +1,7 @@
 import { createRequire } from 'node:module'
 import * as nodePath from 'node:path'
 import { PackageLookupError, ParseError, ResolveError } from '../../errors.js'
-import { assertNonEmptyDocument } from '../parser/empty-check.js'
+import { assertNonEmptyDocument, hasContentTokens } from '../parser/empty-check.js'
 import type { AstNode } from '../parser/ast.js'
 import { tokenize } from '../lexer/lexer.js'
 import { parseTokens } from '../parser/parser.js'
@@ -368,8 +368,13 @@ export class IncludeLoader {
     }
 
     const tokens = tokenize(content)
-    // S3.1 — HOCON.md L130: empty included files are invalid documents.
-    assertNonEmptyDocument(tokens, candidate)
+    // Lightbend-compat carve-out (#105): an empty / whitespace-only /
+    // comment-only included file contributes an empty config rather than
+    // erroring with S3.1. Top-level empty parses (parse("")) remain invalid;
+    // this scope is intentionally narrow — the include path only.
+    if (!hasContentTokens(tokens)) {
+      return makeResObj()
+    }
     const ast = parseTokens(tokens)
     // Spread all opts to preserve packageResolver / resolveFrom / readFile across nested includes.
     return this.onBuildResObj(ast, {
@@ -402,8 +407,10 @@ export class IncludeLoader {
     }
 
     const tokens = tokenize(content)
-    // S3.1 — HOCON.md L130: empty included files are invalid documents.
-    assertNonEmptyDocument(tokens, candidate)
+    // Lightbend-compat carve-out (#105): same rule as loadSingle.
+    if (!hasContentTokens(tokens)) {
+      return makeResObj()
+    }
     const ast = parseTokens(tokens)
     // Spread all opts to preserve packageResolver / resolveFrom across nested includes.
     return this.onBuildResObjAsync(ast, {
