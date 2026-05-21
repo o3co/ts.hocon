@@ -49,8 +49,9 @@ export function containsPlaceholders(tree: ResObj): boolean {
 }
 
 function valContainsPlaceholders(v: unknown): boolean {
-  if (isSubst(v as object) || isConcat(v as object) || isAppend(v as object)) return true
-  if (isResObj(v as object)) return containsPlaceholders(v as ResObj)
+  const rv = v as import('./types.js').ResolverValue
+  if (isSubst(rv) || isConcat(rv) || isAppend(rv)) return true
+  if (isResObj(rv)) return containsPlaceholders(rv)
   const hv = v as HoconValue
   if (hv?.kind === 'array') {
     return hv.items.some((item) => valContainsPlaceholders(item))
@@ -67,9 +68,9 @@ function valContainsPlaceholders(v: unknown): boolean {
 export function buildPartialHoconFromResObj(tree: ResObj): HoconValue & { kind: 'object' } {
   const fields = new Map<string, HoconValue>()
   for (const [k, v] of tree.fields) {
-    if (!isSubst(v as object) && !isConcat(v as object) && !isAppend(v as object)) {
-      if (isResObj(v as object)) {
-        fields.set(k, buildPartialHoconFromResObj(v as ResObj))
+    if (!isSubst(v) && !isConcat(v) && !isAppend(v)) {
+      if (isResObj(v)) {
+        fields.set(k, buildPartialHoconFromResObj(v))
       } else {
         fields.set(k, v as HoconValue)
       }
