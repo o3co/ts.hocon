@@ -212,14 +212,15 @@ export class Config {
     if (resolved.kind !== 'object') throw new Error('resolve: expected object root')
 
     // If allowUnresolved=true, some fields may still be SubstPlaceholders
-    // (returned as HoconValue by the resolver via `s as unknown as HoconValue`).
+    // (returned as HoconValue by the resolver via `s as unknown as HoconValue`,
+    // or as concat-placeholder-in-place when resolveConcat returns the placeholder).
     // Strip them out so getters throw NotResolvedError for those paths.
-    // Use containsPlaceholders(tree) to determine resolution status — the original
-    // ResObj still holds any ConcatPlaceholders/SubstPlaceholders that couldn't
-    // be resolved, even if resolveTree omitted those fields from its output.
+    // Use stripped.hadPlaceholders (not containsPlaceholders(tree)) — the original tree
+    // always has placeholders for any input with substitutions, but the resolved output
+    // may have none (all substitutions resolved successfully). hadPlaceholders from the
+    // strip result correctly reflects whether unresolved placeholders remain.
     if (opts.allowUnresolved) {
-      const { stripped } = stripPlaceholderFields(resolved)
-      const hadPlaceholders = containsPlaceholders(tree)
+      const { stripped, hadPlaceholders } = stripPlaceholderFields(resolved)
       return new Config(stripped, {
         resolved: !hadPlaceholders,
         parseBaseDir: this._parseBaseDir,
@@ -281,6 +282,20 @@ export class Config {
     // them out even after they've been resolved by source.
     const receiverShapeForFilter = resObjToKeyShape(receiverTree)
     const filtered = filterByReceiverShape(resolved, receiverShapeForFilter)
+
+    // If allowUnresolved=true, some fields may still be SubstPlaceholders.
+    // Strip them and track resolution status (same pattern as resolve()).
+    if (opts.allowUnresolved) {
+      const { stripped, hadPlaceholders } = stripPlaceholderFields(filtered)
+      return new Config(stripped, {
+        resolved: !hadPlaceholders,
+        parseBaseDir: this._parseBaseDir,
+        originDescription: this._originDescription,
+        resObjRoot: hadPlaceholders ? receiverTree : undefined,
+        resolveOpts: hadPlaceholders ? resolveOpts : undefined,
+      })
+    }
+
     return new Config(filtered as HoconValue & { kind: 'object' }, {
       resolved: true,
       parseBaseDir: this._parseBaseDir,
@@ -384,9 +399,13 @@ function hoconToJs(v: HoconValue): unknown {
     case 'scalar': return scalarToJs(v.raw, v.valueType)
     case 'array': return v.items.map(hoconToJs)
     case 'object': {
-      const obj: Record<string, unknown> = {}
+      // Use Object.create(null) to prevent __proto__ prototype pollution when
+      // a key named "__proto__" exists (e.g. from fromMap({ __proto__: ... })).
+      // The result is then converted to a plain {} by Object.assign for a
+      // standard JS object that passes instanceof/typeof checks normally.
+      const obj = Object.create(null) as Record<string, unknown>
       for (const [k, val] of v.fields) obj[k] = hoconToJs(val)
-      return obj
+      return Object.assign({}, obj)
     }
   }
 }

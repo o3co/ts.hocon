@@ -369,12 +369,15 @@ export class SubstitutionResolver {
 
     // If allowUnresolved=true, any resolved "value" that is actually a SubstPlaceholder
     // (returned as `s as unknown as HoconValue`) means the concat cannot fully resolve.
-    // Return undefined here to signal "unresolvable" — the caller will treat the whole
-    // concat field as unresolved (stripped by stripPlaceholderFields, getter → NotResolvedError).
+    // Return the placeholder cast as HoconValue so stripPlaceholderFields can detect and
+    // strip it — this correctly marks the whole concat field as unresolved
+    // (hadPlaceholders=true, getter → NotResolvedError). Returning undefined would work
+    // for NotResolvedError but would make isResolved() a false-positive (the field would
+    // appear absent, not placeholder-marked).
     if (this.opts.allowUnresolved) {
       for (const v of rawResolved) {
-        if (v !== undefined && (v as { _kind?: string })._kind === 'subst-placeholder') {
-          return undefined
+        if (v !== undefined && isSubst(v as ResolverValue)) {
+          return v  // placeholder cast as HoconValue — stripped by stripPlaceholderFields
         }
       }
     }

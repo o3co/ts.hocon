@@ -65,6 +65,7 @@ function buildResolveContext(input: string, opts: ParseOptions): { ast: ReturnTy
     baseDir: opts.baseDir,
     readFileSync: opts.readFileSync ?? defaultReadFileSync,
     readFile: opts.readFile,
+    originDescription: opts.originDescription,
   }
   return { ast, resolveOpts }
 }
