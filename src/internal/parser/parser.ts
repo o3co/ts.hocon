@@ -332,20 +332,18 @@ class Parser {
     }
     const identifier = this.advance().value
 
-    // Separator: comma between args
+    // Separator: comma between args is REQUIRED
     this.skip('newline')
-    if (this.peek().kind === 'comma') {
-      this.advance()
-    } else {
-      // No comma — check if we're at closing paren or EOF (one-arg form)
+    if (this.peek().kind !== 'comma') {
       const after = this.peek()
-      if (after.kind !== 'string') {
-        throw new ParseError(
-          'include package: requires exactly two arguments (identifier, file) — one-arg form is not supported',
-          pkgTok.line, pkgTok.col,
-        )
-      }
+      throw new ParseError(
+        after.kind === 'string'
+          ? 'include package: missing comma between identifier and file arguments'
+          : 'include package: requires exactly two arguments (identifier, file) — one-arg form is not supported',
+        pkgTok.line, pkgTok.col,
+      )
     }
+    this.advance() // consume comma
     this.skip('newline')
 
     // Second argument: quoted file path

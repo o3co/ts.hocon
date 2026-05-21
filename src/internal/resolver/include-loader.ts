@@ -251,7 +251,7 @@ export class IncludeLoader {
     validatePackageIdentifier(identifier)
     validatePackageFile(file, identifier)
 
-    const { includeStack = [], baseDir, resolveFrom, packageResolver, readFileSync } = this.opts
+    const { includeStack = [], resolveFrom, packageResolver, readFileSync } = this.opts
     const cycleKey = JSON.stringify(['package', identifier, file])
 
     if (includeStack.includes(cycleKey)) {
@@ -268,12 +268,16 @@ export class IncludeLoader {
     const resolver: PackageResolver = packageResolver ??
       ((id, f, includingFile) => defaultPackageResolver(id, f, includingFile, resolveFrom))
 
-    const includingFile = baseDir ? nodePath.join(baseDir, '_placeholder') : undefined
-    const resolvedPath = resolver(identifier, file, includingFile)
+    // No reliable parent-file path is threaded into the loader; pass undefined.
+    // The default resolver falls back to `resolveFrom` / process.cwd() in this case.
+    // Custom resolvers MUST handle includingFile === undefined gracefully.
+    const resolvedPath = resolver(identifier, file, undefined)
 
     const content = readFileSync(resolvedPath)
-    // Empty content is valid for package includes (ipk08): contributes {} to merge
-    if (content.trim().length === 0) return makeResObj()
+    // Empty content (zero bytes) is valid for package includes (ipk08); contributes {}.
+    // Whitespace-only content is NOT zero-bytes — it falls through to S3.1/E10 enforcement
+    // via assertNonEmptyDocument below.
+    if (content.length === 0) return makeResObj()
 
     const tokens = tokenize(content)
     assertNonEmptyDocument(tokens, resolvedPath)
@@ -292,7 +296,7 @@ export class IncludeLoader {
     validatePackageIdentifier(identifier)
     validatePackageFile(file, identifier)
 
-    const { includeStack = [], baseDir, resolveFrom, packageResolver, readFile, readFileSync } = this.opts
+    const { includeStack = [], resolveFrom, packageResolver, readFile, readFileSync } = this.opts
     const cycleKey = JSON.stringify(['package', identifier, file])
 
     if (includeStack.includes(cycleKey)) {
@@ -309,16 +313,19 @@ export class IncludeLoader {
     const resolver: PackageResolver = packageResolver ??
       ((id, f, includingFile) => defaultPackageResolver(id, f, includingFile, resolveFrom))
 
-    const includingFile = baseDir ? nodePath.join(baseDir, '_placeholder') : undefined
-    const resolvedPath = resolver(identifier, file, includingFile)
+    // No reliable parent-file path is threaded into the loader; pass undefined.
+    // The default resolver falls back to `resolveFrom` / process.cwd() in this case.
+    // Custom resolvers MUST handle includingFile === undefined gracefully.
+    const resolvedPath = resolver(identifier, file, undefined)
 
     const read = readFile
       ? async (p: string) => readFile(p)
       : async (p: string) => readFileSync(p)
 
     const content = await read(resolvedPath)
-    // Empty content is valid for package includes (ipk08): contributes {} to merge
-    if (content.trim().length === 0) return makeResObj()
+    // Empty content (zero bytes) is valid for package includes (ipk08); contributes {}.
+    // Whitespace-only content falls through to S3.1/E10 enforcement via assertNonEmptyDocument.
+    if (content.length === 0) return makeResObj()
 
     const tokens = tokenize(content)
     assertNonEmptyDocument(tokens, resolvedPath)
@@ -331,7 +338,7 @@ export class IncludeLoader {
   }
 
   private loadSingle(candidate: string): ResObj | undefined {
-    const { readFileSync, includeStack = [], env } = this.opts
+    const { readFileSync, includeStack = [] } = this.opts
 
     if (includeStack.includes(candidate)) {
       throw new ResolveError(`circular include: ${candidate}`, candidate, 0, 0)
@@ -353,16 +360,16 @@ export class IncludeLoader {
     // S3.1 — HOCON.md L130: empty included files are invalid documents.
     assertNonEmptyDocument(tokens, candidate)
     const ast = parseTokens(tokens)
+    // Spread all opts to preserve packageResolver / resolveFrom / readFile across nested includes.
     return this.onBuildResObj(ast, {
-      env,
+      ...this.opts,
       baseDir: nodePath.dirname(candidate),
-      readFileSync,
       includeStack: [...includeStack, candidate],
     })
   }
 
   private async loadSingleAsync(candidate: string): Promise<ResObj | undefined> {
-    const { readFile, readFileSync, includeStack = [], env } = this.opts
+    const { readFile, readFileSync, includeStack = [] } = this.opts
     const read = readFile
       ? async (p: string) => readFile(p)
       : async (p: string) => readFileSync(p)
@@ -387,11 +394,10 @@ export class IncludeLoader {
     // S3.1 — HOCON.md L130: empty included files are invalid documents.
     assertNonEmptyDocument(tokens, candidate)
     const ast = parseTokens(tokens)
+    // Spread all opts to preserve packageResolver / resolveFrom across nested includes.
     return this.onBuildResObjAsync(ast, {
-      env,
+      ...this.opts,
       baseDir: nodePath.dirname(candidate),
-      readFileSync,
-      readFile,
       includeStack: [...includeStack, candidate],
     })
   }
