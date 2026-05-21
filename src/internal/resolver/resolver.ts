@@ -72,7 +72,14 @@ export function buildPartialHoconFromResObj(tree: ResObj): HoconValue & { kind: 
       if (isResObj(v)) {
         fields.set(k, buildPartialHoconFromResObj(v))
       } else {
-        fields.set(k, v as HoconValue)
+        // T1: also omit fields whose HoconValue (e.g. array) contains placeholder
+        // elements — otherwise getList would silently return undefined for those
+        // elements instead of throwing NotResolvedError (array placeholder leak).
+        if (!valContainsPlaceholders(v)) {
+          fields.set(k, v as HoconValue)
+        }
+        // Fields with array-contained placeholders are omitted so lookupNode returns
+        // undefined → getters throw NotResolvedError.
       }
     }
     // Placeholder fields are intentionally omitted so lookupNode returns undefined.

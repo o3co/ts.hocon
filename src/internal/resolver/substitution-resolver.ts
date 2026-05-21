@@ -276,7 +276,7 @@ export class SubstitutionResolver {
         // name once from segments for the "(no environment variables …)" hint.
         const envBase = s.segments.map((seg: Segment) => seg.text).join('.')
         throw new ResolveError(
-          `could not resolve substitution: \${${key}} (no environment variables ${envBase}_0, ${envBase}_1, … set)`,
+          `${this.originPrefix()}could not resolve substitution: \${${key}} (no environment variables ${envBase}_0, ${envBase}_1, … set)`,
           key,
           s.line,
           s.col,
@@ -286,7 +286,7 @@ export class SubstitutionResolver {
         if (s.optional) return undefined
         if (this.opts.allowUnresolved) return s as unknown as HoconValue
         throw new ResolveError(
-          `could not resolve substitution: \${${key}}`,
+          `${this.originPrefix()}could not resolve substitution: \${${key}}`,
           key,
           s.line,
           s.col,

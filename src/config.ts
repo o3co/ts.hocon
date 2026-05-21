@@ -130,6 +130,12 @@ export class Config {
       throw new ConfigError(`path not found: ${path}`, path)
     }
     if (v.kind !== 'object') throw new ConfigError(`expected object at ${path}`, path)
+    // T2: even when a partial value was found, the underlying ResObj subtree may
+    // contain unresolved placeholders (omitted from the partial root). Throw
+    // NotResolvedError when the subtree at this path is unresolved.
+    if (!this._resolved && this._resObjRootSubtreeHasPlaceholders(path)) {
+      throw new NotResolvedError(path)
+    }
     return new Config(v, { resolved: this._resolved })
   }
 
@@ -138,6 +144,13 @@ export class Config {
     if (v === undefined) {
       if (!this._resolved) throw new NotResolvedError(path)
       throw new ConfigError(`path not found: ${path}`, path)
+    }
+    // T2: check _resObjRoot subtree for unresolved placeholders in the array case.
+    // (T1 handles the case where the array field is omitted from the partial root;
+    // this guard handles the case where the field IS present but sub-paths of a
+    // returned object in the list would be unresolved — belt-and-suspenders.)
+    if (!this._resolved && this._resObjRootSubtreeHasPlaceholders(path)) {
+      throw new NotResolvedError(path)
     }
     // S15: if the value is a numerically-keyed object, convert to array before type check.
     // Empty objects and objects with no eligible integer keys return null → fall through to error.
@@ -271,6 +284,7 @@ export class Config {
       ...(this._resolveOpts ?? { env: {}, baseDir: undefined, readFileSync: () => { throw new Error('no files') } }),
       allowUnresolved: opts.allowUnresolved ?? false,
       useSystemEnvironment: opts.useSystemEnvironment ?? true,
+      originDescription: this._originDescription,
     }
 
     const resolved = resolveTree(merged, resolveOpts)
@@ -328,6 +342,35 @@ export class Config {
       current = next
     }
     return current
+  }
+
+  /**
+   * _resObjRootSubtreeHasPlaceholders — walk _resObjRoot to the given path and
+   * return true if the subtree there contains any unresolved placeholder.
+   * Used by getConfig / getList (T2) to detect transitive unresolved placeholders
+   * in object / array subtrees that would otherwise appear to be "resolved" in the
+   * partial HoconValue root (because individual leaf fields are omitted rather than
+   * the whole subtree when their value is a direct placeholder scalar, but object
+   * sub-containers are retained in the partial root with the placeholder-keyed
+   * fields omitted from them — so the object appears "present but empty-ish").
+   */
+  private _resObjRootSubtreeHasPlaceholders(path: string): boolean {
+    const tree = this._resObjRoot
+    if (!tree) return false
+    const segments = splitConfigPath(path)
+    let cur: ResObj = tree
+    for (const seg of segments) {
+      const val = cur.fields.get(seg)
+      if (val === undefined) return false
+      if (isResObj(val)) {
+        cur = val
+      } else {
+        // Leaf value at this path — check if it or its contents are placeholders
+        return isSubst(val) || isConcat(val) || isAppend(val)
+      }
+    }
+    // cur is now the ResObj at the given path — check for any placeholders in it
+    return containsPlaceholders(cur)
   }
 
   private requireScalar(path: string): { raw: string; valueType: ScalarValueType } {

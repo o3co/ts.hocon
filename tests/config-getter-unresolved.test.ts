@@ -35,4 +35,18 @@ describe('Config getters on unresolved paths', () => {
       expect((e as NotResolvedError).path).toBe('a')
     }
   })
+
+  // T1: array placeholder leak — field with array containing placeholder elements
+  // must be omitted from partial root so getList throws NotResolvedError rather
+  // than silently converting placeholder elements to undefined.
+  it('getList on array containing placeholder throws NotResolvedError', () => {
+    const c = parseStringWithOptions('items = [${a}, 2]', { resolveSubstitutions: false })
+    expect(() => c.getList('items')).toThrow(NotResolvedError)
+  })
+
+  // T2: getConfig on object subtree containing unresolved placeholders throws NotResolvedError.
+  it('getConfig on object subtree with unresolved placeholder throws NotResolvedError', () => {
+    const c = parseStringWithOptions('a { x = ${b} }', { resolveSubstitutions: false })
+    expect(() => c.getConfig('a')).toThrow(NotResolvedError)
+  })
 })

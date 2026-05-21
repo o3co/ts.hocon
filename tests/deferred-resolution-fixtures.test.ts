@@ -24,7 +24,11 @@ const FIXTURE_DIR = new URL(
 ).pathname
 
 // ── Per-impl skip list ────────────────────────────────────────────────────────
-// dr17: E11 package-include — not in ts.hocon scope yet (programmatic skip in deferred-resolution.test.ts)
+// dr17: E11 package-include — E11 IS shipped in v1.3.0 and is covered by the
+// programmatic Layer-1 tests in tests/deferred-resolution.test.ts and
+// tests/e11-parser-package.test.ts. The YAML scenario runner cannot register
+// packages programmatically (Parser::register_package is not a YAML construct
+// per the C4 plan), so this fixture is skipped in the YAML runner only.
 
 const SKIP: Set<string> = new Set([
   'dr17-e11-package-include-deferred.yaml',
