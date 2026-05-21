@@ -2,7 +2,7 @@ import { DECIMAL_NUMBER_RE } from '../../coerce.js'
 import { ParseError } from '../../errors.js'
 import type { ScalarValueType } from '../../value.js'
 import type { Token, TokenKind } from '../lexer/token.js'
-import type { AstNode, AstField, Pos } from './ast.js'
+import type { AstNode, AstField, IncludeQualifier, Pos } from './ast.js'
 
 const EOF_TOKEN: Token = { kind: 'eof', value: '', line: 0, col: 0, isQuoted: false, precedingSpace: false, subst: undefined }
 
@@ -215,15 +215,13 @@ class Parser {
     const p = this.currentPos()
     this.skip('newline')
     const t = this.peek()
-    let path: string
-    let required = false
-    let isFile = false
 
+    // ---- required(...) wrapper ----
     if (t.kind === 'unquoted' && (t.value === 'required(' || t.value === 'required' ||
         t.value.startsWith('required('))) {
-      // include required("path") or include required(file("path"))
+      // include required("path") or include required(file("path")) or include required(package("id","file"))
       // The lexer may produce "required(" or "required(file(" as a single unquoted token
-      // depending on whether there is whitespace before "file(".
+      // depending on whether there is whitespace before the inner qualifier.
 
       // Reject bare `required` without a following `(`: e.g. `include required "file.conf"`
       if (t.value === 'required') {
@@ -233,62 +231,137 @@ class Parser {
         }
       }
 
-      required = true
       this.advance()
 
-      // Check for unsupported url/classpath forms inside required():
-      // Case 1 (no space): lexer produced a single token like "required(url(" or "required(classpath("
+      // innerPrefix is the content after "required(" when the lexer bundles them
       const innerPrefix = t.value.startsWith('required(') ? t.value.slice('required('.length) : ''
       if (innerPrefix.startsWith('url') || innerPrefix.startsWith('classpath')) {
         throw new ParseError('include url(...) and classpath(...) are not supported', t.line, t.col)
       }
-      // Detect file() inside required(): "required(file(" as single token or "file(" as next token
-      if (innerPrefix.startsWith('file')) {
-        isFile = true
-      }
-      // Case 2 (with space): next token starts with url/classpath/file
-      const next = this.peek()
-      if (next.kind === 'unquoted' && (next.value === 'url' || next.value.startsWith('url(') ||
-          next.value === 'classpath' || next.value.startsWith('classpath('))) {
-        throw new ParseError('include url(...) and classpath(...) are not supported', next.line, next.col)
-      }
-      if (next.kind === 'unquoted' && (next.value === 'file(' || next.value === 'file' || next.value.startsWith('file('))) {
-        isFile = true
+
+      const nextTok = this.peek()
+
+      if (innerPrefix.startsWith('package') ||
+          (nextTok.kind === 'unquoted' && (nextTok.value === 'package(' || nextTok.value.startsWith('package(')))) {
+        // required(package("id", "file"))
+        // When innerPrefix already contains "package(", the lexer bundled it into the
+        // required( token — so the current position is already at the first string arg.
+        // When it's a separate token, consumePackageToken=true advances past it first.
+        const consumePackageToken = !innerPrefix.startsWith('package')
+        const { qualifier, path } = this.parsePackageArgs(consumePackageToken)
+        return this.makeIncludeField(qualifier, path, true, p)
       }
 
-      // Skip tokens until we find the quoted path string
-      while (this.peek().kind !== 'string' && this.peek().kind !== 'eof') this.advance()
-      if (this.peek().kind === 'eof') throw new ParseError('expected include path', t.line, t.col)
-      path = this.advance().value
-      // Skip closing ) and anything else on this line (but stop at comma — next field)
-      while (this.peek().kind !== 'newline' && this.peek().kind !== 'rbrace' && this.peek().kind !== 'eof' && this.peek().kind !== 'comma') this.advance()
-    } else if (t.kind === 'string') {
-      // include "path"
-      path = this.advance().value
-    } else if (t.kind === 'unquoted' && (t.value === 'file(' || t.value === 'file')) {
-      // include file("path")
-      isFile = true
+      if (innerPrefix.startsWith('file') ||
+          (nextTok.kind === 'unquoted' && (nextTok.value === 'file(' || nextTok.value === 'file' || nextTok.value.startsWith('file(')))) {
+        // required(file("path"))
+        const path = this.parseQuotedPathSkipWrapper(t)
+        return this.makeIncludeField({ kind: 'file' }, path, true, p)
+      }
+
+      if (nextTok.kind === 'unquoted' && (nextTok.value === 'url' || nextTok.value.startsWith('url(') ||
+          nextTok.value === 'classpath' || nextTok.value.startsWith('classpath('))) {
+        throw new ParseError('include url(...) and classpath(...) are not supported', nextTok.line, nextTok.col)
+      }
+
+      // required("path") — bare with wrapper
+      const path = this.parseQuotedPathSkipWrapper(t)
+      return this.makeIncludeField({ kind: 'bare' }, path, true, p)
+    }
+
+    // ---- bare include "path" ----
+    if (t.kind === 'string') {
+      const path = this.advance().value
+      return this.makeIncludeField({ kind: 'bare' }, path, false, p)
+    }
+
+    // ---- file(...) qualifier ----
+    if (t.kind === 'unquoted' && (t.value === 'file(' || t.value === 'file')) {
       this.advance()
-      // Skip tokens until we find the quoted path string
-      while (this.peek().kind !== 'string' && this.peek().kind !== 'eof') this.advance()
-      if (this.peek().kind === 'eof') throw new ParseError('expected include path', t.line, t.col)
-      path = this.advance().value
-      // Skip closing ) and anything else on this line (but stop at comma — next field)
-      while (this.peek().kind !== 'newline' && this.peek().kind !== 'rbrace' && this.peek().kind !== 'eof' && this.peek().kind !== 'comma') this.advance()
-    } else if (t.kind === 'unquoted' && (t.value === 'url' || t.value.startsWith('url('))) {
-      throw new ParseError('include url(...) is not supported', t.line, t.col)
-    } else if (t.kind === 'unquoted' && (t.value === 'classpath' || t.value.startsWith('classpath('))) {
-      throw new ParseError('include classpath(...) is not supported', t.line, t.col)
-    } else {
-      throw new ParseError(`expected include path, got ${t.kind}`, t.line, t.col)
+      const path = this.parseQuotedPathSkipWrapper(t)
+      return this.makeIncludeField({ kind: 'file' }, path, false, p)
     }
 
-    return {
-      key: [],
-      value: { kind: 'include', path, required, ...(isFile ? { isFile: true } : {}), pos: p },
-      append: false,
-      pos: p,
+    // ---- package(...) qualifier ----
+    if (t.kind === 'unquoted' && (t.value === 'package(' || t.value.startsWith('package('))) {
+      const { qualifier, path } = this.parsePackageArgs()
+      return this.makeIncludeField(qualifier, path, false, p)
     }
+
+    if (t.kind === 'unquoted' && (t.value === 'url' || t.value.startsWith('url('))) {
+      throw new ParseError('include url(...) is not supported', t.line, t.col)
+    }
+    if (t.kind === 'unquoted' && (t.value === 'classpath' || t.value.startsWith('classpath('))) {
+      throw new ParseError('include classpath(...) is not supported', t.line, t.col)
+    }
+    throw new ParseError(`expected include path, got ${t.kind}`, t.line, t.col)
+  }
+
+  private makeIncludeField(qualifier: IncludeQualifier, path: string, required: boolean, pos: ReturnType<typeof this.currentPos>): AstField {
+    return { key: [], value: { kind: 'include', qualifier, path, required, pos }, append: false, pos }
+  }
+
+  /**
+   * Skip past any wrapper tokens (qualifier name, open paren) to find the first quoted
+   * string, consume it, then skip trailing tokens to end-of-statement. Returns the string value.
+   */
+  private parseQuotedPathSkipWrapper(errTok: Token): string {
+    while (this.peek().kind !== 'string' && this.peek().kind !== 'eof') this.advance()
+    if (this.peek().kind === 'eof') throw new ParseError('expected include path', errTok.line, errTok.col)
+    const path = this.advance().value
+    while (this.peek().kind !== 'newline' && this.peek().kind !== 'rbrace' && this.peek().kind !== 'eof' && this.peek().kind !== 'comma') this.advance()
+    return path
+  }
+
+  /**
+   * Parse the body of `package("identifier", "file")`.
+   *
+   * @param consumePackageToken - When true (default), the current token is `package(` and
+   *   must be consumed first. When false, the lexer already bundled `package(` into the
+   *   preceding token (e.g. `required(package("`), so we are already positioned at the
+   *   first string argument.
+   */
+  private parsePackageArgs(consumePackageToken = true): { qualifier: IncludeQualifier & { kind: 'package' }; path: string } {
+    const pkgTok = consumePackageToken ? this.advance() : this.peek()
+    this.skip('newline')
+
+    // First argument: quoted identifier
+    const idTok = this.peek()
+    if (idTok.kind !== 'string') {
+      throw new ParseError('include package: expected quoted identifier as first argument', pkgTok.line, pkgTok.col)
+    }
+    const identifier = this.advance().value
+
+    // Separator: comma between args is REQUIRED
+    this.skip('newline')
+    if (this.peek().kind !== 'comma') {
+      const after = this.peek()
+      throw new ParseError(
+        after.kind === 'string'
+          ? 'include package: missing comma between identifier and file arguments'
+          : 'include package: requires exactly two arguments (identifier, file) — one-arg form is not supported',
+        pkgTok.line, pkgTok.col,
+      )
+    }
+    this.advance() // consume comma
+    this.skip('newline')
+
+    // Second argument: quoted file path
+    const fileTok = this.peek()
+    if (fileTok.kind !== 'string') {
+      throw new ParseError(
+        'include package: requires exactly two arguments (identifier, file) — one-arg form is not supported',
+        pkgTok.line, pkgTok.col,
+      )
+    }
+    const filePath = this.advance().value
+
+    // Skip closing ) and anything else to end-of-statement
+    while (this.peek().kind !== 'newline' && this.peek().kind !== 'rbrace' && this.peek().kind !== 'eof' && this.peek().kind !== 'comma') {
+      this.advance()
+    }
+
+    return { qualifier: { kind: 'package', identifier }, path: filePath }
   }
 
   private parseValue(): AstNode {
@@ -338,7 +411,10 @@ class Parser {
     }
 
     if (parts.length === 0) throw new ParseError('expected value', this.peek().line, this.peek().col)
-    if (parts.length === 1) return parts[0]!
+    if (parts.length === 1) {
+      // length === 1 guarantees parts[0] exists; the array access is safe
+      return parts[0] as AstNode
+    }
     return { kind: 'concat', nodes: parts, pos: p }
   }
 

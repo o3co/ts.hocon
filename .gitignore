@@ -26,6 +26,8 @@ docs/*
 
 # Hand-written docs to track
 !docs/spec-compliance.md
+!docs/proposals/
+!docs/proposals/*.md
 
 # Fetched testdata (from xx.hocon)
 tests/lightbend/testdata/expected/

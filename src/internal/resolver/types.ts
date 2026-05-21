@@ -32,12 +32,43 @@ export type ResObj = {
 
 export type ResolverValue = HoconValue | SubstPlaceholder | ConcatPlaceholder | AppendPlaceholder | ResObj
 
+/**
+ * Custom resolver for `include package("id", "file")`.
+ *
+ * Receives:
+ * - `identifier`, `file`: the qualifier arguments (post HOCON unescape, byte-exact)
+ * - `includingFile`: absolute path of the including `.conf` file when known
+ *   (currently always `undefined`; reserved for future threading from a future
+ *   `parseFile` integration)
+ * - `baseDir`: the directory context active when the include is resolved
+ *   (typically `path.dirname(includingFile)` of the parent, or the caller-set
+ *   `baseDir` parse option). Set when known, `undefined` for parses of literal
+ *   input strings without a directory context.
+ *
+ * Must return an absolute path or throw.
+ *
+ * When not provided, the default resolver uses `createRequire(import.meta.url)`
+ * which works in both CJS and ESM Node contexts. The default resolver picks the
+ * lookup starting paths in priority order:
+ *   `resolveFrom` > `baseDir` > `path.dirname(includingFile)` > `process.cwd()`
+ */
+export type PackageResolver = (
+  identifier: string,
+  file: string,
+  includingFile: string | undefined,
+  baseDir: string | undefined,
+) => string
+
 export type ResolveOptions = {
   env: Record<string, string>
   baseDir: string | undefined
   readFileSync: (filePath: string) => string
   readFile?: (filePath: string) => Promise<string>
   includeStack?: string[]
+  /** Override the starting directory for `require.resolve` used by the default package resolver. */
+  resolveFrom?: string | string[]
+  /** Custom resolver for `include package(...)`. When provided, takes full control; `resolveFrom` is ignored. */
+  packageResolver?: PackageResolver
 }
 
 // Track parser-inserted separator whitespace values without leaking _separator
