@@ -502,9 +502,28 @@ export class SubstitutionResolver {
     const elem = this.resolveVal(a.elem, scope)
     // S13b.2 (HOCON.md L732): `a += b` is sugar for `a = ${?a} [b]`. The
     // prior value must be an array (or undefined → empty array); a non-array
-    // prior is a resolve-time error. Previously the resolver silently
-    // wrapped the non-array as a single-element array.
-    if (existing.kind !== 'array') {
+    // prior is a resolve-time error — "just as it would in the long form".
+    //
+    // The long form's concat path applies S15 numeric-keyed-object-to-array
+    // conversion (joinPair Array×Object branch L428-432). To remain
+    // behaviourally equivalent to the desugar, this path tries the same
+    // conversion when the prior is an object; only a non-array, non-
+    // numeric-object prior raises the spec-mandated error.
+    let priorItems: HoconValue[]
+    if (existing.kind === 'array') {
+      priorItems = existing.items
+    } else if (existing.kind === 'object') {
+      const converted = numericObjectToArray(existing)
+      if (converted === null) {
+        throw new ResolveError(
+          `'+=' on non-array value: prior value is object with non-numeric keys (spec L732)`,
+          '',
+          0,
+          0,
+        )
+      }
+      priorItems = converted
+    } else {
       throw new ResolveError(
         `'+=' on non-array value: prior value is ${existing.kind} (spec L732)`,
         '',
@@ -512,7 +531,7 @@ export class SubstitutionResolver {
         0,
       )
     }
-    const items: HoconValue[] = [...existing.items]
+    const items: HoconValue[] = [...priorItems]
     if (elem !== undefined) items.push(elem)
     return { kind: 'array', items }
   }

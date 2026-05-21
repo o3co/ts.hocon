@@ -690,6 +690,20 @@ describe('spec compliance Phase 2 — concatenation and += (resolver-level)', ()
   it('S13b.2: += when prior value is an object errors (spec L732)', () => {
     expect(() => resolveStr('x = { a = 1 }\nx += [2]')).toThrow(ResolveError)
   })
+
+  // Match long-form `a = ${?a} [b]` desugaring: when the prior object has
+  // canonical-integer keys, S15.3 (numericObjectToArray) converts it to an
+  // array and the append succeeds rather than erroring.
+  it('S13b.2: += when prior is a numeric-keyed object succeeds via S15.3 (matches desugar)', () => {
+    const v = resolveStr('x { 0 = a, 1 = b }\nx += c')
+    const x = obj(v).get('x')
+    expect(x?.kind).toBe('array')
+    const items = (x as HoconValue & { kind: 'array' }).items.map((i) => {
+      if (i.kind !== 'scalar') throw new Error('expected scalar')
+      return i.raw
+    })
+    expect(items).toEqual(['a', 'b', 'c'])
+  })
 })
 
 // Spec compliance Phase 3 (tracking issue #70): substitution & include (resolver-level)
