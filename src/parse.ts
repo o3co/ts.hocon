@@ -1,9 +1,9 @@
 import { tokenize } from './internal/lexer/lexer.js'
 import { parseTokens } from './internal/parser/parser.js'
 import { assertNonEmptyDocument } from './internal/parser/empty-check.js'
-import { resolve, resolveAsync } from './internal/resolver/resolver.js'
-import { Config } from './config.js'
+import { buildTree, containsPlaceholders, resolve, resolveAsync } from './internal/resolver/resolver.js'
 import type { ResolveOptions as InternalResolveOptions } from './internal/resolver/resolver.js'
+import { Config } from './config.js'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 
@@ -73,7 +73,47 @@ export function parse(input: string, opts: ParseOptions = {}): Config {
   const { ast, resolveOpts } = buildResolveContext(input, opts)
   const value = resolve(ast, resolveOpts)
   if (value.kind !== 'object') throw new Error('resolved value is not an object')
-  return new Config(value)
+  return new Config(value, { resolved: true, originDescription: opts.originDescription })
+}
+
+/** Lightbend-aligned alias for parse(). Produces a fully resolved Config. */
+export const parseString = parse
+
+/** Parse a HOCON string with explicit options. When opts.resolveSubstitutions
+ *  is false, returns an unresolved Config with substitution placeholders intact.
+ *  Use Config.resolve() or Config.resolveWith() to complete resolution later. */
+export function parseStringWithOptions(input: string, opts: ParseOptions = {}): Config {
+  const resolveSubstitutions = opts.resolveSubstitutions ?? true
+  const { ast, resolveOpts } = buildResolveContext(input, opts)
+  if (resolveSubstitutions) {
+    const value = resolve(ast, resolveOpts)
+    if (value.kind !== 'object') throw new Error('resolved value is not an object')
+    return new Config(value, { resolved: true, originDescription: opts.originDescription })
+  }
+  // Deferred path: phase 1 only — leave substitution placeholders in place.
+  const tree = buildTree(ast, resolveOpts)
+  const hasPlaceholders = containsPlaceholders(tree)
+  return Config._fromUnresolvedResObj(tree, {
+    parseBaseDir: opts.baseDir,
+    originDescription: opts.originDescription,
+    resolved: !hasPlaceholders,
+    resolveOpts,
+  })
+}
+
+/** Parse a HOCON file with explicit options. */
+export function parseFileWithOptions(filePath: string, opts: ParseOptions = {}): Config {
+  if (typeof process === 'undefined' && !opts.readFileSync) {
+    throw new Error('parseFileWithOptions is not supported in browser environments without opts.readFileSync.')
+  }
+  const resolvedPath = path.resolve(filePath)
+  const readFileSync = opts.readFileSync ?? defaultReadFileSync
+  const input = readFileSync(resolvedPath)
+  return parseStringWithOptions(input, {
+    ...opts,
+    baseDir: opts.baseDir ?? path.dirname(resolvedPath),
+    readFileSync,
+  })
 }
 
 /**
