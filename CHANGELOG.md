@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **`getString()` on a null-typed scalar now throws `ConfigError` instead of returning `"null"`** ([#88](https://github.com/o3co/ts.hocon/issues/88)). Per HOCON spec L1252, asking for a non-null type when the value is null must be an error. The other typed getters (`getNumber`, `getBoolean`, `getDuration`, …) already rejected null via their coerce/check paths; `getString` was the lone exception. A null-type guard is added in `getString` for parity.
 
+### Fixed — S13b.2 spec compliance
+
+- **`+=` on a non-array prior value now errors instead of silently wrapping** ([#81](https://github.com/o3co/ts.hocon/issues/81)). Per HOCON spec L732, `a += b` is sugar for `a = ${?a} [b]`; when the prior value of `a` is not an array, this must produce a resolve-time error. Previously the resolver silently wrapped the non-array as a single-element array (`x = 1; x += [2]` produced `[1, 2]`). The fix throws `ResolveError` in `resolveAppend` when `existing.kind !== 'array'`.
+
 ## [1.4.1] - 2026-05-22
 
 Cross-impl bugfix release: addresses [go.hocon#105](https://github.com/o3co/go.hocon/issues/105) (cgordon-reported Lightbend divergence on empty/comment-only includes) at the ts.hocon layer, and pins go.hocon#106 (include-ordering / self-ref-through-include) which already worked correctly here. Pure include-path behaviour; no public API changes; safe drop-in upgrade from v1.4.0.
