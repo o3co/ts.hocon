@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Tests
+
+- **Cross-impl regression tests for include ordering ([go.hocon#106](https://github.com/o3co/go.hocon/issues/106))**. Pin Lightbend-equivalent semantics for `include` directives — scalar override, parent-after-include, self-referential append through include, both-object deep-merge, nested-include scope isolation, and sequential includes — so the existing correct behaviour does not regress when the merge logic is touched. No production-code change; `ts.hocon`'s `deepMergeResObjInto` already implements src-wins + prior-capture.
+
 ## [1.4.0] - 2026-05-21
 
 ### Added — E12 deferred substitution resolution (closes [#99](https://github.com/o3co/ts.hocon/issues/99))
