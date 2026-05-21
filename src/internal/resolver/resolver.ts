@@ -48,7 +48,7 @@ export function containsPlaceholders(tree: ResObj): boolean {
   return false
 }
 
-function valContainsPlaceholders(v: unknown): boolean {
+export function valContainsPlaceholders(v: unknown): boolean {
   const rv = v as import('./types.js').ResolverValue
   if (isSubst(rv) || isConcat(rv) || isAppend(rv)) return true
   if (isResObj(rv)) return containsPlaceholders(rv)
