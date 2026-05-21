@@ -23,6 +23,26 @@ export class ResolveError extends Error {
   }
 }
 
+/**
+ * Thrown when `include package("id", "file")` resolution fails because the
+ * package cannot be located via `require.resolve` or a custom `packageResolver`.
+ * Extends `ResolveError` so callers who catch `ResolveError` still handle it,
+ * while callers who need to distinguish a missing-package error can use:
+ *   `if (err instanceof PackageLookupError) { ... }`
+ */
+export class PackageLookupError extends ResolveError {
+  constructor(
+    message: string,
+    public readonly identifier: string,
+    public readonly packageFile: string,
+    line: number,
+    col: number,
+  ) {
+    super(message, `${identifier}/${packageFile}`, line, col)
+    this.name = 'PackageLookupError'
+  }
+}
+
 export class ConfigError extends Error {
   constructor(
     message: string,

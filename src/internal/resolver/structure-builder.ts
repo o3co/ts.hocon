@@ -22,11 +22,9 @@ import { IncludeLoader } from './include-loader.js'
  * Encapsulates structure building, include loading, and substitution-path relativization.
  */
 export class StructureBuilder {
-  private opts: ResolveOptions
   private loader: IncludeLoader
 
   constructor(opts: ResolveOptions) {
-    this.opts = opts
     this.loader = new IncludeLoader(opts)
     this.loader.onBuildResObj = (a, o) => new StructureBuilder(o).build(a)
     this.loader.onBuildResObjAsync = async (a, o) => new StructureBuilder(o).buildAsync(a)
@@ -59,7 +57,13 @@ export class StructureBuilder {
     if (field.key.length === 0 && field.value.kind === 'include') {
       // Included files are parsed at their own root (pathPrefix=[]),
       // then relativized to the current scope's prefix.
-      const included = this.loader.load(field.value.path, field.value.required, field.value.isFile)
+      const { qualifier, path, required } = field.value
+      let included: ResObj
+      if (qualifier.kind === 'package') {
+        included = this.loader.loadPackage(qualifier.identifier, path, required)
+      } else {
+        included = this.loader.load(path, required, qualifier.kind === 'file')
+      }
       if (pathPrefix.length > 0) {
         this.relativizeResObj(included, pathPrefix)
       }
@@ -116,7 +120,13 @@ export class StructureBuilder {
 
   private async applyFieldAsync(obj: ResObj, field: AstField, pathPrefix: string[]): Promise<void> {
     if (field.key.length === 0 && field.value.kind === 'include') {
-      const included = await this.loader.loadAsync(field.value.path, field.value.required, field.value.isFile)
+      const { qualifier, path, required } = field.value
+      let included: ResObj
+      if (qualifier.kind === 'package') {
+        included = await this.loader.loadPackageAsync(qualifier.identifier, path, required)
+      } else {
+        included = await this.loader.loadAsync(path, required, qualifier.kind === 'file')
+      }
       if (pathPrefix.length > 0) {
         this.relativizeResObj(included, pathPrefix)
       }
