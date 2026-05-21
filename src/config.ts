@@ -205,6 +205,7 @@ export class Config {
       ...(this._resolveOpts ?? { env: {}, baseDir: undefined, readFileSync: () => { throw new Error('no files') } }),
       allowUnresolved: opts.allowUnresolved ?? false,
       useSystemEnvironment: opts.useSystemEnvironment ?? true,
+      originDescription: this._originDescription,
     }
 
     const resolved = resolveTree(tree, resolveOpts)
@@ -213,8 +214,12 @@ export class Config {
     // If allowUnresolved=true, some fields may still be SubstPlaceholders
     // (returned as HoconValue by the resolver via `s as unknown as HoconValue`).
     // Strip them out so getters throw NotResolvedError for those paths.
+    // Use containsPlaceholders(tree) to determine resolution status — the original
+    // ResObj still holds any ConcatPlaceholders/SubstPlaceholders that couldn't
+    // be resolved, even if resolveTree omitted those fields from its output.
     if (opts.allowUnresolved) {
-      const { stripped, hadPlaceholders } = stripPlaceholderFields(resolved)
+      const { stripped } = stripPlaceholderFields(resolved)
+      const hadPlaceholders = containsPlaceholders(tree)
       return new Config(stripped, {
         resolved: !hadPlaceholders,
         parseBaseDir: this._parseBaseDir,

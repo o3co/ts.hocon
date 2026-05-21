@@ -43,6 +43,11 @@ export class SubstitutionResolver {
     private opts: ResolveOptions,
   ) {}
 
+  /** Returns a prefix for error messages, including origin info when set. */
+  private originPrefix(): string {
+    return this.opts.originDescription ? `${this.opts.originDescription}: ` : ''
+  }
+
   resolve(): HoconValue {
     return this.resolveResObj(this.root)
   }
@@ -93,7 +98,8 @@ export class SubstitutionResolver {
       // currently being iterated) vs an external lookup of the same field.
       this.resolvingConcats.add(v)
       try {
-        return this.resolveConcat(v.nodes, scope, v.line, v.col)
+        const concatResult = this.resolveConcat(v.nodes, scope, v.line, v.col)
+        return concatResult  // may be undefined (all-optional-undef or allowUnresolved)
       } finally {
         this.resolvingConcats.delete(v)
       }
@@ -160,7 +166,7 @@ export class SubstitutionResolver {
       }
       if (s.optional) return undefined
       throw new ResolveError(
-        `circular substitution: ${key}`,
+        this.originPrefix() + `circular substitution: ${key}`,
         key,
         s.line,
         s.col,
@@ -206,7 +212,7 @@ export class SubstitutionResolver {
           // No prior: short-circuit (spec L841).
           if (s.optional) return undefined
           throw new ResolveError(
-            `could not resolve substitution: \${${key}}`,
+            `${this.originPrefix()}could not resolve substitution: \${${key}}`,
             key,
             s.line,
             s.col,
@@ -310,7 +316,7 @@ export class SubstitutionResolver {
         return s as unknown as HoconValue
       }
       throw new ResolveError(
-        `could not resolve substitution: \${${key}}`,
+        `${this.originPrefix()}could not resolve substitution: \${${key}}`,
         key,
         s.line,
         s.col,
@@ -358,12 +364,25 @@ export class SubstitutionResolver {
     return [full, bare]
   }
 
-  private resolveConcat(nodes: ResolverValue[], scope: ResObj, line = 0, col = 0): HoconValue {
-    const resolved = nodes
-      .map((n) => this.resolveVal(n, scope))
-      .filter((v): v is HoconValue => v !== undefined)
+  private resolveConcat(nodes: ResolverValue[], scope: ResObj, line = 0, col = 0): HoconValue | undefined {
+    const rawResolved = nodes.map((n) => this.resolveVal(n, scope))
 
-    if (resolved.length === 0) return { kind: 'scalar', raw: 'null', valueType: 'null' }
+    // If allowUnresolved=true, any resolved "value" that is actually a SubstPlaceholder
+    // (returned as `s as unknown as HoconValue`) means the concat cannot fully resolve.
+    // Return undefined here to signal "unresolvable" — the caller will treat the whole
+    // concat field as unresolved (stripped by stripPlaceholderFields, getter → NotResolvedError).
+    if (this.opts.allowUnresolved) {
+      for (const v of rawResolved) {
+        if (v !== undefined && (v as { _kind?: string })._kind === 'subst-placeholder') {
+          return undefined
+        }
+      }
+    }
+
+    const resolved = rawResolved.filter((v): v is HoconValue => v !== undefined)
+
+    // All nodes were optional and all resolved to undefined → field omitted (HOCON spec).
+    if (resolved.length === 0) return undefined
     if (resolved.length === 1) return resolved[0] as HoconValue
 
     // Filter parser-inserted separator whitespace (tracked via separatorValues WeakSet),

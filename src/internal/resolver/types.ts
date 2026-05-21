@@ -55,6 +55,14 @@ export type ResolveOptions = {
    * E12 ResolveOptions.allowUnresolved.
    */
   allowUnresolved?: boolean
+  /**
+   * Human-readable origin for error messages (e.g. file name or description).
+   * When set, ResolveError messages include this as a prefix to help callers
+   * identify which config source caused the error.
+   *
+   * E12 origin preservation.
+   */
+  originDescription?: string
 }
 
 // Track parser-inserted separator whitespace values without leaking _separator
