@@ -90,7 +90,7 @@ export class Config {
     // reject `null`-valueType scalars via their coerce/check paths; getString
     // previously returned the raw `"null"` string. Reject here for parity.
     if (v.valueType === 'null') {
-      throw new ConfigError(`expected string at ${path}, got null`, path)
+      throw new ConfigError(`expected string at ${path}, got ${v.valueType}`, path)
     }
     return v.raw
   }
