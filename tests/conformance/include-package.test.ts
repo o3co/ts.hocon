@@ -15,11 +15,11 @@
 // Fixture source: xx.hocon worktree (read-only reference)
 // Package content: xx.hocon testdata/hocon/include-package/_packages/
 
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { PackageLookupError, ParseError, ResolveError, parse } from '../../src/index.js'
 import type { PackageResolver } from '../../src/index.js'
+import { PackageLookupError, ParseError, ResolveError, parse } from '../../src/index.js'
 
 // ---- Paths ----------------------------------------------------------------
 
@@ -104,6 +104,15 @@ function parseFixture(name: string, registry: Registry): ReturnType<typeof parse
 // ---- Tests -----------------------------------------------------------------
 
 describe('E11 conformance — include-package fixtures (ipk01-ipk14)', () => {
+
+  // The xx.hocon sibling worktree must be present. Skip the suite in clean
+  // checkouts (no sibling worktree) so missing fixtures produce an actionable
+  // skip message rather than confusing ENOENT errors.
+  // Same skip-guard pattern as tests/conformance/properties-conflict.test.ts.
+  if (!existsSync(FIXTURE_DIR) || !existsSync(PACKAGES_DIR)) {
+    it.skip('fixtures unavailable — xx.hocon sibling worktree (incl-pkg-xx) not present', () => {})
+    return
+  }
 
   // ipk01: happy path — basic package include
   it('ipk01-basic: success, merged config', () => {

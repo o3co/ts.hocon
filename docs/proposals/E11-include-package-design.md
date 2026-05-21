@@ -1,9 +1,10 @@
 # E11 `include package(...)` — ts.hocon API Surface and Resolution Design
 
-**Status**: Design notes — NOT approved for implementation yet (★1 gate pending).
-**Branch**: `feat/include-package-design`
+**Status**: Approved 2026-05-21 (Yoshi ★1) and implemented on this branch.
+**Branch**: `feat/include-package-design` (design `9f25bbe` → impl `ebbfd6a` → tests `c7fcb0e` → multi-agent-review fixes `66738a4` → Copilot review-cycle fixes on top)
 **Spec**: `xx.hocon/docs/extra-spec-conventions.md § E11`
 **Tracking**: [xx.hocon#33](https://github.com/o3co/xx.hocon/issues/33)
+**PR**: [ts.hocon#112](https://github.com/o3co/ts.hocon/pull/112)
 
 ---
 

@@ -5,11 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.3.0] - 2026-05-21
+## [Unreleased]
 
-v1.3 is a spec-compliance bugfix release. The implementation has been corrected to match the HOCON spec and Lightbend typesafe-config reference behavior across several previously-divergent areas (concat type-checking, `include` key reservation, leading-`-` value-position lexing, leading-zero number canonicalization, single-letter byte units, empty-file rejection, `.properties` object-wins, duration/bytes default unit). The spec did not change; the parser was simply wrong in places.
+### Added
 
-A subset of these fixes change observable runtime behavior. Configs that relied on the previously-incorrect lenience need updating — read the `### Breaking` and `### Fixed` sections below if your CI fails to upgrade cleanly. We elected MINOR (not MAJOR) because no API or architectural changes occurred; v2.0 is reserved for parser/lexer rewrites or similar structural shifts.
+- **E11 — `include package("<id>", "<file>")` qualifier** (xx.hocon [#33](https://github.com/o3co/xx.hocon/issues/33), [#36](https://github.com/o3co/xx.hocon/pull/36); supersedes [#109](https://github.com/o3co/ts.hocon/issues/109)). A new include qualifier with **service-locator semantics** — looks up `.conf` files registered under a stable name via Node module resolution. **Not a Java classpath equivalent** (no auto-discovery, no auto `reference.conf` merge, no transitive auto-resolution). New public surface:
+  - `include package("github.com/myorg/pkg", "reference.conf")` syntax — two-arg form mandatory; one-arg + missing-comma rejected at parse time.
+  - `ParseOptions.packageResolver?: PackageResolver` — custom resolver callback. When provided, takes full control; `resolveFrom` is ignored. Use for Yarn Berry PnP, bundler contexts, edge runtimes, or test isolation.
+  - `ParseOptions.resolveFrom?: string | string[]` — override the starting directory(ies) for the default resolver's `require.resolve`. Default resolution order: `resolveFrom` > `baseDir` > `path.dirname(includingFile)` > `process.cwd()`.
+  - Exported `PackageResolver` type — `(identifier, file, includingFile, baseDir) => string`.
+  - Exported `PackageLookupError extends ResolveError` — thrown on registry/module miss.
+  - File argument validated **after HOCON string unescaping**: rejects empty, absolute, `..`, `./`, backslash, consecutive `/`.
+  - Yarn Berry PnP detected and rejected with a clear error (cross-impl decision X1).
+  - Cycle detection: `("package", id, file)` cycle-key integrated with existing include-cycle detection.
+
+### Changed
+
+- `IncludeQualifier` AST type refactored from a boolean `isFile` flag to a discriminated union (`kind: 'bare' | 'file' | 'url' | 'classpath' | 'package'`). Internal change; not part of the documented public AST surface.
 
 ## [1.3.0] - 2026-05-21
 

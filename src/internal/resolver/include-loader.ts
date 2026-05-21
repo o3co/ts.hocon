@@ -84,11 +84,18 @@ function defaultPackageResolver(
   identifier: string,
   file: string,
   includingFile: string | undefined,
+  baseDir: string | undefined,
   resolveFrom: string | string[] | undefined,
 ): string {
+  // Priority: explicit resolveFrom > baseDir (active parse context) >
+  // path.dirname(includingFile) (when threaded) > process.cwd() (last resort).
+  // Without this baseDir step, package resolution from within a nested file
+  // include falls back to cwd, breaking resolution for typical project layouts.
   const from = resolveFrom
     ? (Array.isArray(resolveFrom) ? resolveFrom : [resolveFrom])
-    : (includingFile ? [nodePath.dirname(includingFile)] : [process.cwd()])
+    : baseDir
+      ? [baseDir]
+      : (includingFile ? [nodePath.dirname(includingFile)] : [process.cwd()])
 
   let resolved: string
   try {
@@ -251,7 +258,7 @@ export class IncludeLoader {
     validatePackageIdentifier(identifier)
     validatePackageFile(file, identifier)
 
-    const { includeStack = [], resolveFrom, packageResolver, readFileSync } = this.opts
+    const { includeStack = [], baseDir, resolveFrom, packageResolver, readFileSync } = this.opts
     const cycleKey = JSON.stringify(['package', identifier, file])
 
     if (includeStack.includes(cycleKey)) {
@@ -266,12 +273,14 @@ export class IncludeLoader {
     }
 
     const resolver: PackageResolver = packageResolver ??
-      ((id, f, includingFile) => defaultPackageResolver(id, f, includingFile, resolveFrom))
+      ((id, f, includingFile, bDir) => defaultPackageResolver(id, f, includingFile, bDir, resolveFrom))
 
-    // No reliable parent-file path is threaded into the loader; pass undefined.
-    // The default resolver falls back to `resolveFrom` / process.cwd() in this case.
-    // Custom resolvers MUST handle includingFile === undefined gracefully.
-    const resolvedPath = resolver(identifier, file, undefined)
+    // The parent .conf's absolute path is not currently threaded through the loader,
+    // so `includingFile` is undefined. `baseDir` IS available from the parse context
+    // (set by the file-include loader via spread `...this.opts`) and gives the default
+    // resolver the right starting directory for `require.resolve`'s `paths`.
+    // Custom resolvers MUST handle both arguments being undefined gracefully.
+    const resolvedPath = resolver(identifier, file, undefined, baseDir)
 
     const content = readFileSync(resolvedPath)
     // Empty content (zero bytes) is valid for package includes (ipk08); contributes {}.
@@ -311,12 +320,14 @@ export class IncludeLoader {
     }
 
     const resolver: PackageResolver = packageResolver ??
-      ((id, f, includingFile) => defaultPackageResolver(id, f, includingFile, resolveFrom))
+      ((id, f, includingFile, bDir) => defaultPackageResolver(id, f, includingFile, bDir, resolveFrom))
 
-    // No reliable parent-file path is threaded into the loader; pass undefined.
-    // The default resolver falls back to `resolveFrom` / process.cwd() in this case.
-    // Custom resolvers MUST handle includingFile === undefined gracefully.
-    const resolvedPath = resolver(identifier, file, undefined)
+    // The parent .conf's absolute path is not currently threaded through the loader,
+    // so `includingFile` is undefined. `baseDir` IS available from the parse context
+    // (set by the file-include loader via spread `...this.opts`) and gives the default
+    // resolver the right starting directory for `require.resolve`'s `paths`.
+    // Custom resolvers MUST handle both arguments being undefined gracefully.
+    const resolvedPath = resolver(identifier, file, undefined, baseDir)
 
     const read = readFile
       ? async (p: string) => readFile(p)

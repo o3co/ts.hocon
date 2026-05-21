@@ -6,6 +6,7 @@ import { tokenize } from './internal/lexer/lexer.js'
 import { parseTokens } from './internal/parser/parser.js'
 import { resolve, resolveAsync } from './internal/resolver/resolver.js'
 import type { ResolveOptions } from './internal/resolver/resolver.js'
+import type { PackageResolver } from './internal/resolver/types.js'
 
 export type ParseOptions = {
   baseDir?: string
@@ -22,8 +23,8 @@ export type ParseOptions = {
   resolveFrom?: string | string[]
   /**
    * Custom resolver for `include package("id", "file")`.
-   * Receives the identifier, file argument, and (if known) the absolute path of the
-   * including `.conf` file. Must return an absolute path or throw.
+   * See {@link PackageResolver} for the full callback signature and contract
+   * (parameters, lookup-starting-path priority, error semantics).
    *
    * When provided, takes full control of resolution; `resolveFrom` is ignored.
    * Use this for Yarn Berry PnP, bundler contexts, edge runtimes, or test isolation.
@@ -32,7 +33,7 @@ export type ParseOptions = {
    * resolve case-insensitively for intermediate path segments. Use a custom
    * `packageResolver` for strict cross-platform enforcement.
    */
-  packageResolver?: (identifier: string, file: string, includingFile: string | undefined) => string
+  packageResolver?: PackageResolver
 }
 
 function getEnv(opts: ParseOptions): Record<string, string> {
