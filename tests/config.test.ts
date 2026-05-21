@@ -791,7 +791,7 @@ describe('S19.8 - duration unit names are case-sensitive lowercase (HOCON spec L
 // → {"a":{"x":1,"y":2}}. Expected per spec: {"a":{"x":1}}.
 // deepMergeHocon always merges objects regardless of intermediate non-object values.
 describe('S22.2 - intermediate non-object hides earlier object in merge (HOCON spec L1406)', () => {
-  it.fails('S22.2: non-object in middle of fallback chain prevents object merge (spec L1406)', () => {
+  it('S22.2: non-object in middle of fallback chain prevents object merge (spec L1406)', () => {
     // Spec example (L1410-1417):
     //   first priority: { a: { x: 1 } }
     //   fallback:       { a: 42 }       ← non-object "breaks" the chain
@@ -799,10 +799,10 @@ describe('S22.2 - intermediate non-object hides earlier object in merge (HOCON s
     // Pair (fallback, another-fallback): 42 vs {y:2} → 42 wins (non-obj beats obj)
     // Pair (first, fallback-result=42): {x:1} vs 42 → {x:1} wins (obj over scalar, no merge)
     // Result: { a: { x: 1 } }
+    // Fixed by E12 mergeUnresolved composition barrier (T2/T5).
     const c1 = parse('a { x = 1 }')
     const c2 = parse('a = 42')
     const c3 = parse('a { y = 2 }')
-    // Currently produces {"a":{"x":1,"y":2}} — incorrectly merges all three.
     expect(c1.withFallback(c2).withFallback(c3).toObject()).toEqual({ a: { x: 1 } })
   })
 

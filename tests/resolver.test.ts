@@ -260,12 +260,11 @@ describe('Resolver - include', () => {
 })
 
 describe('Resolver - resolveConcat edge cases', () => {
-  it('returns null scalar when concat resolves to zero elements (all optional missing)', () => {
-    // a concat of two missing optional substitutions → both resolve to undefined → empty
-    // resolveConcat returns null scalar for empty resolved list
+  it('omits field when concat resolves to zero elements (all optional missing)', () => {
+    // a concat of two missing optional substitutions → both resolve to undefined
+    // → HOCON spec: field is omitted (not set to null) when all operands collapse to empty
     const v = resolveStr('x = ${?missing1}${?missing2}')
-    const x = obj(v).get('x')
-    expect(x).toEqual({ kind: 'scalar', raw: 'null', valueType: 'null' })
+    expect(obj(v).get('x')).toBeUndefined()
   })
 
   it('concatenates arrays from substitution in concat context', () => {

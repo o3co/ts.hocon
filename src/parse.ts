@@ -4,8 +4,8 @@ import { Config } from './config.js'
 import { assertNonEmptyDocument } from './internal/parser/empty-check.js'
 import { tokenize } from './internal/lexer/lexer.js'
 import { parseTokens } from './internal/parser/parser.js'
-import { resolve, resolveAsync } from './internal/resolver/resolver.js'
-import type { ResolveOptions } from './internal/resolver/resolver.js'
+import { buildTree, containsPlaceholders, resolve, resolveAsync } from './internal/resolver/resolver.js'
+import type { ResolveOptions as InternalResolveOptions } from './internal/resolver/resolver.js'
 import type { PackageResolver } from './internal/resolver/types.js'
 
 export type ParseOptions = {
@@ -13,6 +13,11 @@ export type ParseOptions = {
   env?: Record<string, string>
   readFile?: (filePath: string) => Promise<string>
   readFileSync?: (filePath: string) => string
+  /** When true (default), run substitution resolution after parse. When false,
+   *  return an unresolved Config with placeholders intact. E12 §"ParseOptions". */
+  resolveSubstitutions?: boolean
+  /** Source name surfaced in error messages when no file path is available. E12. */
+  originDescription?: string
   /**
    * Override the starting directory (or directories) used when resolving
    * `include package("id", "file")` via Node module resolution.
@@ -36,6 +41,26 @@ export type ParseOptions = {
   packageResolver?: PackageResolver
 }
 
+export type ResolveOptions = {
+  /** When true (default), env var lookups are available during resolve. E12. */
+  useSystemEnvironment?: boolean
+  /** When true, leaves unresolved non-optional substitutions in place instead
+   *  of throwing ResolveError. Default false. E12. */
+  allowUnresolved?: boolean
+}
+
+/** Returns a ParseOptions object with Lightbend-aligned defaults:
+ *  resolveSubstitutions=true, originDescription=undefined. */
+export function defaultParseOptions(): Required<Pick<ParseOptions, 'resolveSubstitutions'>> & ParseOptions {
+  return { resolveSubstitutions: true }
+}
+
+/** Returns a ResolveOptions object with Lightbend-aligned defaults:
+ *  useSystemEnvironment=true, allowUnresolved=false. */
+export function defaultResolveOptions(): Required<ResolveOptions> {
+  return { useSystemEnvironment: true, allowUnresolved: false }
+}
+
 function getEnv(opts: ParseOptions): Record<string, string> {
   if (opts.env !== undefined) return opts.env
   if (typeof process !== 'undefined' && process.env) return process.env as Record<string, string>
@@ -50,18 +75,19 @@ async function defaultReadFile(filePath: string): Promise<string> {
   return fs.promises.readFile(filePath, 'utf-8')
 }
 
-function buildResolveContext(input: string, opts: ParseOptions): { ast: ReturnType<typeof parseTokens>; resolveOpts: ResolveOptions } {
+function buildResolveContext(input: string, opts: ParseOptions): { ast: ReturnType<typeof parseTokens>; resolveOpts: InternalResolveOptions } {
   const tokens = tokenize(input)
   // S3.1 — HOCON.md L130: empty files (including whitespace-only and comment-only) are invalid.
   // Delegated to the shared assertNonEmptyDocument helper so the same guard fires
   // on both the top-level parse path and the include-loader parse path.
   assertNonEmptyDocument(tokens, 'input')
   const ast = parseTokens(tokens)
-  const resolveOpts: ResolveOptions = {
+  const resolveOpts: InternalResolveOptions = {
     env: getEnv(opts),
     baseDir: opts.baseDir,
     readFileSync: opts.readFileSync ?? defaultReadFileSync,
     readFile: opts.readFile,
+    originDescription: opts.originDescription,
     resolveFrom: opts.resolveFrom,
     packageResolver: opts.packageResolver,
   }
@@ -72,7 +98,47 @@ export function parse(input: string, opts: ParseOptions = {}): Config {
   const { ast, resolveOpts } = buildResolveContext(input, opts)
   const value = resolve(ast, resolveOpts)
   if (value.kind !== 'object') throw new Error('resolved value is not an object')
-  return new Config(value)
+  return new Config(value, { resolved: true, originDescription: opts.originDescription })
+}
+
+/** Lightbend-aligned alias for parse(). Produces a fully resolved Config. */
+export const parseString = parse
+
+/** Parse a HOCON string with explicit options. When opts.resolveSubstitutions
+ *  is false, returns an unresolved Config with substitution placeholders intact.
+ *  Use Config.resolve() or Config.resolveWith() to complete resolution later. */
+export function parseStringWithOptions(input: string, opts: ParseOptions = {}): Config {
+  const resolveSubstitutions = opts.resolveSubstitutions ?? true
+  const { ast, resolveOpts } = buildResolveContext(input, opts)
+  if (resolveSubstitutions) {
+    const value = resolve(ast, resolveOpts)
+    if (value.kind !== 'object') throw new Error('resolved value is not an object')
+    return new Config(value, { resolved: true, originDescription: opts.originDescription })
+  }
+  // Deferred path: phase 1 only — leave substitution placeholders in place.
+  const tree = buildTree(ast, resolveOpts)
+  const hasPlaceholders = containsPlaceholders(tree)
+  return Config._fromUnresolvedResObj(tree, {
+    parseBaseDir: opts.baseDir,
+    originDescription: opts.originDescription,
+    resolved: !hasPlaceholders,
+    resolveOpts,
+  })
+}
+
+/** Parse a HOCON file with explicit options. */
+export function parseFileWithOptions(filePath: string, opts: ParseOptions = {}): Config {
+  if (typeof process === 'undefined' && !opts.readFileSync) {
+    throw new Error('parseFileWithOptions is not supported in browser environments without opts.readFileSync.')
+  }
+  const resolvedPath = path.resolve(filePath)
+  const readFileSync = opts.readFileSync ?? defaultReadFileSync
+  const input = readFileSync(resolvedPath)
+  return parseStringWithOptions(input, {
+    ...opts,
+    baseDir: opts.baseDir ?? path.dirname(resolvedPath),
+    readFileSync,
+  })
 }
 
 /**

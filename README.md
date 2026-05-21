@@ -105,17 +105,59 @@ parseFileAsync(path: string, opts?: ParseOptions): Promise<Config>
 | Method | Returns | Throws if |
 |--------|---------|-----------|
 | `get(path)` | `unknown \| undefined` | — |
-| `getString(path)` | `string` | missing, wrong type |
-| `getNumber(path)` | `number` | missing, wrong type |
-| `getBoolean(path)` | `boolean` | missing, wrong type |
-| `getConfig(path)` | `Config` | missing, not an object |
-| `getList(path)` | `unknown[]` | missing, not an array |
+| `getString(path)` | `string` | missing, wrong type, or unresolved |
+| `getNumber(path)` | `number` | missing, wrong type, or unresolved |
+| `getBoolean(path)` | `boolean` | missing, wrong type, or unresolved |
+| `getConfig(path)` | `Config` | missing, not an object, or unresolved |
+| `getList(path)` | `unknown[]` | missing, not an array, or unresolved |
 | `getDuration(path, unit?)` | `number` | missing, not a string, or invalid duration format |
 | `getBytes(path, unit?)` | `number` | missing, not a string, or invalid byte size format |
 | `has(path)` | `boolean` | — |
 | `keys()` | `string[]` | — |
 | `withFallback(fallback)` | `Config` | — |
+| `resolve(opts?)` | `Config` | unresolvable substitution (unless `allowUnresolved: true`) |
+| `resolveWith(source, opts?)` | `Config` | source unresolved, or unresolvable substitution |
+| `isResolved()` | `boolean` | — |
 | `toObject()` | `unknown` | — |
+
+### Deferred resolution API (E12)
+
+Separate the parse, fallback-layering, and resolve steps for runtime config injection.
+
+```ts
+import { parseStringWithOptions, fromMap, empty } from '@o3co/ts.hocon'
+import type { ResolveOptions } from '@o3co/ts.hocon'
+
+// 1. Parse without resolving — substitutions deferred
+const cfg = parseStringWithOptions(
+  'version = ${shortversion}-${CI_RUN_NUMBER}\nvariables { shortversion = "1.2.3" }',
+  { resolveSubstitutions: false }
+)
+cfg.isResolved() // false — ${CI_RUN_NUMBER} still pending
+
+// 2. Layer runtime fallbacks
+const runtime = fromMap({ CI_RUN_NUMBER: '42' })
+const vars = cfg.getConfig('variables')   // already available (not a substitution)
+const merged = cfg.withFallback(runtime).withFallback(vars)
+
+// 3. Resolve the full fallback stack
+const resolved = merged.resolve({ useSystemEnvironment: false })
+resolved.getString('version') // "1.2.3-42"
+
+// resolveWith: resolve receiver using source for lookup, source keys NOT in result
+const receiver = parseStringWithOptions('r = ${key}', { resolveSubstitutions: false })
+const source = fromMap({ key: 'val' })
+const result = receiver.resolveWith(source)
+result.has('key')    // false — source keys excluded
+result.getString('r') // "val"
+```
+
+`ResolveOptions`:
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `useSystemEnvironment` | `boolean` | `true` | Consult `process.env` for substitution fallback |
+| `allowUnresolved` | `boolean` | `false` | Leave unresolvable substitutions in place (no error) |
 
 ### Zod integration
 
@@ -216,7 +258,14 @@ Conformance against the [Lightbend HOCON specification](https://github.com/light
 | In-scope only                         | **83.3%**     |
 | Lightbend `test01`–`test13` suite     | 13/13 passing |
 
-Not supported in v0.1.0:
+**Extra-spec conventions (E-series) — implementation status:**
+
+| Item | Description | Status |
+|------|-------------|--------|
+| E11  | `include package(...)` service-locator includes | ✅ v1.3.0 |
+| E12  | Deferred substitution resolution (`parse → withFallback → resolve()` lifecycle) | ✅ v1.4.0 |
+
+Not supported:
 
 - `include url(...)`
 - `include classpath(...)`

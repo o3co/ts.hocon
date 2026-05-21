@@ -43,6 +43,11 @@ export class SubstitutionResolver {
     private opts: ResolveOptions,
   ) {}
 
+  /** Returns a prefix for error messages, including origin info when set. */
+  private originPrefix(): string {
+    return this.opts.originDescription ? `${this.opts.originDescription}: ` : ''
+  }
+
   resolve(): HoconValue {
     return this.resolveResObj(this.root)
   }
@@ -93,7 +98,8 @@ export class SubstitutionResolver {
       // currently being iterated) vs an external lookup of the same field.
       this.resolvingConcats.add(v)
       try {
-        return this.resolveConcat(v.nodes, scope, v.line, v.col)
+        const concatResult = this.resolveConcat(v.nodes, scope, v.line, v.col)
+        return concatResult  // may be undefined (all-optional-undef or allowUnresolved)
       } finally {
         this.resolvingConcats.delete(v)
       }
@@ -160,7 +166,7 @@ export class SubstitutionResolver {
       }
       if (s.optional) return undefined
       throw new ResolveError(
-        `circular substitution: ${key}`,
+        this.originPrefix() + `circular substitution: ${key}`,
         key,
         s.line,
         s.col,
@@ -206,7 +212,7 @@ export class SubstitutionResolver {
           // No prior: short-circuit (spec L841).
           if (s.optional) return undefined
           throw new ResolveError(
-            `could not resolve substitution: \${${key}}`,
+            `${this.originPrefix()}could not resolve substitution: \${${key}}`,
             key,
             s.line,
             s.col,
@@ -256,9 +262,8 @@ export class SubstitutionResolver {
         return result
       }
 
-      // S13c: env-var list expansion — when listSuffix=true, scan NAME_0, NAME_1, …
-      // This branch runs BEFORE the scalar env fallback and suppresses it (S13c.5).
-      if (s.listSuffix) {
+      // S13c: env-var list expansion — gated on useSystemEnvironment (E12 gate)
+      if (s.listSuffix && this.opts.useSystemEnvironment !== false) {
         const result = this.resolveEnvList(s)
         if (result !== undefined) {
           this.cache.set(key, result)
@@ -271,29 +276,47 @@ export class SubstitutionResolver {
         // name once from segments for the "(no environment variables …)" hint.
         const envBase = s.segments.map((seg: Segment) => seg.text).join('.')
         throw new ResolveError(
-          `could not resolve substitution: \${${key}} (no environment variables ${envBase}_0, ${envBase}_1, … set)`,
+          `${this.originPrefix()}could not resolve substitution: \${${key}} (no environment variables ${envBase}_0, ${envBase}_1, … set)`,
+          key,
+          s.line,
+          s.col,
+        )
+      } else if (s.listSuffix) {
+        // useSystemEnvironment=false: treat listSuffix as unresolvable
+        if (s.optional) return undefined
+        if (this.opts.allowUnresolved) return s as unknown as HoconValue
+        throw new ResolveError(
+          `${this.originPrefix()}could not resolve substitution: \${${key}}`,
           key,
           s.line,
           s.col,
         )
       }
 
-      // Env var fallback — use raw dot-join (no quoting) to match Lightbend behavior
-      const envKey = s.segments.map((seg: Segment) => seg.text).join('.')
-      const envVal =
-        this.opts.env[envKey] ??
-        (s.prefixLen > 0
-          ? this.opts.env[s.segments.slice(s.prefixLen).map((seg: Segment) => seg.text).join('.')]
-          : undefined)
-      if (envVal !== undefined) {
-        const result: HoconValue = { kind: 'scalar', raw: envVal, valueType: 'string' }
-        this.cache.set(key, result)
-        return result
+      // Env var fallback — use raw dot-join (no quoting) to match Lightbend behavior.
+      // Only consulted when useSystemEnvironment is not explicitly false (E12 gate).
+      if (this.opts.useSystemEnvironment !== false) {
+        const envKey = s.segments.map((seg: Segment) => seg.text).join('.')
+        const envVal =
+          this.opts.env[envKey] ??
+          (s.prefixLen > 0
+            ? this.opts.env[s.segments.slice(s.prefixLen).map((seg: Segment) => seg.text).join('.')]
+            : undefined)
+        if (envVal !== undefined) {
+          const result: HoconValue = { kind: 'scalar', raw: envVal, valueType: 'string' }
+          this.cache.set(key, result)
+          return result
+        }
       }
 
       if (s.optional) return undefined
+      if (this.opts.allowUnresolved) {
+        // Leave unresolved: return the placeholder as-is so the ResObj output
+        // retains it for containsPlaceholders / later resolution passes.
+        return s as unknown as HoconValue
+      }
       throw new ResolveError(
-        `could not resolve substitution: \${${key}}`,
+        `${this.originPrefix()}could not resolve substitution: \${${key}}`,
         key,
         s.line,
         s.col,
@@ -341,12 +364,28 @@ export class SubstitutionResolver {
     return [full, bare]
   }
 
-  private resolveConcat(nodes: ResolverValue[], scope: ResObj, line = 0, col = 0): HoconValue {
-    const resolved = nodes
-      .map((n) => this.resolveVal(n, scope))
-      .filter((v): v is HoconValue => v !== undefined)
+  private resolveConcat(nodes: ResolverValue[], scope: ResObj, line = 0, col = 0): HoconValue | undefined {
+    const rawResolved = nodes.map((n) => this.resolveVal(n, scope))
 
-    if (resolved.length === 0) return { kind: 'scalar', raw: 'null', valueType: 'null' }
+    // If allowUnresolved=true, any resolved "value" that is actually a SubstPlaceholder
+    // (returned as `s as unknown as HoconValue`) means the concat cannot fully resolve.
+    // Return the placeholder cast as HoconValue so stripPlaceholderFields can detect and
+    // strip it — this correctly marks the whole concat field as unresolved
+    // (hadPlaceholders=true, getter → NotResolvedError). Returning undefined would work
+    // for NotResolvedError but would make isResolved() a false-positive (the field would
+    // appear absent, not placeholder-marked).
+    if (this.opts.allowUnresolved) {
+      for (const v of rawResolved) {
+        if (v !== undefined && isSubst(v as ResolverValue)) {
+          return v  // placeholder cast as HoconValue — stripped by stripPlaceholderFields
+        }
+      }
+    }
+
+    const resolved = rawResolved.filter((v): v is HoconValue => v !== undefined)
+
+    // All nodes were optional and all resolved to undefined → field omitted (HOCON spec).
+    if (resolved.length === 0) return undefined
     if (resolved.length === 1) return resolved[0] as HoconValue
 
     // Filter parser-inserted separator whitespace (tracked via separatorValues WeakSet),
