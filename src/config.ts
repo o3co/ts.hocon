@@ -85,6 +85,13 @@ export class Config {
 
   getString(path: string): string {
     const v = this.requireScalar(path)
+    // HOCON spec L1252 (S17.6): null → any non-null type is an error. The
+    // other typed getters (getNumber, getBoolean, getDuration, …) already
+    // reject `null`-valueType scalars via their coerce/check paths; getString
+    // previously returned the raw `"null"` string. Reject here for parity.
+    if (v.valueType === 'null') {
+      throw new ConfigError(`expected string at ${path}, got null`, path)
+    }
     return v.raw
   }
 

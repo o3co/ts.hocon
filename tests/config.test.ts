@@ -522,8 +522,7 @@ describe('S17.5 - "null" string vs null literal', () => {
 
 // S17.6 — null → other type: error (HOCON spec L1252)
 describe('S17.6 - null to other type must error', () => {
-  // Issue #88: getString() on null-typed value should throw but currently returns "null"
-  it.fails('S17.6: getString() on null value should throw ConfigError', () => {
+  it('S17.6: getString() on null value throws ConfigError (#88)', () => {
     const c = parse('val = null')
     expect(() => c.getString('val')).toThrow(ConfigError)
   })
