@@ -305,7 +305,7 @@ export class IncludeLoader {
     validatePackageIdentifier(identifier)
     validatePackageFile(file, identifier)
 
-    const { includeStack = [], resolveFrom, packageResolver, readFile, readFileSync } = this.opts
+    const { includeStack = [], baseDir, resolveFrom, packageResolver, readFile, readFileSync } = this.opts
     const cycleKey = JSON.stringify(['package', identifier, file])
 
     if (includeStack.includes(cycleKey)) {
