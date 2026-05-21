@@ -676,18 +676,19 @@ describe('spec compliance Phase 2 — concatenation and += (resolver-level)', ()
     expect(() => resolveStr(input)).toThrow(ResolveError)
   })
 
-  // --- S13b.2: += on non-array prior value → error -------------------------
-  // VIOLATION: resolver wraps the scalar as a single-element array instead of erroring.
-  it.fails('S13b.2: += when prior value is a number scalar is an error (spec L732)', () => {
-    expect(() => resolveStr('x = 1\nx += [2]')).toThrow()
+  // --- S13b.2: += on non-array prior value → error (spec L732) -------------
+  // Fixed in #81: resolver previously wrapped the non-array as a single-element
+  // array; now errors as the spec mandates.
+  it('S13b.2: += when prior value is a number scalar errors (spec L732)', () => {
+    expect(() => resolveStr('x = 1\nx += [2]')).toThrow(ResolveError)
   })
 
-  it.fails('S13b.2: += when prior value is a string scalar is an error (spec L732)', () => {
-    expect(() => resolveStr('x = "hello"\nx += [2]')).toThrow()
+  it('S13b.2: += when prior value is a string scalar errors (spec L732)', () => {
+    expect(() => resolveStr('x = "hello"\nx += [2]')).toThrow(ResolveError)
   })
 
-  it.fails('S13b.2: += when prior value is an object is an error (spec L732)', () => {
-    expect(() => resolveStr('x = { a = 1 }\nx += [2]')).toThrow()
+  it('S13b.2: += when prior value is an object errors (spec L732)', () => {
+    expect(() => resolveStr('x = { a = 1 }\nx += [2]')).toThrow(ResolveError)
   })
 })
 

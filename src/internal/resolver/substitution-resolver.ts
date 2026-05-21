@@ -500,8 +500,19 @@ export class SubstitutionResolver {
       this.resolveVal(a.existing, scope) ??
       ({ kind: 'array', items: [] } satisfies HoconValue)
     const elem = this.resolveVal(a.elem, scope)
-    const items: HoconValue[] =
-      existing.kind === 'array' ? [...existing.items] : [existing]
+    // S13b.2 (HOCON.md L732): `a += b` is sugar for `a = ${?a} [b]`. The
+    // prior value must be an array (or undefined → empty array); a non-array
+    // prior is a resolve-time error. Previously the resolver silently
+    // wrapped the non-array as a single-element array.
+    if (existing.kind !== 'array') {
+      throw new ResolveError(
+        `'+=' on non-array value: prior value is ${existing.kind} (spec L732)`,
+        '',
+        0,
+        0,
+      )
+    }
+    const items: HoconValue[] = [...existing.items]
     if (elem !== undefined) items.push(elem)
     return { kind: 'array', items }
   }
