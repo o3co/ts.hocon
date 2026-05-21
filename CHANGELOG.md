@@ -57,29 +57,31 @@ in one call); the new API surface is purely additive.
 **Spec source:** [xx.hocon#37](https://github.com/o3co/xx.hocon/issues/37) /
 E12 in `docs/extra-spec-conventions.md`. Design doc: `docs/proposals/E12-deferred-resolution-design.md`.
 
----
+### Added — E11 `include package("<id>", "<file>")` qualifier
 
-## [1.3.0] - 2026-05-21
+xx.hocon [#33](https://github.com/o3co/xx.hocon/issues/33), [#36](https://github.com/o3co/xx.hocon/pull/36); supersedes [#109](https://github.com/o3co/ts.hocon/issues/109). A new include qualifier with **service-locator semantics** — looks up `.conf` files registered under a stable name via Node module resolution. **Not a Java classpath equivalent** (no auto-discovery, no auto `reference.conf` merge, no transitive auto-resolution). New public surface:
 
-v1.3 is a spec-compliance bugfix release. The implementation has been corrected to match the HOCON spec and Lightbend typesafe-config reference behavior across several previously-divergent areas (concat type-checking, `include` key reservation, leading-`-` value-position lexing, leading-zero number canonicalization, single-letter byte units, empty-file rejection, `.properties` object-wins, duration/bytes default unit). The spec did not change; the parser was simply wrong in places.
-
-A subset of these fixes change observable runtime behavior. Configs that relied on the previously-incorrect lenience need updating — read the `### Breaking` and `### Fixed` sections below if your CI fails to upgrade cleanly. We elected MINOR (not MAJOR) because no API or architectural changes occurred; v2.0 is reserved for parser/lexer rewrites or similar structural shifts.
-
-### Added
-
-- **E11 — `include package("<id>", "<file>")` qualifier** (xx.hocon [#33](https://github.com/o3co/xx.hocon/issues/33), [#36](https://github.com/o3co/xx.hocon/pull/36); supersedes [#109](https://github.com/o3co/ts.hocon/issues/109)). A new include qualifier with **service-locator semantics** — looks up `.conf` files registered under a stable name via Node module resolution. **Not a Java classpath equivalent** (no auto-discovery, no auto `reference.conf` merge, no transitive auto-resolution). New public surface:
-  - `include package("github.com/myorg/pkg", "reference.conf")` syntax — two-arg form mandatory; one-arg + missing-comma rejected at parse time.
-  - `ParseOptions.packageResolver?: PackageResolver` — custom resolver callback. When provided, takes full control; `resolveFrom` is ignored. Use for Yarn Berry PnP, bundler contexts, edge runtimes, or test isolation.
-  - `ParseOptions.resolveFrom?: string | string[]` — override the starting directory(ies) for the default resolver's `require.resolve`. Default resolution order: `resolveFrom` > `baseDir` > `path.dirname(includingFile)` > `process.cwd()`.
-  - Exported `PackageResolver` type — `(identifier, file, includingFile, baseDir) => string`.
-  - Exported `PackageLookupError extends ResolveError` — thrown on registry/module miss.
-  - File argument validated **after HOCON string unescaping**: rejects empty, absolute, `..`, `./`, backslash, consecutive `/`.
-  - Yarn Berry PnP detected and rejected with a clear error (cross-impl decision X1).
-  - Cycle detection: `("package", id, file)` cycle-key integrated with existing include-cycle detection.
+- `include package("github.com/myorg/pkg", "reference.conf")` syntax — two-arg form mandatory; one-arg + missing-comma rejected at parse time.
+- `ParseOptions.packageResolver?: PackageResolver` — custom resolver callback. When provided, takes full control; `resolveFrom` is ignored. Use for Yarn Berry PnP, bundler contexts, edge runtimes, or test isolation.
+- `ParseOptions.resolveFrom?: string | string[]` — override the starting directory(ies) for the default resolver's `require.resolve`. Default resolution order: `resolveFrom` > `baseDir` > `path.dirname(includingFile)` > `process.cwd()`.
+- Exported `PackageResolver` type — `(identifier, file, includingFile, baseDir) => string`.
+- Exported `PackageLookupError extends ResolveError` — thrown on registry/module miss.
+- File argument validated **after HOCON string unescaping**: rejects empty, absolute, `..`, `./`, backslash, consecutive `/`.
+- Yarn Berry PnP detected and rejected with a clear error (cross-impl decision X1).
+- Cycle detection: `("package", id, file)` cycle-key integrated with existing include-cycle detection.
 
 ### Changed
 
 - `IncludeQualifier` AST type refactored from a boolean `isFile` flag to a discriminated union (`kind: 'bare' | 'file' | 'url' | 'classpath' | 'package'`). Internal change; not part of the documented public AST surface.
+
+### Fixed — E12 must-fix follow-up bundle (PR [#118](https://github.com/o3co/ts.hocon/pull/118))
+
+- **#116 unresolved-getter error semantics**: `getConfig` / `getList` / `requireScalar` previously threw `NotResolvedError` for any missing path on an unresolved `Config`, even when the path was genuinely absent from `_resObjRoot`. Now gated on `_resObjRootSubtreeHasPlaceholders(path)` — truly-missing paths fall through to `ConfigError("path not found")` as on resolved configs. Helper also descends into HoconValue arrays so a placeholder element no longer hides under "missing".
+- **#113 parseInclude strictness** (cross-impl gap from go.hocon v1.3.1 PR [#101](https://github.com/o3co/go.hocon/pull/101)). Two convergent bugs:
+  - **Issue 2 (false-match)**: `innerPrefix.startsWith('file')` matched `fileX(`, same shape for `urlencode(`, `classpathish(`, `packagex(`. Tightened to exact match or `startsWith('X(')`. After all qualifier branches, any non-empty `innerPrefix` raises a parse error.
+  - **Issue 1 (silent swallow)**: `parseQuotedPathSkipWrapper` advanced unconditionally past `,`, `=`, identifiers until a quoted string — so `include file () b = "x"` silently bound the path to `"x"` and dropped the trailing `b = ...` statement. Narrowed via `isIncludeWrapperToken` to bare `(` only; qualifier keywords consumed at call site. After the path, only `)`/`))` allowed before the statement boundary.
+  - Issue 3 (whitespace-nested `include required ( file("foo"))`) remains tracked separately — those inputs now raise a loud `ParseError` instead of silently mis-routing to bare semantics.
+- **#114 regression-pinned**: `Config.resolveWith(source, { allowUnresolved: true })` placeholder tracking — addressed in PR #117 squash; regression tests added in this bundle as a guard.
 
 ## [1.3.0] - 2026-05-21
 
