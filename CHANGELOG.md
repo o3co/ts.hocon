@@ -5,6 +5,58 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-05-21
+
+### Added — E12 deferred substitution resolution (closes [#99](https://github.com/o3co/ts.hocon/issues/99))
+
+This release adds the Lightbend-aligned `parseStringWithOptions → withFallback → resolve()`
+lifecycle requested in [#99](https://github.com/o3co/ts.hocon/issues/99).
+Existing `parse()` / `parseFile()` behaviour is unchanged (still parse-and-resolve
+in one call); the new API surface is purely additive.
+
+**New entry points:**
+- `parseString(input, opts?)` — alias for `parse()` (Lightbend-aligned name).
+- `parseStringWithOptions(input, opts)` — `opts.resolveSubstitutions = false` produces
+  an unresolved `Config` whose `isResolved()` is `false` when the input contains `${...}`.
+- `parseFileWithOptions(path, opts)` — file-reading counterpart of `parseStringWithOptions`.
+- `fromMap(values, originDescription?)` — construct a `Config` from a plain JS object.
+  Lightbend `ConfigValueFactory.fromMap` parallel.
+- `empty(originDescription?)` — empty `Config`.
+
+**New methods on `Config`:**
+- `resolve(opts?)` — single top-level resolve over the entire merged fallback stack.
+  Idempotent on already-resolved configs.
+- `resolveWith(source, opts?)` — resolves receiver using `source` for substitution lookup;
+  source's keys are NOT merged into the result. Precondition: `source.isResolved()` must be
+  `true` (otherwise throws `NotResolvedError`).
+- `isResolved()` — reports whole-config resolution state (E12 decision 11).
+- `withFallback(other)` — now accepts unresolved operands; preserves substitution placeholders
+  into the merged tree. Result is resolved iff both inputs are resolved.
+
+**New types:**
+- `ResolveOptions` — `{ useSystemEnvironment?: boolean; allowUnresolved?: boolean }`.
+  `defaultResolveOptions()` returns `{ useSystemEnvironment: true, allowUnresolved: false }`.
+- `ParseOptions.resolveSubstitutions` (new field) — when `false`, parse-only without resolving.
+- `ParseOptions.originDescription` (new field) — source label for error messages.
+- `defaultParseOptions()` — returns `{ resolveSubstitutions: true }`.
+
+**New errors:**
+- `NotResolvedError extends ConfigError` — thrown when a getter is called on a path that
+  holds an unresolved substitution placeholder. Use `instanceof NotResolvedError` to detect.
+
+**Cross-spec amendments:**
+- S13a × WithFallback: self-reference lookback walks across fallback layers. Receiver
+  `a = ${?a} extra` with fallback `a = base` resolves to `a = "base extra"`.
+- S10 × AllowUnresolved: type-incompatible concat errors fire even under `allowUnresolved=true`;
+  only missing-value errors are deferred.
+- Optional substitution materialisation: `a = ${?x}${?y}` with both undefined now correctly
+  omits field `a` (was incorrectly returning null).
+
+**Spec source:** [xx.hocon#37](https://github.com/o3co/xx.hocon/issues/37) /
+E12 in `docs/extra-spec-conventions.md`. Design doc: `docs/proposals/E12-deferred-resolution-design.md`.
+
+---
+
 ## [1.3.0] - 2026-05-21
 
 v1.3 is a spec-compliance bugfix release. The implementation has been corrected to match the HOCON spec and Lightbend typesafe-config reference behavior across several previously-divergent areas (concat type-checking, `include` key reservation, leading-`-` value-position lexing, leading-zero number canonicalization, single-letter byte units, empty-file rejection, `.properties` object-wins, duration/bytes default unit). The spec did not change; the parser was simply wrong in places.
