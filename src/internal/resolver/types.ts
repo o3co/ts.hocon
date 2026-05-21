@@ -38,6 +38,23 @@ export type ResolveOptions = {
   readFileSync: (filePath: string) => string
   readFile?: (filePath: string) => Promise<string>
   includeStack?: string[]
+  /**
+   * When false (default), env var lookups inside SubstitutionResolver are
+   * suppressed. Set to true to preserve the current fused-resolve behaviour
+   * where process.env is consulted as fallback. Phase-2 callers (resolveTree)
+   * receive this flag explicitly; the fused resolve() path passes true for
+   * backward compat.
+   *
+   * E12 ResolveOptions.useSystemEnvironment.
+   */
+  useSystemEnvironment?: boolean
+  /**
+   * When true, leaves unresolved (non-optional) substitution placeholders in
+   * place instead of throwing ResolveError. Phase 2 only; ignored by buildTree.
+   *
+   * E12 ResolveOptions.allowUnresolved.
+   */
+  allowUnresolved?: boolean
 }
 
 // Track parser-inserted separator whitespace values without leaking _separator

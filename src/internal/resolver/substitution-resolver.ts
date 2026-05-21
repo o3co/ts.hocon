@@ -256,9 +256,8 @@ export class SubstitutionResolver {
         return result
       }
 
-      // S13c: env-var list expansion — when listSuffix=true, scan NAME_0, NAME_1, …
-      // This branch runs BEFORE the scalar env fallback and suppresses it (S13c.5).
-      if (s.listSuffix) {
+      // S13c: env-var list expansion — gated on useSystemEnvironment (E12 gate)
+      if (s.listSuffix && this.opts.useSystemEnvironment !== false) {
         const result = this.resolveEnvList(s)
         if (result !== undefined) {
           this.cache.set(key, result)
@@ -276,22 +275,40 @@ export class SubstitutionResolver {
           s.line,
           s.col,
         )
+      } else if (s.listSuffix) {
+        // useSystemEnvironment=false: treat listSuffix as unresolvable
+        if (s.optional) return undefined
+        if (this.opts.allowUnresolved) return s as unknown as HoconValue
+        throw new ResolveError(
+          `could not resolve substitution: \${${key}}`,
+          key,
+          s.line,
+          s.col,
+        )
       }
 
-      // Env var fallback — use raw dot-join (no quoting) to match Lightbend behavior
-      const envKey = s.segments.map((seg: Segment) => seg.text).join('.')
-      const envVal =
-        this.opts.env[envKey] ??
-        (s.prefixLen > 0
-          ? this.opts.env[s.segments.slice(s.prefixLen).map((seg: Segment) => seg.text).join('.')]
-          : undefined)
-      if (envVal !== undefined) {
-        const result: HoconValue = { kind: 'scalar', raw: envVal, valueType: 'string' }
-        this.cache.set(key, result)
-        return result
+      // Env var fallback — use raw dot-join (no quoting) to match Lightbend behavior.
+      // Only consulted when useSystemEnvironment is not explicitly false (E12 gate).
+      if (this.opts.useSystemEnvironment !== false) {
+        const envKey = s.segments.map((seg: Segment) => seg.text).join('.')
+        const envVal =
+          this.opts.env[envKey] ??
+          (s.prefixLen > 0
+            ? this.opts.env[s.segments.slice(s.prefixLen).map((seg: Segment) => seg.text).join('.')]
+            : undefined)
+        if (envVal !== undefined) {
+          const result: HoconValue = { kind: 'scalar', raw: envVal, valueType: 'string' }
+          this.cache.set(key, result)
+          return result
+        }
       }
 
       if (s.optional) return undefined
+      if (this.opts.allowUnresolved) {
+        // Leave unresolved: return the placeholder as-is so the ResObj output
+        // retains it for containsPlaceholders / later resolution passes.
+        return s as unknown as HoconValue
+      }
       throw new ResolveError(
         `could not resolve substitution: \${${key}}`,
         key,
