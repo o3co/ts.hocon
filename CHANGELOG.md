@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed — S13b.2 spec compliance
 
-- **`+=` on a non-array prior value now errors instead of silently wrapping** ([#81](https://github.com/o3co/ts.hocon/issues/81)). Per HOCON spec L732, `a += b` is sugar for `a = ${?a} [b]`; when the prior value of `a` is not an array, this must produce a resolve-time error. Previously the resolver silently wrapped the non-array as a single-element array (`x = 1; x += [2]` produced `[1, 2]`). The fix throws `ResolveError` in `resolveAppend` when `existing.kind !== 'array'`.
+- **`+=` on a non-array prior value now errors instead of silently wrapping** ([#81](https://github.com/o3co/ts.hocon/issues/81)). Per HOCON spec L732, `a += b` is sugar for `a = ${?a} [b]`; when the prior value of `a` is not an array, this must produce a resolve-time error. Previously the resolver silently wrapped the non-array as a single-element array (`x = 1; x += 3` produced `[1, 3]`; now errors). The fix throws `ResolveError` in `resolveAppend` when the prior value is a scalar or a non-numeric-keyed object. Numeric-keyed objects continue to succeed via S15.3 (`numericObjectToArray`), matching the long-form `${?a} [b]` desugaring.
 
 ## [1.4.1] - 2026-05-22
 
