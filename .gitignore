@@ -32,3 +32,6 @@ docs/*
 # Fetched testdata (from xx.hocon)
 tests/lightbend/testdata/expected/
 .xx-hocon-version
+
+# Deferred-resolution fixtures fetched from xx.hocon via `make testdata`
+tests/lightbend/testdata/hocon/deferred-resolution/
