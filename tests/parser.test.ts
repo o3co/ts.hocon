@@ -378,11 +378,41 @@ describe('spec compliance Phase 2 — concatenation, paths, and +=', () => {
   })
 
   // --- S10.8: string concat allowed in field keys --------------------------
-  // VIOLATION: parser rejects unquoted-space-unquoted as a key.
-  it.fails('S10.8: unquoted string concat is allowed in field keys (spec L317)', () => {
+  // HOCON.md L317 (value concatenation allowed in keys) + L553-560
+  // (path expressions work like value concatenations).
+  it('S10.8: unquoted string concat is allowed in field keys (spec L317)', () => {
     const node = parse('foo bar = 1')
     if (node.kind !== 'object') throw new Error('expected object')
     expect(node.fields[0]!.key).toEqual(['foo bar'])
+  })
+
+  it('S10.8: three-token unquoted space concat in key (spec L556 example)', () => {
+    // Spec L556: `a b c : 42` is equivalent to `"a b c" : 42`.
+    const node = parse('a b c : 42')
+    if (node.kind !== 'object') throw new Error('expected object')
+    expect(node.fields[0]!.key).toEqual(['a b c'])
+  })
+
+  it('S10.8: space-concat merges into the last segment of a dotted path', () => {
+    // Path expression `a.b` ⌣ space ⌣ `c` → ['a', 'b c'].
+    const node = parse('a.b c = 1')
+    if (node.kind !== 'object') throw new Error('expected object')
+    expect(node.fields[0]!.key).toEqual(['a', 'b c'])
+  })
+
+  it('S10.8: quoted-then-unquoted space concat in key', () => {
+    // `"foo bar" baz = 1` → key ['foo bar baz']. Quoted segment is the first
+    // token (firstWasQuoted), unquoted tail merges via S10.8 space-concat.
+    const node = parse('"foo bar" baz = 1')
+    if (node.kind !== 'object') throw new Error('expected object')
+    expect(node.fields[0]!.key).toEqual(['foo bar baz'])
+  })
+
+  it('S10.8: space-concat key before inline-object shorthand', () => {
+    // `a b { x = 1 }` — key `['a b']`, value is the inline object.
+    const node = parse('a b { x = 1 }')
+    if (node.kind !== 'object') throw new Error('expected object')
+    expect(node.fields[0]!.key).toEqual(['a b'])
   })
 
   // --- S11.4: 10.0foo → path [10, 0foo] ------------------------------------

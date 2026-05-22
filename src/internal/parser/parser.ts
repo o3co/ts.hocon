@@ -148,12 +148,25 @@ class Parser {
     const segments: string[] = []
     let trailingDot = false
     let firstWasQuoted = false
+    // S10.8 (HOCON.md L317 + L553-560): "path expressions work like value
+    // concatenations" — when the next key token has whitespace before it (and
+    // no preceding dot separator), it is a space-concat continuation that
+    // merges into the LAST existing segment with a literal space:
+    //   `a b = 1`     → key ['a b']
+    //   `a b c : 42`  → key ['a b c']        (spec L556 example)
+    //   `a.b c = 1`   → key ['a', 'b c']     (concat into last segment)
+    //   `"a" b = 1`   → key ['a b']          (quoted + unquoted)
+    let spaceConcat = false
     while (true) {
       const t = this.peek()
       if (t.kind === 'string') {
         this.advance()
         if (segments.length === 0) firstWasQuoted = true
-        segments.push(t.value) // quoted: no dot split
+        if (spaceConcat) {
+          segments[segments.length - 1] = `${segments[segments.length - 1]} ${t.value}`
+        } else {
+          segments.push(t.value) // quoted: no dot split
+        }
         trailingDot = false
       } else if (t.kind === 'unquoted') {
         this.advance()
@@ -179,13 +192,23 @@ class Parser {
             )
           }
         }
-        segments.push(...filtered)
+        if (spaceConcat && filtered.length > 0) {
+          // First piece of the new token merges into the last existing segment;
+          // any remaining dot-split pieces become new path segments.
+          const [head, ...tail] = filtered
+          segments[segments.length - 1] = `${segments[segments.length - 1]} ${head}`
+          segments.push(...tail)
+        } else {
+          segments.push(...filtered)
+        }
         // If the unquoted value ended with a dot, the next token continues the key
         trailingDot = raw.endsWith('.')
       } else {
         if (segments.length === 0) throw new ParseError(`expected key, got ${t.kind}`, t.line, t.col)
         break
       }
+      // The continuation we just took has been consumed.
+      spaceConcat = false
 
       // If the last unquoted segment ended with a dot, continue to next token
       if (trailingDot) continue
@@ -203,6 +226,13 @@ class Parser {
       // Mark trailingDot so the next iteration's unquoted branch strips the leading dot.
       if (next.kind === 'unquoted' && next.value.startsWith('.') && !next.precedingSpace) {
         trailingDot = true
+        continue
+      }
+
+      // S10.8 space-concat continuation: an unquoted-or-quoted token separated
+      // from the previous key token by whitespace is part of the same key.
+      if ((next.kind === 'unquoted' || next.kind === 'string') && next.precedingSpace) {
+        spaceConcat = true
         continue
       }
 
