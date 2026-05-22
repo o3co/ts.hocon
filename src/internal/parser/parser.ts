@@ -156,6 +156,10 @@ class Parser {
     //   `a b c : 42`  → key ['a b c']        (spec L556 example)
     //   `a.b c = 1`   → key ['a', 'b c']     (concat into last segment)
     //   `"a" b = 1`   → key ['a b']          (quoted + unquoted)
+    //   `a .b = 1`    → key ['a', 'b']       (leading '.' stays a separator
+    //                                         per S11.1, not folded into prev)
+    // Newlines break the chain (S10.7): the lexer emits a `newline` token
+    // between fields which falls through to the loop's else branch and exits.
     let spaceConcat = false
     while (true) {
       const t = this.peek()
@@ -193,11 +197,21 @@ class Parser {
           }
         }
         if (spaceConcat && filtered.length > 0) {
-          // First piece of the new token merges into the last existing segment;
+          // S10.8 + S11.1 interaction: if the spaced-in token starts with '.',
+          // the leading '.' is a path separator that survives the space — not
+          // a literal char to fold into the previous segment.
+          //   `a .b = 1`   → ['a', 'b']      (not ['a b'])
+          //   `a .b.c = 1` → ['a', 'b', 'c']
+          //   `"a" .b = 1` → ['a', 'b']
+          // Otherwise the first piece merges into the last existing segment;
           // any remaining dot-split pieces become new path segments.
-          const [head, ...tail] = filtered
-          segments[segments.length - 1] = `${segments[segments.length - 1]} ${head}`
-          segments.push(...tail)
+          if (raw.startsWith('.')) {
+            segments.push(...filtered)
+          } else {
+            const [head, ...tail] = filtered
+            segments[segments.length - 1] = `${segments[segments.length - 1]} ${head}`
+            segments.push(...tail)
+          }
         } else {
           segments.push(...filtered)
         }

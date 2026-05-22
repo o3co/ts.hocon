@@ -415,6 +415,52 @@ describe('spec compliance Phase 2 — concatenation, paths, and +=', () => {
     expect(node.fields[0]!.key).toEqual(['a b'])
   })
 
+  it('S10.8: leading dot after whitespace stays a path separator (S10.8 + S11.1)', () => {
+    // `a .b = 1` → ['a', 'b'] (NOT ['a b'] — the '.' survives the space).
+    // The space-concat continuation kicks in, but a leading '.' in the next
+    // token still acts as a path separator per S11.1 — it does not get folded
+    // into the previous segment.
+    const node = parse('a .b = 1')
+    if (node.kind !== 'object') throw new Error('expected object')
+    expect(node.fields[0]!.key).toEqual(['a', 'b'])
+  })
+
+  it('S10.8: leading dot after whitespace, multi-segment tail (S10.8 + S11.1)', () => {
+    // `a .b.c = 1` → ['a', 'b', 'c'].
+    const node = parse('a .b.c = 1')
+    if (node.kind !== 'object') throw new Error('expected object')
+    expect(node.fields[0]!.key).toEqual(['a', 'b', 'c'])
+  })
+
+  it('S10.8: leading dot after quoted-then-whitespace stays a separator', () => {
+    // `"a" .b = 1` → ['a', 'b']. firstWasQuoted=true but the tail still
+    // splits on the leading '.' rather than folding into 'a'.
+    const node = parse('"a" .b = 1')
+    if (node.kind !== 'object') throw new Error('expected object')
+    expect(node.fields[0]!.key).toEqual(['a', 'b'])
+  })
+
+  it('S10.8: tab between key tokens is treated as space-concat', () => {
+    // `precedingSpace` covers any HOCON whitespace; the merge joiner is
+    // canonical U+0020 (per S10.6 whitespace normalisation behaviour).
+    const node = parse('a\tb = 1')
+    if (node.kind !== 'object') throw new Error('expected object')
+    expect(node.fields[0]!.key).toEqual(['a b'])
+  })
+
+  it('S10.8: dotted-path-then-whitespace-then-dot keeps the dot as separator', () => {
+    // `a.b .c = 1` → ['a', 'b', 'c']: after the dotted path `a.b` we hit a
+    // whitespace-prefixed `.c`; the leading '.' is a path separator (S11.1),
+    // not a literal char to fold into 'b'. Same for the quoted prefix form.
+    const a = parse('a.b .c = 1')
+    if (a.kind !== 'object') throw new Error('expected object')
+    expect(a.fields[0]!.key).toEqual(['a', 'b', 'c'])
+
+    const b = parse('"a.b" .c = 1')
+    if (b.kind !== 'object') throw new Error('expected object')
+    expect(b.fields[0]!.key).toEqual(['a.b', 'c'])
+  })
+
   // --- S11.4: 10.0foo → path [10, 0foo] ------------------------------------
   it('S11.4: 10.0foo is parsed as two-element path [10, 0foo] (spec L496)', () => {
     const node = parse('10.0foo = 2')
