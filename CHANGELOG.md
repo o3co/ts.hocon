@@ -21,10 +21,10 @@ Cross-impl bugfix release: addresses [go.hocon#105](https://github.com/o3co/go.h
 
 ## [1.4.0] - 2026-05-21
 
-### Added — E12 deferred substitution resolution (closes [#99](https://github.com/o3co/ts.hocon/issues/99))
+### Added — E12 deferred substitution resolution (external request via [go.hocon#99](https://github.com/o3co/go.hocon/issues/99))
 
 This release adds the Lightbend-aligned `parseStringWithOptions → withFallback → resolve()`
-lifecycle requested in [#99](https://github.com/o3co/ts.hocon/issues/99).
+lifecycle requested by [@cgordon](https://github.com/cgordon) (see [go.hocon#99](https://github.com/o3co/go.hocon/issues/99)).
 Existing `parse()` / `parseFile()` behaviour is unchanged (still parse-and-resolve
 in one call); the new API surface is purely additive.
 
