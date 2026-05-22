@@ -42,4 +42,15 @@ describe('Config.resolve — deferred path', () => {
     const c = parseStringWithOptions('a = ${SHOULD_NOT_BE_READ}', { resolveSubstitutions: false })
     expect(() => c.resolve({ ...defaultResolveOptions(), useSystemEnvironment: false })).toThrow()
   })
+
+  it('S13b.2 + allowUnresolved: += on unresolved prior defers instead of throwing', () => {
+    // x = ${missing}\nx += 1 — the prior value of x is an unresolved
+    // SubstPlaceholder. Under allowUnresolved=true the append must defer,
+    // not throw the S13b.2 non-array error. Pre-fix this raised
+    // "'+=' on non-array value: prior value is undefined (spec L732)".
+    const c = parseStringWithOptions('x = ${missing}\nx += 1', { resolveSubstitutions: false })
+    const r = c.resolve({ ...defaultResolveOptions(), allowUnresolved: true, useSystemEnvironment: false })
+    expect(r.isResolved()).toBe(false)
+    expect(() => r.getList('x')).toThrow(NotResolvedError)
+  })
 })
