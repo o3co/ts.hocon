@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — S10.8 spec compliance
+
+- **Unquoted space-concat in field keys now accepted as a single key** ([#76](https://github.com/o3co/ts.hocon/issues/76)). Per HOCON spec L317 ("string value concatenation is allowed in field keys") and L553-560 (`a b c : 42` is equivalent to `"a b c" : 42`), space-separated unquoted tokens before the `:`/`=`/`{`/`+=` separator must merge into a single key. Previously `foo bar = 1` errored with `unexpected token after key: unquoted`; now it parses as key `["foo bar"]`. The fix extends `parseKey` in `src/internal/parser/parser.ts` with a space-concat continuation branch: when the next key token has `precedingSpace`, it merges into the LAST existing segment with a literal space (so `a.b c = 1` → `["a", "b c"]` and `a b.c = 1` → `["a b", "c"]`). Quoted+unquoted mixed concat (`"foo bar" baz = 1` → `["foo bar baz"]`) and inline-object shorthand (`a b { x = 1 }`) work transitively.
+
 ### Fixed — S17.6 spec compliance
 
 - **`getString()` on a null-typed scalar now throws `ConfigError` instead of returning `"null"`** ([#88](https://github.com/o3co/ts.hocon/issues/88)). Per HOCON spec L1252, asking for a non-null type when the value is null must be an error. The other typed getters (`getNumber`, `getBoolean`, `getDuration`, …) already rejected null via their coerce/check paths; `getString` was the lone exception. A null-type guard is added in `getString` for parity.
