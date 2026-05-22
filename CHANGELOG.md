@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-05-23
+
+Cross-impl spec-compliance release with [go.hocon v1.5.0](https://github.com/o3co/go.hocon/releases/tag/v1.5.0) and [rs.hocon v1.5.0](https://github.com/o3co/rs.hocon/releases/tag/v1.5.0). Two spec-compliance bugfixes ([#88](https://github.com/o3co/ts.hocon/issues/88) S17.6 null-typed `getString`, [#81](https://github.com/o3co/ts.hocon/issues/81) S13b.2 `+=` on non-array prior), one parser fix ([#76](https://github.com/o3co/ts.hocon/issues/76) S10.8 unquoted space-concat in keys), and resolver include-relativization coverage hardening ([#49](https://github.com/o3co/ts.hocon/issues/49): 37 new tests, 5 source files moved to 87–100% statement coverage). No public API changes; safe drop-in upgrade from v1.4.1. `package.json` stays at `"0.0.0-snapshot"`; the release workflow bumps from the tag.
+
 ### Tests
 
 - **Improved resolver coverage for include relativization paths** ([#49](https://github.com/o3co/ts.hocon/issues/49)). Added 37 focused tests in `tests/resolver-include-cov.test.ts` targeting uncovered lines reported by codecov/patch on PR #47. Coverage deltas on the targeted files (before → after):
