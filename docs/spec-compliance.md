@@ -232,8 +232,8 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
   tests: tests/parser.test.ts:364
   status: ✅
 - **S10.8** String concat allowed in field keys — §Value concatenation (L317)
-  tests: tests/parser.test.ts:381
-  status: ❌ (see #76) — parser rejects unquoted-space-unquoted as key with "unexpected token after key: unquoted"
+  tests: tests/parser.test.ts (S10.8 it blocks)
+  status: ✅ — fixed in #76; `parseKey` accepts space-concat continuations and merges into the LAST segment with literal space. Leading '.' after whitespace stays a path separator per S11.1.
 - **S10.9** `true`/`false` stringify to `"true"`/`"false"` in concat — §String value concatenation (L363)
   tests: tests/resolver.test.ts (S10.9 describe block)
   status: ✅
