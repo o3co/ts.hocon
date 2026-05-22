@@ -499,6 +499,22 @@ export class SubstitutionResolver {
     const existing =
       this.resolveVal(a.existing, scope) ??
       ({ kind: 'array', items: [] } satisfies HoconValue)
+    // E12: under allowUnresolved, if the prior value of the appended key is
+    // itself an unresolved placeholder (e.g. `x = ${missing}\nx += 1`),
+    // defer the whole append by returning the AppendPlaceholder as-is. The
+    // downstream stripPlaceholderFields detects `_kind === 'append-placeholder'`
+    // and marks the field as having placeholders. A subsequent merge layer
+    // supplying a resolved prior will retry resolution. Without this guard,
+    // the prior-is-not-array check below would throw, violating the spec
+    // L658 deferral contract under allowUnresolved.
+    if (
+      this.opts.allowUnresolved &&
+      (isSubst(existing as ResolverValue) ||
+        isConcat(existing as ResolverValue) ||
+        isAppend(existing as ResolverValue))
+    ) {
+      return a as unknown as HoconValue
+    }
     const elem = this.resolveVal(a.elem, scope)
     // S13b.2 (HOCON.md L732): `a += b` is sugar for `a = ${?a} [b]`. The
     // prior value must be an array (or undefined → empty array); a non-array
