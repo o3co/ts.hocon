@@ -98,6 +98,7 @@ function obj(v: HoconValue): Map<string, HoconValue> {
 describe('include-loader validatePackageIdentifier — empty identifier (line 75)', () => {
   it('sync loadPackage: throws ParseError for empty identifier', () => {
     // include package("", "file.conf") → validatePackageIdentifier("") → line 75 throws.
+    // Pin the error class + message so an unrelated failure can't satisfy this test.
     expect(() =>
       buildTree(parseTokens(tokenize('include package("", "file.conf")')), {
         env: {},
@@ -105,7 +106,7 @@ describe('include-loader validatePackageIdentifier — empty identifier (line 75
         packageResolver: () => '/fake/path',
         readFileSync: () => { throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' }) },
       }),
-    ).toThrow()
+    ).toThrow(/include package: identifier argument must be non-empty/)
   })
 })
 
@@ -244,20 +245,29 @@ describe('loadPackageAsync — include package() via resolveAsync', () => {
   })
 
   it('loadPackage (sync) circular package include detected (line 265)', () => {
-    // Pre-seed includeStack with the cycleKey for the package being included.
-    // cycleKey = JSON.stringify(['package', 'lib', 'deep.conf'])
-    // When loadPackage checks includeStack.includes(cycleKey), it finds it → line 265 throws.
+    // Set up a real circular package include via mock readFileSync:
+    //   top-level: include package("lib", "deep.conf")
+    //   /fake/pkg/deep.conf: include package("lib", "deep.conf")  (self-reference)
+    // The second loadPackage call sees the cycleKey already in includeStack
+    // and throws — verified through observable behavior, not internal
+    // cycleKey serialisation (which could change without breaking semantics).
     const resolver: PackageResolver = () => '/fake/pkg/deep.conf'
-    const cycleKey = JSON.stringify(['package', 'lib', 'deep.conf'])
+    const fakeFiles: Record<string, string> = {
+      '/fake/pkg/deep.conf': 'include package("lib", "deep.conf")',
+    }
+    const readFileSync = (path: string): string => {
+      const content = fakeFiles[path]
+      if (content !== undefined) return content
+      throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' })
+    }
     expect(() =>
       buildTree(parseTokens(tokenize('include package("lib", "deep.conf")')), {
         env: {},
         baseDir: undefined,
         packageResolver: resolver,
-        includeStack: [cycleKey],
-        readFileSync: () => { throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' }) },
+        readFileSync,
       }),
-    ).toThrow(ResolveError)
+    ).toThrow(/circular|cycle|already including/i)
   })
 
   it('loadPackage (sync) depth limit exceeded (line 272)', () => {
