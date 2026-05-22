@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Tests — resolver include relativization coverage (#49)
+
+- **Improved resolver coverage for include relativization paths** ([#49](https://github.com/o3co/ts.hocon/issues/49)). Added 37 focused tests in `tests/resolver-include-cov.test.ts` targeting uncovered lines reported by codecov/patch on PR #47. Coverage deltas on the targeted files (before → after):
+  - `include-loader.ts`: 70% → 87% stmts — new tests cover `loadPackageAsync` (lines 305–344: async package include load, circular detection, depth limit, empty-content carve-out, async readFile branch), `loadAsync` no-extension probing (lines 240, 245: foundAny flag and required-missing throw), `loadSingleAsync` empty-content carve-out (line 412), and `load()` explicit-extension circular detection (line 172).
+  - `structure-builder.ts`: 87% → 92% stmts — covers `relativizeSubstPaths` `isAppend` branch (lines 247–249: `+=` inside nested include) and HoconValue array branch (lines 259–260: array with substitution items inside nested include).
+  - `substitution-resolver.ts`: 96% → 100% stmts — covers `listSuffix + useSystemEnvironment=false` paths (lines 286–288: optional/allowUnresolved/required branches) and `nonSep.length === 0` in `resolveConcat` (lines 399–402: all-separator resolved list).
+  - `types.ts`: 97% → 100% stmts — covers `mergeUnresolved` fallback `priorValues` carry-through (line 152).
+  - `utils.ts`: 91% → 100% stmts — covers `lookupPath` returning `undefined` for non-ResObj intermediate segment (line 30).
+  - Intentionally uncovered: `defaultPackageResolver` function body (lines 94–140) and its lambda wrappers (lines 276, 323) — these require a real `npm`/Node `require.resolve` environment and cannot be exercised with mock I/O.
+
 ### Fixed — S10.8 spec compliance
 
 - **Unquoted space-concat in field keys now accepted as a single key** ([#76](https://github.com/o3co/ts.hocon/issues/76)). Per HOCON spec L317 ("string value concatenation is allowed in field keys") and L553-560 (`a b c : 42` is equivalent to `"a b c" : 42`), space-separated unquoted tokens before the `:`/`=`/`{`/`+=` separator must merge into a single key. Previously `foo bar = 1` errored with `unexpected token after key: unquoted`; now it parses as key `["foo bar"]`. The fix extends `parseKey` in `src/internal/parser/parser.ts` with a space-concat continuation branch: when the next key token has `precedingSpace`, it merges into the LAST existing segment with a literal space (so `a.b c = 1` → `["a", "b c"]` and `a b.c = 1` → `["a b", "c"]`). Quoted+unquoted mixed concat (`"foo bar" baz = 1` → `["foo bar baz"]`) and inline-object shorthand (`a b { x = 1 }`) work transitively. A leading `.` in the spaced-in token still acts as a path separator per S11.1, not a literal: `a .b = 1` → `["a", "b"]` and `a.b .c = 1` → `["a", "b", "c"]` (the leading dot is NOT folded into the previous segment).
