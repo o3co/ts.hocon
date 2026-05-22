@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Tests — resolver include relativization coverage (#49)
+### Tests
 
 - **Improved resolver coverage for include relativization paths** ([#49](https://github.com/o3co/ts.hocon/issues/49)). Added 37 focused tests in `tests/resolver-include-cov.test.ts` targeting uncovered lines reported by codecov/patch on PR #47. Coverage deltas on the targeted files (before → after):
   - `include-loader.ts`: 70% → 87% stmts — new tests cover `loadPackageAsync` (lines 305–344: async package include load, circular detection, depth limit, empty-content carve-out, async readFile branch), `loadAsync` no-extension probing (lines 240, 245: foundAny flag and required-missing throw), `loadSingleAsync` empty-content carve-out (line 412), and `load()` explicit-extension circular detection (line 172).
