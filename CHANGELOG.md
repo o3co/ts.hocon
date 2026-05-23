@@ -17,7 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Implementation
 
-- **Lexer**: `Token.precedingWhitespace: string` field added (the literal whitespace chars consumed since the previous token). `Token.precedingSpace: boolean` retained for clarity at call sites (invariant: `precedingSpace === (precedingWhitespace.length > 0)`).
+- **Lexer**: `Token.precedingWhitespace: string` field added (the literal whitespace chars consumed since the previous token). `Token.precedingSpace: boolean` retained for clarity at call sites. The two fields are related but **not** equivalent: comments set `hadSpace=true` without contributing chars to the whitespace buffer, so the `newline` token emitted immediately after a `// foo\n` or `# foo\n` comment carries `precedingSpace=true` while `precedingWhitespace=""`. `precedingSpace` is the right signal for concat detection (S10.5 / S10.8); `precedingWhitespace` is the right signal for path-WS preservation (E13). See `src/internal/lexer/token.ts` for the full rationale.
 - **Parser `parseKey`**: S8.6-in-key check removed; literal `' '` joiner in space-concat replaced with `t.precedingWhitespace`; post-trailing-dot iteration captures next token's `precedingWhitespace` as `postDotPrefix` and prepends to next segment; post-loop guard rejects trailing-dot-before-separator (matches Lightbend BadPath behavior).
 
 ## [1.5.2] - 2026-05-23

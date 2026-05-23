@@ -38,10 +38,18 @@ export type Token = {
   // boolean is the right signal for concat detection (S10.5 / S10.8); the
   // string is the right signal for path-WS preservation (E13). They are NOT
   // strictly equivalent at the contract level — they answer different
-  // questions. The comment-only case cannot fire in practice in current
-  // grammar (comments run to `\n` which emits a newline token), but the
-  // distinction is preserved so future grammar changes do not silently
-  // couple the two signals.
+  // questions.
+  //
+  // The comment-only shape (precedingSpace=true, precedingWhitespace="")
+  // DOES occur in current grammar for the `newline` token that follows a
+  // `// foo\n` or `# foo\n` line — that newline is the one token type
+  // that can carry this state. Non-newline tokens that participate in
+  // concat / path-WS contexts are always either preceded by literal WS
+  // chars OR follow a newline that resets the buffer, so consumers of
+  // precedingWhitespace (parseKey path-WS preservation) can rely on the
+  // string alone without re-checking precedingSpace. The structural
+  // distinction also future-proofs against grammar changes that might
+  // introduce other token shapes preceded only by a comment.
   precedingWhitespace: string
   subst?: SubstPayload    // populated only when kind === 'subst'
 }
