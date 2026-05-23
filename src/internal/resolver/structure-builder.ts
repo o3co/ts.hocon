@@ -13,6 +13,11 @@ import {
   makeResObj,
 } from './types.js'
 import {
+  foldNestedSelfRefs,
+  foldOrSkipPrior,
+  stringSegmentsToKey,
+} from './fold-self-ref.js'
+import {
   deepMergeResObjInto,
 } from './utils.js'
 import { IncludeLoader } from './include-loader.js'
@@ -67,7 +72,7 @@ export class StructureBuilder {
       if (pathPrefix.length > 0) {
         this.relativizeResObj(included, pathPrefix)
       }
-      deepMergeResObjInto(obj, included)
+      deepMergeResObjInto(obj, included, pathPrefix)
       return
     }
 
@@ -86,11 +91,17 @@ export class StructureBuilder {
     }
 
     const childPrefix = [...pathPrefix, head]
+    const fullKey = stringSegmentsToKey(childPrefix)
 
     if (field.append) {
       // +=: append elem to existing array (or start from [])
       const existing: ResolverValue = obj.fields.get(head) ?? ({ kind: 'array', items: [] } satisfies HoconValue)
-      obj.priorValues.set(head, existing)
+      // #118 + #120 cross-impl: fold self-references in `existing` against
+      // the OLD prior so the recorded prior is self-ref-free. Chain
+      // invariant: by induction every saved prior contains no `${fullKey}`.
+      const oldPrior = obj.priorValues.get(head)
+      const prior = foldOrSkipPrior(existing, fullKey, oldPrior)
+      if (prior !== undefined) obj.priorValues.set(head, prior)
       obj.fields.set(head, {
         _kind: 'append-placeholder',
         existing,
@@ -103,14 +114,23 @@ export class StructureBuilder {
     const existing = obj.fields.get(head)
     const newVal = this.astToResolverValue(field.value, childPrefix)
 
-    // Save prior value for self-referential substitution resolution
+    // Save prior value for self-referential substitution resolution.
+    // foldNestedSelfRefs pre-pass handles the multi-segment object form
+    // (`o = {history=${o},...}` chained): for Obj-typed existing values
+    // the inner ResObjs may carry their own priorValues with leaf-key
+    // pollution from a previous deepMerge step; the pre-pass folds those
+    // inner self-refs against each level's priorValues before the outer
+    // save site does its full-key fold-or-skip.
     if (existing !== undefined) {
-      obj.priorValues.set(head, existing)
+      const exFolded = foldNestedSelfRefs(existing, childPrefix)
+      const oldPrior = obj.priorValues.get(head)
+      const prior = foldOrSkipPrior(exFolded, fullKey, oldPrior)
+      if (prior !== undefined) obj.priorValues.set(head, prior)
     }
 
     // Deep merge if both are ResObj
     if (existing !== undefined && isResObj(existing) && isResObj(newVal)) {
-      deepMergeResObjInto(existing, newVal)
+      deepMergeResObjInto(existing, newVal, childPrefix)
       // existing already in fields — no re-set needed
       return
     }
@@ -130,7 +150,7 @@ export class StructureBuilder {
       if (pathPrefix.length > 0) {
         this.relativizeResObj(included, pathPrefix)
       }
-      deepMergeResObjInto(obj, included)
+      deepMergeResObjInto(obj, included, pathPrefix)
       return
     }
 
@@ -148,10 +168,13 @@ export class StructureBuilder {
     }
 
     const childPrefix = [...pathPrefix, head]
+    const fullKey = stringSegmentsToKey(childPrefix)
 
     if (field.append) {
       const existing: ResolverValue = obj.fields.get(head) ?? ({ kind: 'array', items: [] } satisfies HoconValue)
-      obj.priorValues.set(head, existing)
+      const oldPrior = obj.priorValues.get(head)
+      const prior = foldOrSkipPrior(existing, fullKey, oldPrior)
+      if (prior !== undefined) obj.priorValues.set(head, prior)
       obj.fields.set(head, {
         _kind: 'append-placeholder',
         existing,
@@ -164,11 +187,14 @@ export class StructureBuilder {
     const newVal = await this.astToResolverValueAsync(field.value, childPrefix)
 
     if (existing !== undefined) {
-      obj.priorValues.set(head, existing)
+      const exFolded = foldNestedSelfRefs(existing, childPrefix)
+      const oldPrior = obj.priorValues.get(head)
+      const prior = foldOrSkipPrior(exFolded, fullKey, oldPrior)
+      if (prior !== undefined) obj.priorValues.set(head, prior)
     }
 
     if (existing !== undefined && isResObj(existing) && isResObj(newVal)) {
-      deepMergeResObjInto(existing, newVal)
+      deepMergeResObjInto(existing, newVal, childPrefix)
       return
     }
 
