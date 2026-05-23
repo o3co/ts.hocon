@@ -415,50 +415,51 @@ describe('spec compliance Phase 2 — concatenation, paths, and +=', () => {
     expect(node.fields[0]!.key).toEqual(['a b'])
   })
 
-  it('S10.8: leading dot after whitespace stays a path separator (S10.8 + S11.1)', () => {
-    // `a .b = 1` → ['a', 'b'] (NOT ['a b'] — the '.' survives the space).
-    // The space-concat continuation kicks in, but a leading '.' in the next
-    // token still acts as a path separator per S11.1 — it does not get folded
-    // into the previous segment.
+  it('S10.8 + E13: leading dot after whitespace stays a path separator, with trailing WS preserved on prev segment', () => {
+    // `a .b = 1` → ['a ', 'b'] per E13 (xx.hocon#42).
+    // The leading '.' still acts as a path separator (S11.1 unchanged), but the
+    // whitespace before the dot is now preserved as trailing on the prev segment
+    // (was stripped pre-E13 — produced ['a', 'b']).
     const node = parse('a .b = 1')
     if (node.kind !== 'object') throw new Error('expected object')
-    expect(node.fields[0]!.key).toEqual(['a', 'b'])
+    expect(node.fields[0]!.key).toEqual(['a ', 'b'])
   })
 
-  it('S10.8: leading dot after whitespace, multi-segment tail (S10.8 + S11.1)', () => {
-    // `a .b.c = 1` → ['a', 'b', 'c'].
+  it('S10.8 + E13: leading dot after whitespace, multi-segment tail', () => {
+    // `a .b.c = 1` → ['a ', 'b', 'c'] per E13 (trailing WS on 'a' preserved).
     const node = parse('a .b.c = 1')
     if (node.kind !== 'object') throw new Error('expected object')
-    expect(node.fields[0]!.key).toEqual(['a', 'b', 'c'])
+    expect(node.fields[0]!.key).toEqual(['a ', 'b', 'c'])
   })
 
-  it('S10.8: leading dot after quoted-then-whitespace stays a separator', () => {
-    // `"a" .b = 1` → ['a', 'b']. firstWasQuoted=true but the tail still
-    // splits on the leading '.' rather than folding into 'a'.
+  it('S10.8 + E13: leading dot after quoted-then-whitespace stays a separator', () => {
+    // `"a" .b = 1` → ['a ', 'b'] per E13 (trailing WS on 'a' preserved).
+    // firstWasQuoted=true but the tail still splits on the leading '.'.
     const node = parse('"a" .b = 1')
     if (node.kind !== 'object') throw new Error('expected object')
-    expect(node.fields[0]!.key).toEqual(['a', 'b'])
+    expect(node.fields[0]!.key).toEqual(['a ', 'b'])
   })
 
-  it('S10.8: tab between key tokens is treated as space-concat', () => {
-    // `precedingSpace` covers any HOCON whitespace; the merge joiner is
-    // canonical U+0020 (per S10.6 whitespace normalisation behaviour).
+  it('S10.8 + E13: tab between key tokens is preserved verbatim (was normalised to space)', () => {
+    // E13 (xx.hocon#42) — preserve literal whitespace in key concat. `a\tb = 1`
+    // now yields ['a\tb']; was ['a b'] pre-E13. Cross-impl ground truth fixture:
+    // xx.hocon path-expr-whitespace/pw07-tab-after-dot.conf pins the principle.
     const node = parse('a\tb = 1')
     if (node.kind !== 'object') throw new Error('expected object')
-    expect(node.fields[0]!.key).toEqual(['a b'])
+    expect(node.fields[0]!.key).toEqual(['a\tb'])
   })
 
-  it('S10.8: dotted-path-then-whitespace-then-dot keeps the dot as separator', () => {
-    // `a.b .c = 1` → ['a', 'b', 'c']: after the dotted path `a.b` we hit a
-    // whitespace-prefixed `.c`; the leading '.' is a path separator (S11.1),
-    // not a literal char to fold into 'b'. Same for the quoted prefix form.
+  it('S10.8 + E13: dotted-path-then-whitespace-then-dot keeps the dot as separator, preserves trailing WS', () => {
+    // `a.b .c = 1` → ['a', 'b ', 'c'] per E13: after the dotted path `a.b` we hit
+    // a whitespace-prefixed `.c`; the leading '.' is a path separator, the
+    // preceding WS is now trailing on 'b' (was ['a', 'b', 'c'] pre-E13).
     const a = parse('a.b .c = 1')
     if (a.kind !== 'object') throw new Error('expected object')
-    expect(a.fields[0]!.key).toEqual(['a', 'b', 'c'])
+    expect(a.fields[0]!.key).toEqual(['a', 'b ', 'c'])
 
     const b = parse('"a.b" .c = 1')
     if (b.kind !== 'object') throw new Error('expected object')
-    expect(b.fields[0]!.key).toEqual(['a.b', 'c'])
+    expect(b.fields[0]!.key).toEqual(['a.b ', 'c'])
   })
 
   // --- S11.4: 10.0foo → path [10, 0foo] ------------------------------------

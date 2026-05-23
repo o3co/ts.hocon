@@ -4,7 +4,7 @@ import type { ScalarValueType } from '../../value.js'
 import type { Token, TokenKind } from '../lexer/token.js'
 import type { AstNode, AstField, IncludeQualifier, Pos } from './ast.js'
 
-const EOF_TOKEN: Token = { kind: 'eof', value: '', line: 0, col: 0, isQuoted: false, precedingSpace: false, subst: undefined }
+const EOF_TOKEN: Token = { kind: 'eof', value: '', line: 0, col: 0, isQuoted: false, precedingSpace: false, precedingWhitespace: '', subst: undefined }
 
 class Parser {
   private pos = 0
@@ -151,23 +151,41 @@ class Parser {
     // S10.8 (HOCON.md L317 + L553-560): "path expressions work like value
     // concatenations" — when the next key token has whitespace before it (and
     // no preceding dot separator), it is a space-concat continuation that
-    // merges into the LAST existing segment with a literal space:
-    //   `a b = 1`     → key ['a b']
-    //   `a b c : 42`  → key ['a b c']        (spec L556 example)
-    //   `a.b c = 1`   → key ['a', 'b c']     (concat into last segment)
-    //   `"a" b = 1`   → key ['a b']          (quoted + unquoted)
-    //   `a .b = 1`    → key ['a', 'b']       (leading '.' stays a separator
-    //                                         per S11.1, not folded into prev)
+    // merges into the LAST existing segment using the LITERAL whitespace from
+    // the source (precedingWhitespace, not a hardcoded ' '):
+    //   `a b = 1`         → key ['a b']
+    //   `a b c : 42`      → key ['a b c']        (spec L556 example)
+    //   `a.b c = 1`       → key ['a', 'b c']     (concat into last segment)
+    //   `"a" b = 1`       → key ['a b']          (quoted + unquoted)
+    // E13 (xx.hocon#42) — path-expression whitespace is preserved verbatim
+    // around dots, including the tab variant pw07:
+    //   `a b. c = 1`      → ['a b', ' c']        (leading space on " c" preserved)
+    //   `a b.\tc = 1`     → ['a b', '\tc']       (HOCON_WS tab uniformly preserved)
+    //   `a .b = 1`        → ['a ', 'b']          (trailing space on prev,
+    //                                              leading dot still separator)
+    //   `a . b = 1`       → ['a ', ' b']         (both sides preserved)
     // Newlines break the chain (S10.7): the lexer emits a `newline` token
     // between fields which falls through to the loop's else branch and exits.
+    //
+    // S8.6 (HOCON.md L270-276) is NOT enforced on key path segments per E13
+    // (xx.hocon#42): the rule is value-position lexer-disambiguation, not a
+    // key-parser rule. Lightbend accepts `foo -bar = 1`, `foo.-bar = 1`, etc.
     let spaceConcat = false
+    // Captured WS from a trailing-dot continuation: the next post-dot segment's
+    // first piece gets this WS prepended (E13 path-WS preservation rule).
+    let postDotPrefix = ''
     while (true) {
       const t = this.peek()
       if (t.kind === 'string') {
         this.advance()
         if (segments.length === 0) firstWasQuoted = true
         if (spaceConcat) {
-          segments[segments.length - 1] = `${segments[segments.length - 1]} ${t.value}`
+          // E13: preceding WS verbatim, then quoted content merged into last segment.
+          segments[segments.length - 1] = `${segments[segments.length - 1]}${t.precedingWhitespace}${t.value}`
+        } else if (postDotPrefix !== '') {
+          // post-dot WS becomes leading prefix on the new quoted segment
+          segments.push(`${postDotPrefix}${t.value}`)
+          postDotPrefix = ''
         } else {
           segments.push(t.value) // quoted: no dot split
         }
@@ -183,35 +201,30 @@ class Parser {
         // Split unquoted key at dots
         const parts = raw.split('.')
         const filtered = parts.filter(s => s.length > 0)
-        // S8.6 (HOCON.md L270–276): each unquoted key segment that begins with
-        // '-' must be followed by a digit. The lexer sees `a.-foo` as a single
-        // unquoted token, so we validate per-segment here after splitting.
-        // Symmetric with the value-position and parseSubstBody checks.
-        for (const seg of filtered) {
-          if (seg[0] === '-' && !(seg.length >= 2 && seg[1] >= '0' && seg[1] <= '9')) {
-            const after = seg.length >= 2 ? JSON.stringify(seg[1]) : 'EOF'
-            throw new ParseError(
-              `unquoted key segment cannot begin with '-' unless followed by a digit (got '-' then ${after} in ${JSON.stringify(seg)}, HOCON.md L270-276)`,
-              t.line, t.col
-            )
-          }
-        }
-        if (spaceConcat && filtered.length > 0) {
-          // S10.8 + S11.1 interaction: if the spaced-in token starts with '.',
-          // the leading '.' is a path separator that survives the space — not
-          // a literal char to fold into the previous segment.
-          //   `a .b = 1`   → ['a', 'b']      (not ['a b'])
-          //   `a .b.c = 1` → ['a', 'b', 'c']
-          //   `"a" .b = 1` → ['a', 'b']
-          // Otherwise the first piece merges into the last existing segment;
-          // any remaining dot-split pieces become new path segments.
+        if (spaceConcat) {
+          // E13 path-WS preservation: the literal preceding whitespace becomes
+          // trailing on the PREVIOUS segment, uniformly across:
+          //   `a b = 1`     → ['a b']     (filtered=['b'], no leading dot — merge)
+          //   `a .b = 1`    → ['a ', 'b'] (leading dot — push as new segment)
+          //   `a . b = 1`   → ['a ', …]   (lone dot — trailing WS on prev, then dot separator)
+          //   `a b.\tc = 1` → trailing '\t' preserved verbatim (tab variant pw07)
+          segments[segments.length - 1] = `${segments[segments.length - 1]}${t.precedingWhitespace}`
           if (raw.startsWith('.')) {
+            // leading '.' is a path separator (S11.1); filtered pieces (if any)
+            // become new segments. Lone dot (filtered empty) just sets trailingDot.
             segments.push(...filtered)
-          } else {
+          } else if (filtered.length > 0) {
+            // first piece merges into the just-extended segment; remaining
+            // pieces become new segments.
             const [head, ...tail] = filtered
-            segments[segments.length - 1] = `${segments[segments.length - 1]} ${head}`
+            segments[segments.length - 1] = `${segments[segments.length - 1]}${head}`
             segments.push(...tail)
           }
+        } else if (postDotPrefix !== '' && filtered.length > 0) {
+          // post-dot WS becomes leading prefix on the new segment (E13)
+          const [head, ...tail] = filtered
+          segments.push(`${postDotPrefix}${head}`, ...tail)
+          postDotPrefix = ''
         } else {
           segments.push(...filtered)
         }
@@ -224,8 +237,17 @@ class Parser {
       // The continuation we just took has been consumed.
       spaceConcat = false
 
-      // If the last unquoted segment ended with a dot, continue to next token
-      if (trailingDot) continue
+      // If the last unquoted segment ended with a dot, the NEXT token's
+      // precedingWhitespace becomes the leading prefix of the next segment.
+      if (trailingDot) {
+        const next = this.peek()
+        if ((next.kind === 'unquoted' || next.kind === 'string') && next.precedingWhitespace.length > 0) {
+          postDotPrefix = next.precedingWhitespace
+        } else {
+          postDotPrefix = ''
+        }
+        continue
+      }
 
       // Check for explicit dot separator between segments (e.g. "a"."b")
       // A lone dot as an unquoted token with no preceding space continues the key
@@ -233,6 +255,12 @@ class Parser {
       if (next.kind === 'unquoted' && next.value === '.' && !next.precedingSpace) {
         this.advance() // consume the dot separator
         trailingDot = true
+        // After consuming the separator, check WS on the token AFTER it for
+        // post-dot prefix preservation.
+        const afterDot = this.peek()
+        if ((afterDot.kind === 'unquoted' || afterDot.kind === 'string') && afterDot.precedingWhitespace.length > 0) {
+          postDotPrefix = afterDot.precedingWhitespace
+        }
         continue
       }
       // After a quoted segment, the next unquoted token may start with '.' acting as the
@@ -251,6 +279,17 @@ class Parser {
       }
 
       break
+    }
+    // E13 pw06: a key path ending with `.` (e.g. `a b. = 1`) creates an empty
+    // trailing segment. Lightbend throws BadPath here; we match — loosening
+    // S8.6-in-key and preserving path-WS does NOT cascade into accepting empty
+    // path segments.
+    if (trailingDot) {
+      const here = this.peek()
+      throw new ParseError(
+        `path has a trailing period '.' — empty key segment not allowed (HOCON.md path rules)`,
+        here.line, here.col,
+      )
     }
     return { segments, firstWasQuoted }
   }

@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — E13 key-position parsing (xx.hocon [#42](https://github.com/o3co/xx.hocon/issues/42))
+
+- **S8.6 is no longer enforced on key path segments** — `foo -bar = 1`, `foo.-bar = 1`, `-foo bar = 1`, `foo -1bar = 1` etc. now parse verbatim per Lightbend 1.4.3. The HOCON.md L270-276 "begin with `-` requires digit" rule is a value-position lexer-disambiguation rule (governed by E8 in [xx.hocon extra-spec-conventions](https://github.com/o3co/xx.hocon/blob/main/docs/extra-spec-conventions.md)); key-position is governed by path-element parsing rules where Lightbend takes characters verbatim. Pinned by 8 new fixtures (`key-hyphen-position/kh01–kh08`) in xx.hocon main. Pure loosening — no previously-valid input is now rejected.
+- **Path-expression whitespace adjacent to dots is preserved verbatim** — `a b. c = 1` → `{"a b":{" c":1}}` (leading space on `" c"` preserved); `a b.\tc = 1` → `{"a b":{"\tc":1}}` (HOCON_WS tab uniformly preserved); `a .b = 1` → `{"a ":{"b":1}}` (trailing space on `"a "` preserved). Per Lightbend's char-by-char path parsing. Pinned by 6 new fixtures (`path-expr-whitespace/pw01–pw05, pw07`) + 1 error fixture (`pw06: a b. = 1` → BadPath, loosening does NOT cascade into empty path segments). See [xx.hocon E13](https://github.com/o3co/xx.hocon/blob/main/docs/extra-spec-conventions.md#e13).
+- **Behavior change — key string normalisation no longer fires for path-WS-adjacent-to-dot inputs**. Inputs like `a .b = X` previously produced path `["a", "b"]`; now produce `["a ", "b"]`. Inputs that worked via `cfg.getString("a.b")` lookup (after the path key was implicitly trimmed) will need to use the literal key `"a b"` or `"a "` if they were relying on the prior trimming. Also: tab between key tokens is now preserved (was normalised to single ASCII space) — `a\tb = 1` now yields key `["a\tb"]` instead of `["a b"]`. Narrow set of affected inputs.
+
+#### Implementation
+
+- **Lexer**: `Token.precedingWhitespace: string` field added (the literal whitespace chars consumed since the previous token). `Token.precedingSpace: boolean` retained for clarity at call sites (invariant: `precedingSpace === (precedingWhitespace.length > 0)`).
+- **Parser `parseKey`**: S8.6-in-key check removed; literal `' '` joiner in space-concat replaced with `t.precedingWhitespace`; post-trailing-dot iteration captures next token's `precedingWhitespace` as `postDotPrefix` and prepends to next segment; post-loop guard rejects trailing-dot-before-separator (matches Lightbend BadPath behavior).
+
 ## [1.5.2] - 2026-05-23
 
 Cross-impl chained / value-interior self-referential substitution fix — version aligned with [go.hocon v1.5.2](https://github.com/o3co/go.hocon/releases/tag/v1.5.2) and [rs.hocon v1.5.2](https://github.com/o3co/rs.hocon/releases/tag/v1.5.2), which all cover the same two bug classes (#118 + #120). No public API changes; safe drop-in upgrade from v1.5.0. (v1.5.1 was skipped to match the go.hocon version where the same fix scope landed.) `package.json` stays at `"0.0.0-snapshot"`; the release workflow bumps from the tag.

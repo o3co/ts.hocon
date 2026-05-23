@@ -61,6 +61,11 @@ class Lexer {
   private line = 1
   private col = 1
   private hadSpace = false
+  // Accumulates literal whitespace chars consumed between tokens. Reset on every
+  // token push. Used so the parser can preserve path-expression whitespace
+  // (xx.hocon#42, E13) — e.g. tab vs space adjacent to dots in key paths.
+  // Comment text is NOT accumulated; only the actual WS chars.
+  private whitespaceBuffer = ''
   private tokens: Token[] = []
 
   constructor(private input: string) {
@@ -85,10 +90,13 @@ class Lexer {
 
       // Whitespace (not newline) — expanded to full HOCON_WS set per spec §Whitespace
       if (isHoconWhitespace(ch)) {
+        this.whitespaceBuffer += ch
         this.advance(); this.hadSpace = true; continue
       }
 
-      // Comments
+      // Comments — set hadSpace but do NOT accumulate comment text into the
+      // whitespace buffer (only literal WS chars participate in path-WS
+      // preservation per E13).
       if (ch === '/' && this.peek(1) === '/') {
         while (this.pos < this.input.length && this.peek() !== '\n') this.advance()
         this.hadSpace = true; continue
@@ -196,7 +204,7 @@ class Lexer {
       throw new ParseError(`unexpected character: ${JSON.stringify(ch)}`, sl, sc)
     }
 
-    this.tokens.push({ kind: 'eof', value: '', line: this.line, col: this.col, isQuoted: false, precedingSpace: false })
+    this.tokens.push({ kind: 'eof', value: '', line: this.line, col: this.col, isQuoted: false, precedingSpace: false, precedingWhitespace: '' })
     return this.tokens
   }
 
@@ -209,13 +217,15 @@ class Lexer {
   }
 
   private push(kind: TokenKind, value: string, l: number, c: number, isQuoted = false): void {
-    this.tokens.push({ kind, value, line: l, col: c, isQuoted, precedingSpace: this.hadSpace })
+    this.tokens.push({ kind, value, line: l, col: c, isQuoted, precedingSpace: this.hadSpace, precedingWhitespace: this.whitespaceBuffer })
     this.hadSpace = false
+    this.whitespaceBuffer = ''
   }
 
   private pushSubst(payload: SubstPayload, value: string, l: number, c: number): void {
-    this.tokens.push({ kind: 'subst', value, line: l, col: c, isQuoted: false, precedingSpace: this.hadSpace, subst: payload })
+    this.tokens.push({ kind: 'subst', value, line: l, col: c, isQuoted: false, precedingSpace: this.hadSpace, precedingWhitespace: this.whitespaceBuffer, subst: payload })
     this.hadSpace = false
+    this.whitespaceBuffer = ''
   }
 
   /**

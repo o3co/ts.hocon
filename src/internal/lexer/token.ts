@@ -28,5 +28,11 @@ export type Token = {
   col: number
   isQuoted: boolean       // true for "..." and """..."""
   precedingSpace: boolean // true if preceded by whitespace (concat detection)
+  // Literal preceding-whitespace chars consumed since the previous token.
+  // Used by parseKey to preserve path-expression whitespace per E13 — for
+  // `a b. c = 1` the ' ' before `c` becomes a leading-space prefix on the
+  // post-dot segment. precedingSpace === (precedingWhitespace.length > 0)
+  // is invariant; both fields are kept for clarity at call sites.
+  precedingWhitespace: string
   subst?: SubstPayload    // populated only when kind === 'subst'
 }
