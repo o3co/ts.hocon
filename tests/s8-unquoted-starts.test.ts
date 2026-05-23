@@ -107,10 +107,12 @@ describe('S8.6 — unquoted-starts conformance (post-E8 amendment)', () => {
     expect(() => parse('x = ${-foo}')).toThrow(ParseError)
   })
 
-  // Dotted key path segment rule: lexer sees `a.-foo` as a single unquoted
-  // token; parseKey splits on `.` and validates each segment.
-  it('S8.6 in key path: a.-foo = 1 is rejected (segment-level rule)', () => {
-    expect(() => parse('a.-foo = 1')).toThrow(ParseError)
+  // E13 amendment (xx.hocon#42): S8.6 is NOT enforced on key path segments.
+  // The rule is value-position lexer-disambiguation; key paths are governed by
+  // path-element parsing rules. Lightbend accepts `a.-foo = 1` verbatim per the
+  // kh07 fixture (xx.hocon path-expr-whitespace/key-hyphen-position/).
+  it('E13: S8.6 in key path: a.-foo = 1 is accepted (was rejected pre-E13)', () => {
+    expect(parse('a.-foo = 1').toObject()).toEqual({ a: { '-foo': 1 } })
   })
 
   // Regression guard: parseSubstBody S8.6 check must fire only at segment
