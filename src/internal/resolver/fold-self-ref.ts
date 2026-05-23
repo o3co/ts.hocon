@@ -24,9 +24,11 @@
  * as `priorValues[key]` against the OLD prior, so by induction every saved
  * prior is self-ref-free.
  *
- * Scope: walks SubstPlaceholder / ConcatPlaceholder / HoconValue array /
- * HoconValue object / ResObj recursively. This is the union of the #118
- * (Subst/Concat patterns) and #120 (array-element / object-field patterns).
+ * Scope: walks SubstPlaceholder / ConcatPlaceholder / AppendPlaceholder /
+ * HoconValue array / HoconValue object / ResObj recursively. Covers the
+ * union of #118 (Subst/Concat patterns), #120 (array-element /
+ * object-field patterns), and #131 round-2 (Append-wrapped self-refs
+ * introduced by mixed `${a}` + `+=` chains).
  */
 
 import type { HoconValue } from '../../value.js'
@@ -298,7 +300,7 @@ export function foldNestedSelfRefs(v: ResolverValue, pathPrefix: string[]): Reso
  * Cross-impl note: rs.hocon used path equality already; ts.hocon's pre-fix
  * `resolvingConcats` mechanism was pointer-identity. This helper preserves
  * the pre-#120 single-Concat detection and widens the scope to Concat /
- * array / object / ResObj interiors. */
+ * Append / array / object / ResObj interiors. */
 export function containsSubstByPath(v: ResolverValue, target: Segment[]): boolean {
   if (isSubst(v)) return segmentsTextEqual(v.segments, target)
   if (isConcat(v)) return v.nodes.some(n => containsSubstByPath(n, target))
