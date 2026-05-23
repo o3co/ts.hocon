@@ -13,6 +13,7 @@ import {
   makeResObj,
 } from './types.js'
 import {
+  cloneResolverValue,
   foldNestedSelfRefs,
   foldOrSkipPrior,
   stringSegmentsToKey,
@@ -97,14 +98,33 @@ export class StructureBuilder {
       // +=: append elem to existing array (or start from [])
       const existing: ResolverValue = obj.fields.get(head) ?? ({ kind: 'array', items: [] } satisfies HoconValue)
       // #118 + #120 cross-impl: fold self-references in `existing` against
-      // the OLD prior so the recorded prior is self-ref-free. Chain
-      // invariant: by induction every saved prior contains no `${fullKey}`.
+      // the OLD prior so:
+      //  (a) the recorded priorValues[head] is self-ref-free (chain invariant)
+      //  (b) the Append's `existing` field (consumed at resolve time by
+      //      resolveAppend) does not pick up the polluted priorValues[head]
+      //      we are about to overwrite. Without this, mixed `${a}` + `+=`
+      //      chains produce wrong values: the unresolved ${a} inside the
+      //      Append's existing would resolve against the NEW prior at
+      //      resolve time, not the prior-at-save-time semantics required
+      //      by the += desugar `a = ${?a} [b]`.
       const oldPrior = obj.priorValues.get(head)
-      const prior = foldOrSkipPrior(existing, fullKey, oldPrior)
-      if (prior !== undefined) obj.priorValues.set(head, prior)
+      const folded = foldOrSkipPrior(existing, fullKey, oldPrior)
+      if (folded !== undefined) obj.priorValues.set(head, folded)
       obj.fields.set(head, {
         _kind: 'append-placeholder',
-        existing,
+        // Use the folded existing (self-ref-free) for the Append. When the
+        // fold returned undefined (self-ref present but no old prior),
+        // fall back to the original existing — resolveSubst will then
+        // raise the "self-ref with no prior value" error at resolve time,
+        // matching the pre-fix behaviour for that edge case.
+        //
+        // Clone `folded` again so the Append.existing and priorValues[head]
+        // do not share the same Subst/Concat references — relativizeResObj
+        // walks BOTH `fields` and `priorValues` and mutates Subst.segments
+        // in place, so a shared reference would get its prefix applied
+        // twice (resulting in e.g. `${outer.outer.base}` instead of
+        // `${outer.base}`). Codex review on PR #131.
+        existing: folded !== undefined ? cloneResolverValue(folded) : existing,
         elem: this.astToResolverValue(field.value, childPrefix),
       })
       return
@@ -173,11 +193,11 @@ export class StructureBuilder {
     if (field.append) {
       const existing: ResolverValue = obj.fields.get(head) ?? ({ kind: 'array', items: [] } satisfies HoconValue)
       const oldPrior = obj.priorValues.get(head)
-      const prior = foldOrSkipPrior(existing, fullKey, oldPrior)
-      if (prior !== undefined) obj.priorValues.set(head, prior)
+      const folded = foldOrSkipPrior(existing, fullKey, oldPrior)
+      if (folded !== undefined) obj.priorValues.set(head, folded)
       obj.fields.set(head, {
         _kind: 'append-placeholder',
-        existing,
+        existing: folded !== undefined ? cloneResolverValue(folded) : existing,
         elem: await this.astToResolverValueAsync(field.value, childPrefix),
       })
       return

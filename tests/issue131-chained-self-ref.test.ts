@@ -233,6 +233,68 @@ r { include "inc.conf" }`,
     }
   })
 
+  it('mixed ${a} substitution and += append chain', () => {
+    // Surfaced by Claude review on PR #131 — the Append walker / AppendPlaceholder
+    // wrapping shape had been omitted from the original fold scope (containsSelfRef
+    // / foldSelfRef / containsSubstByPath / foldNestedSelfRefs walked Subst /
+    // Concat / array / object / ResObj only). Empirical pre-fix output for this
+    // exact input was `["init","x","y","y","z","y","z"]` (duplicated "y" because
+    // the Append's `existing` retained an unfolded ${a} that resolved against
+    // the post-overwrite priorValues at step-4 resolve time).
+    const c = parse(`
+a = ["init"]
+a += "x"
+a = \${a} ["y"]
+a += "z"
+`)
+    expect(c.getList('a')).toEqual(['init', 'x', 'y', 'z'])
+  })
+
+  it('nested include relativization with substitution in priorValues', () => {
+    // Codex review on PR #131 — Subst/Concat are mutated in place by
+    // relativizeResObj, which walks BOTH `fields` AND `priorValues`. A
+    // shared Subst reference (e.g. cloneResolverValue passing through the
+    // same Subst by reference) would get its prefix applied twice. Forces
+    // cloneResolverValue to structurally copy Subst.segments and Concat.nodes
+    // when used for prior-save.
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'issue131-relativize-'))
+    try {
+      fs.writeFileSync(
+        path.join(dir, 'inner.conf'),
+        `base = [1]
+items = \${base}
+items += 2`,
+      )
+      const parent = path.join(dir, 'parent.conf')
+      fs.writeFileSync(parent, `outer { include "inner.conf" }`)
+      const c = parseFile(parent)
+      expect(c.getList('outer.base')).toEqual([1])
+      expect(c.getList('outer.items')).toEqual([1, 2])
+    } finally {
+      fs.rmSync(dir, { recursive: true })
+    }
+  })
+
+  it('long-form ${a} followed by repeated +=', () => {
+    // Codex review on PR #131 — stresses the Append walker scope. The prior
+    // saved at step-3 is the step-2 Concat[${a}, [1]] (folded against
+    // step-1's [0]). At step-3 `a += 2`, the new Append's existing is the
+    // step-2 Concat — but our structure-builder change folds that against
+    // the prior, so the Append.existing is self-ref-free. Then at step-4
+    // `a += 3`, the prior is folded again. Without Append branches in
+    // containsSelfRef / foldSelfRef / containsSubstByPath, the step-4 save
+    // would treat the Append-typed dst as no-self-ref (incorrect — its
+    // .existing contains nothing self-ref at this point, but if it did,
+    // the walker would miss it).
+    const c = parse(`
+a = [0]
+a = \${a} [1]
+a += 2
+a += 3
+`)
+    expect(c.getList('a')).toEqual([0, 1, 2, 3])
+  })
+
   it('mixed concat/array chain (concat → array-element)', () => {
     // step 2 uses concat-substitution (#131 path); step 3 uses array-element
     // substitution (#120-equivalent path).

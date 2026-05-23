@@ -32,20 +32,24 @@
 import type { HoconValue } from '../../value.js'
 import type { Segment } from '../lexer/token.js'
 import {
+  type AppendPlaceholder,
   type ConcatPlaceholder,
   type ResolverValue,
   type SubstPlaceholder,
+  isAppend,
   isConcat,
   isResObj,
   isSubst,
 } from './types.js'
-import { segmentsToKey } from './utils.js'
 
 /** Dotted-path key of a substitution placeholder's segments. Already
  * relativized at this point if the placeholder lives inside an included
- * file under a nested path prefix. */
+ * file under a nested path prefix.
+ *
+ * Implemented inline (not via utils.segmentsToKey) to avoid a circular
+ * import — utils.ts depends on this module for foldOrSkipPrior. */
 export function substFullKey(s: SubstPlaceholder): string {
-  return segmentsToKey(s.segments)
+  return stringSegmentsToKey(s.segments.map(seg => seg.text))
 }
 
 /** Same quoting/escaping rules as `segmentsToKey` but for string segments
@@ -64,12 +68,15 @@ export function stringSegmentsToKey(segments: string[]): string {
 }
 
 /** Returns true if `v` contains at least one `Subst` whose dotted-path key
- * equals `fullKey`. Walks Subst / Concat / ResObj / HoconValue array /
- * HoconValue object — all five wrapping shapes covered by the #118/#120
- * union. */
+ * equals `fullKey`. Walks Subst / Concat / Append / ResObj / HoconValue
+ * array / HoconValue object — all six wrapping shapes that can carry a
+ * substitution placeholder post-parse. */
 export function containsSelfRef(v: ResolverValue, fullKey: string): boolean {
   if (isSubst(v)) return substFullKey(v) === fullKey
   if (isConcat(v)) return v.nodes.some(n => containsSelfRef(n, fullKey))
+  if (isAppend(v)) {
+    return containsSelfRef(v.existing, fullKey) || containsSelfRef(v.elem, fullKey)
+  }
   if (isResObj(v)) {
     for (const f of v.fields.values()) {
       if (containsSelfRef(f, fullKey)) return true
@@ -109,6 +116,13 @@ export function foldSelfRef(
       line: v.line,
       col: v.col,
     } satisfies ConcatPlaceholder
+  }
+  if (isAppend(v)) {
+    return {
+      _kind: 'append-placeholder',
+      existing: foldSelfRef(v.existing, fullKey, replacement),
+      elem: foldSelfRef(v.elem, fullKey, replacement),
+    } satisfies AppendPlaceholder
   }
   if (isResObj(v)) {
     const newFields = new Map<string, ResolverValue>()
@@ -170,12 +184,44 @@ export function foldOrSkipPrior(
 }
 
 /** Deep-clone a ResolverValue. Used at prior-save sites so subsequent
- * in-place mutation of the source tree (e.g. by `deepMergeResObjInto`)
- * does not leak into the saved prior. Immutable variants (Subst / Concat /
- * Append / scalar HoconValue) share their original references; ResObj,
- * HoconValue array, and HoconValue object get fresh containers. */
+ * in-place mutation of the source tree does not leak into the saved
+ * prior. The mutation hazards this guards against:
+ *
+ *   - `deepMergeResObjInto` mutates `ResObj.fields` / `priorValues` maps
+ *     when the both-objects branch recurses. Without ResObj cloning, the
+ *     saved prior would reflect post-merge state.
+ *   - `StructureBuilder.relativizeSubstPaths` mutates `SubstPlaceholder.
+ *     segments` and `prefixLen` in place when an included file is
+ *     mounted into a nested path. Because `relativizeResObj` walks BOTH
+ *     `fields` AND `priorValues`, a shared `Subst` reference between the
+ *     two would get its prefix applied twice. So `Subst` and `Concat`
+ *     also need structural copies — their identity is observable to
+ *     resolver state (`resolvingConcats` WeakSet membership) but the
+ *     prior-save tree is a separate identity from the fields tree
+ *     anyway, so cloning is safe.
+ *
+ * Scalar HoconValue (the only truly immutable variant) shares its
+ * reference. */
 export function cloneResolverValue(v: ResolverValue): ResolverValue {
-  if (isSubst(v) || isConcat(v)) return v
+  if (isSubst(v)) {
+    return {
+      _kind: 'subst-placeholder',
+      segments: v.segments.map(seg => ({ text: seg.text, line: seg.line, col: seg.col })),
+      optional: v.optional,
+      listSuffix: v.listSuffix,
+      line: v.line,
+      col: v.col,
+      prefixLen: v.prefixLen,
+    } satisfies SubstPlaceholder
+  }
+  if (isConcat(v)) {
+    return {
+      _kind: 'concat-placeholder',
+      nodes: v.nodes.map(n => cloneResolverValue(n)),
+      line: v.line,
+      col: v.col,
+    } satisfies ConcatPlaceholder
+  }
   if (isResObj(v)) {
     const newFields = new Map<string, ResolverValue>()
     for (const [k, val] of v.fields) newFields.set(k, cloneResolverValue(val))
@@ -183,14 +229,12 @@ export function cloneResolverValue(v: ResolverValue): ResolverValue {
     for (const [k, val] of v.priorValues) newPriors.set(k, cloneResolverValue(val))
     return { _kind: 'res-obj', fields: newFields, priorValues: newPriors }
   }
-  // AppendPlaceholder: clone existing + elem (could be mutable ResObjs)
-  if ((v as { _kind?: string })._kind === 'append-placeholder') {
-    const a = v as { _kind: 'append-placeholder'; existing: ResolverValue; elem: ResolverValue }
+  if (isAppend(v)) {
     return {
       _kind: 'append-placeholder',
-      existing: cloneResolverValue(a.existing),
-      elem: cloneResolverValue(a.elem),
-    } as ResolverValue
+      existing: cloneResolverValue(v.existing),
+      elem: cloneResolverValue(v.elem),
+    } satisfies AppendPlaceholder
   }
   const hv = v as HoconValue
   if (hv.kind === 'array') {
@@ -258,6 +302,9 @@ export function foldNestedSelfRefs(v: ResolverValue, pathPrefix: string[]): Reso
 export function containsSubstByPath(v: ResolverValue, target: Segment[]): boolean {
   if (isSubst(v)) return segmentsTextEqual(v.segments, target)
   if (isConcat(v)) return v.nodes.some(n => containsSubstByPath(n, target))
+  if (isAppend(v)) {
+    return containsSubstByPath(v.existing, target) || containsSubstByPath(v.elem, target)
+  }
   if (isResObj(v)) {
     for (const f of v.fields.values()) {
       if (containsSubstByPath(f, target)) return true
