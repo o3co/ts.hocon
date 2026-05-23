@@ -220,6 +220,16 @@ class Parser {
             segments[segments.length - 1] = `${segments[segments.length - 1]}${head}`
             segments.push(...tail)
           }
+        } else if (postDotPrefix !== '' && raw.startsWith('.')) {
+          // E13 dot-WS-dot case (e.g. `a. .b = 1`): after a trailing dot from
+          // the previous token, the WS-then-dot sequence means the WS becomes
+          // its OWN path segment (between the two dot separators), and the
+          // leading dot starts a new segment chain. Lightbend: `a. .b = 1` →
+          // {"a":{" ":{"b":1}}} = ['a', ' ', 'b']. Empirically verified via
+          // typesafe-config 1.4.3 probe (see PR review history).
+          segments.push(postDotPrefix)
+          postDotPrefix = ''
+          segments.push(...filtered)
         } else if (postDotPrefix !== '' && filtered.length > 0) {
           // post-dot WS becomes leading prefix on the new segment (E13)
           const [head, ...tail] = filtered

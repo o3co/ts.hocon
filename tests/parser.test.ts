@@ -462,6 +462,30 @@ describe('spec compliance Phase 2 — concatenation, paths, and +=', () => {
     expect(b.fields[0]!.key).toEqual(['a.b ', 'c'])
   })
 
+  it('E13: dot-WS-dot — WS between two dot separators becomes its own segment', () => {
+    // `a. .b = 1` → ['a', ' ', 'b'] per E13: the trailing dot from `a.` AND the
+    // leading dot from `.b` are both separators; the whitespace between them
+    // is preserved verbatim as a single-char path segment. Lightbend probe
+    // (typesafe-config 1.4.3): `{"a":{" ":{"b":1}}}`.
+    // Convergent Codex P2 finding on the initial PR — must-fix per
+    // multi-agent-review empirical verification.
+    const a = parse('a. .b = 1')
+    if (a.kind !== 'object') throw new Error('expected object')
+    expect(a.fields[0]!.key).toEqual(['a', ' ', 'b'])
+
+    // Same principle with leading space-concat: `a b. .c = 1` → ['a b', ' ', 'c'].
+    const b = parse('a b. .c = 1')
+    if (b.kind !== 'object') throw new Error('expected object')
+    expect(b.fields[0]!.key).toEqual(['a b', ' ', 'c'])
+  })
+
+  it('E13: trailing dot after dot-WS-dot still rejects via post-loop guard', () => {
+    // `a. . = 1` would produce ['a', ' '] with trailingDot=true (the second `.`
+    // has no following segment); the post-loop guard rejects. Lightbend probe:
+    // BadPath. Boundary case complementing pw06.
+    expect(() => parse('a. . = 1')).toThrow(/trailing period/)
+  })
+
   // --- S11.4: 10.0foo → path [10, 0foo] ------------------------------------
   it('S11.4: 10.0foo is parsed as two-element path [10, 0foo] (spec L496)', () => {
     const node = parse('10.0foo = 2')
