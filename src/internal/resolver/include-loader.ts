@@ -195,7 +195,11 @@ export class IncludeLoader {
     for (const ext of probeExts) {
       const obj = this.loadSingle(`${absPath}${ext}`)
       if (obj !== undefined) {
-        deepMergeResObjInto(merged, obj)
+        // Extension-probe merge: substitutions inside an included file are
+        // still file-local at this stage (relativization happens at the
+        // caller side after the file-group merges complete). Pass empty
+        // prefix so fold uses bare-leaf keys.
+        deepMergeResObjInto(merged, obj, [])
         foundAny = true
       }
     }
@@ -236,7 +240,11 @@ export class IncludeLoader {
     for (const ext of probeExts) {
       const obj = await this.loadSingleAsync(`${absPath}${ext}`)
       if (obj !== undefined) {
-        deepMergeResObjInto(merged, obj)
+        // Extension-probe merge: substitutions inside an included file are
+        // still file-local at this stage (relativization happens at the
+        // caller side after the file-group merges complete). Pass empty
+        // prefix so fold uses bare-leaf keys.
+        deepMergeResObjInto(merged, obj, [])
         foundAny = true
       }
     }

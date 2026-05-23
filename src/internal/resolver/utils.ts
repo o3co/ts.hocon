@@ -1,5 +1,6 @@
 import type { HoconValue } from '../../value.js'
 import type { Segment } from '../lexer/token.js'
+import { foldOrSkipPrior, stringSegmentsToKey } from './fold-self-ref.js'
 import {
   type ResObj,
   type ResolverValue,
@@ -57,13 +58,36 @@ export function deepMergeHoconValues(
   return { kind: 'object', fields: merged }
 }
 
-export function deepMergeResObjInto(dst: ResObj, src: ResObj): void {
+export function deepMergeResObjInto(dst: ResObj, src: ResObj, pathPrefix: string[] = []): void {
   for (const [k, srcVal] of src.fields) {
+    // Full dotted path of this field (`pathPrefix + k`). The fold uses this
+    // so a self-reference `${fullKey}` (e.g. `${r.x}` while merging inside
+    // an `r` object) is correctly detected — the pre-fix code used bare
+    // leaf `k` and missed full-key self-refs, causing chain-length-≥3
+    // dotted-form chains (`r.x = ${r.x} [...]` × N) to overflow the stack
+    // at resolve time. Cross-impl with rs.hocon v1.5.1 path-aware deep_merge.
+    const childPrefix = [...pathPrefix, k]
+    const fullKey = stringSegmentsToKey(childPrefix)
     const dstVal = dst.fields.get(k)
     if (dstVal !== undefined && isResObj(dstVal) && isResObj(srcVal)) {
-      deepMergeResObjInto(dstVal, srcVal)
+      // #120 cross-impl: save dst's pre-merge value as the prior at the
+      // OUTER level even when both sides are objects and we recurse —
+      // otherwise a `${k}` in the merged result (e.g. `o = { history =
+      // ${o}, v = 2 }` included into a parent `o = { v = 1 }`) has no
+      // lookback target.
+      const priorExisting = dst.priorValues.get(k)
+      const prior = foldOrSkipPrior(dstVal, fullKey, priorExisting)
+      if (prior !== undefined) dst.priorValues.set(k, prior)
+      deepMergeResObjInto(dstVal, srcVal, childPrefix)
     } else {
-      if (dstVal !== undefined) dst.priorValues.set(k, dstVal)
+      if (dstVal !== undefined) {
+        // Fold-or-skip discipline: when the displaced dst value contains
+        // a self-ref to its full key, fold against the previous prior so
+        // the saved prior is self-ref-free.
+        const priorExisting = dst.priorValues.get(k)
+        const prior = foldOrSkipPrior(dstVal, fullKey, priorExisting)
+        if (prior !== undefined) dst.priorValues.set(k, prior)
+      }
       dst.fields.set(k, srcVal)
     }
   }

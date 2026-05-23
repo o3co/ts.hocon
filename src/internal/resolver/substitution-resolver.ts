@@ -14,6 +14,7 @@ import {
   type SubstPlaceholder,
   separatorValues,
 } from './types.js'
+import { containsSubstByPath } from './fold-self-ref.js'
 import {
   deepMergeHoconValues,
   lookupPath,
@@ -37,6 +38,23 @@ export class SubstitutionResolver {
   // narrower than path-equality. Spec amendment deferred to a follow-up
   // xx.hocon PR (see Phase 6 #3f close-out notes).
   private resolvingConcats = new WeakSet<object>()
+  // Path stack tracking the full dotted path of the field currently being
+  // assigned in `resolveResObj`. Leaf keys are pushed on entry to each
+  // `(key, val)` iteration and popped on exit, so nested objects build up
+  // the full path (e.g. `["o", "history"]` while resolving `o.history`).
+  //
+  // Used to tighten self-ref detection at the L192 found-lookup site:
+  // a substitution `${X}` whose looked-up value contains a Subst pointing
+  // at `X` is only a true self-reference when the field currently being
+  // assigned is `X` (or a descendant of `X`). Without this guard, an
+  // external lookup like `b = ${o}` (where o has a self-referential
+  // field) would mis-fire and short-circuit to o's prior, returning the
+  // wrong value for b. The is_owner gate (rfp prefix-matches s.segments)
+  // narrows the check to the owner case only.
+  //
+  // Cross-impl with rs.hocon v1.5.1's resolving_field_path (same purpose,
+  // same prefix-match semantics).
+  private resolvingFieldPath: string[] = []
 
   constructor(
     private root: ResObj,
@@ -55,7 +73,13 @@ export class SubstitutionResolver {
   private resolveResObj(obj: ResObj): HoconValue {
     const result = new Map<string, HoconValue>()
     for (const [key, val] of obj.fields) {
-      const resolved = this.resolveVal(val, obj)
+      this.resolvingFieldPath.push(key)
+      let resolved: HoconValue | undefined
+      try {
+        resolved = this.resolveVal(val, obj)
+      } finally {
+        this.resolvingFieldPath.pop()
+      }
       if (resolved !== undefined) {
         // Delayed merge: if both current and prior resolve to objects, deep merge
         if (resolved.kind === 'object') {
@@ -189,7 +213,27 @@ export class SubstitutionResolver {
         // resolveVal(found) proceeds normally and the cycle guard inside handles any
         // internal self-ref correctly.  This is the multi-reviewer convergence fix
         // (go.hocon + rs.hocon independently flagged the regression).
-        if (isConcat(found) && this.resolvingConcats.has(found)) {
+        // #120-equivalent widening: the pre-fix check only fired when `found`
+        // was a ConcatPlaceholder currently mid-iteration. For value-interior
+        // self-references (array element or object field-value, e.g.
+        // `a = [${a}, "x"]` or `o = { history = ${o}, v = 2 }`), `found` is
+        // a HoconValue array or a ResObj — not a Concat — so the pre-fix
+        // check missed them and the resolver fell through to resolveVal(found),
+        // which recursively re-entered the same value and overflowed the
+        // stack. The widening adds a path-based check (is_owner gate + walk
+        // through Subst / Concat / array / object / ResObj for the same
+        // target segments) that fires for any wrapping shape. The is_owner
+        // gate preserves the Phase 6 #3f false-positive guard: only fire
+        // when the field currently being resolved IS the substitution's
+        // target (or a descendant). Cross-impl with rs.hocon v1.5.1.
+        const rfp = this.resolvingFieldPath
+        const isOwner =
+          rfp.length >= s.segments.length &&
+          s.segments.every((seg, i) => rfp[i] === seg.text)
+        const isSelfRef =
+          (isConcat(found) && this.resolvingConcats.has(found)) ||
+          (isOwner && containsSubstByPath(found, s.segments))
+        if (isSelfRef) {
           let prior: ResolverValue | undefined
           if (s.segments.length > 1) {
             const leafSeg = s.segments[s.segments.length - 1]?.text ?? ''
