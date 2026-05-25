@@ -62,6 +62,9 @@ const SUCCESS_FIXTURES = [
   'ev10-empty-string-element',
   'ev11-include-context',
   'ev12b-list-suffix-suppresses-scalar-fallback-optional',
+  // ev12c: cross-source ${X[]} config wins over env-var list (S14c.2 + E6).
+  // No .env sidecar — routes through native Lightbend 1.4.6 path (Decision 4, xx.hocon#22).
+  'ev12c-include-config-defined-wins',
   'ev13-optional-list-direct',
 ]
 

@@ -529,8 +529,11 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
   tests: tests/resolver.test.ts:403
   status: ✅
 - **S14c.2** Original (non-relativized) path also tried as fallback — §Include semantics: substitution (L1048)
-  tests: tests/resolver.test.ts:421
+  tests: tests/resolver.test.ts:453 (S14c.2: relativized substitution falls back to original-path config)
   status: ✅
+  note: Previously mis-classified — resolver.test.ts:421 ('relativizes substitution paths at single nesting
+        level') tests S14c.1 relativization (inner-scope lookup hits), not S14c.2 fallback (inner-scope
+        lookup misses, falls back to original path). Fixed in xx.hocon#22 C4 (2026-05-26).
 
 ### S14d. Include semantics: missing / required
 
