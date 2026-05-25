@@ -325,6 +325,50 @@ export class SubstitutionResolver {
         return result
       }
 
+      // S14c.2 (xx.hocon#22 C4): original-path config fallback for relativized substitutions.
+      //
+      // When a substitution inside an included file references an ancestor-scope variable
+      // that doesn't exist at the relativized path, try the ORIGINAL (non-relativized) path
+      // against the merged root. This matches Lightbend's "resolve against the fully merged
+      // tree" behaviour — included files see ancestor variables that don't exist at the
+      // include's prefix scope.
+      //
+      // Tried only after the relativized lookup misses, so the relativized path still wins
+      // when both exist. Tried BEFORE env-var fallback so config values take precedence over
+      // env vars (matching Lightbend 1.4.6 ResolveSource.java:100-130 ordering).
+      //
+      // Delayed-merge mirror: when the fallback resolves to an Object AND the original path
+      // is single-segment AND root has a prior value for that segment, deep-merge prior +
+      // current — same rule the primary lookup applies (lines 286-323 above). Without this,
+      // `y = { a: 1 }; y = ${z}; z = { b: 2 }; bar { include "..." }` where inner does
+      // `ref = ${y}` would yield `bar.ref = { b: 2 }` via the fallback while `y` at root
+      // would yield `{ a: 1, b: 2 }` — a silent divergence. See R2 in cluster spec §8.
+      //
+      // Ported from rs.hocon substitution_resolver.rs:443-493 (rs.hocon#44 / PR #117).
+      if (s.prefixLen > 0 && s.segments.length > s.prefixLen) {
+        const originalSegments = s.segments.slice(s.prefixLen)
+        const fallbackFound = lookupPath(this.root, originalSegments)
+        if (fallbackFound !== undefined) {
+          let result = this.resolveVal(fallbackFound, scope)
+          // Delayed-merge mirror: single-segment original path + root object → deep merge prior.
+          if (originalSegments.length === 1 && result !== undefined && result.kind === 'object') {
+            const rootSeg = originalSegments[0]?.text ?? ''
+            const prior = this.root.priorValues.get(rootSeg)
+            if (prior !== undefined) {
+              const priorResolved = this.resolveVal(prior, scope)
+              if (priorResolved !== undefined && priorResolved.kind === 'object') {
+                result = deepMergeHoconValues(
+                  priorResolved as HoconValue & { kind: 'object' },
+                  result as HoconValue & { kind: 'object' },
+                )
+              }
+            }
+          }
+          if (result !== undefined) this.cache.set(key, result)
+          return result
+        }
+      }
+
       // S13c: env-var list expansion — gated on useSystemEnvironment (E12 gate)
       if (s.listSuffix && this.opts.useSystemEnvironment !== false) {
         const result = this.resolveEnvList(s)

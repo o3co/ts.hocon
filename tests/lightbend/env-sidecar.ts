@@ -5,7 +5,7 @@
 // No quoting, no escape sequences, no multi-line values.
 // Returns a Record<string, string> suitable for passing as parse(input, { env }).
 
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 
 /**
  * Parse a `.env` sidecar file and return a flat env-var map.
@@ -19,6 +19,9 @@ import { readFileSync } from 'node:fs'
  *   (no stripping — empty-string values like `KEY=` produce `""`).
  */
 export function parseEnvSidecar(path: string): Record<string, string> {
+  // Allow missing sidecar: fixtures with no .env sidecar (e.g. ev12c-include-config-defined-wins)
+  // route through the native Lightbend path and have no env vars to inject.
+  if (!existsSync(path)) return {}
   const text = readFileSync(path, 'utf-8')
   const result: Record<string, string> = {}
   for (const raw of text.split('\n')) {

@@ -488,8 +488,8 @@ describe('Resolver - include substitution relativization', () => {
     if (outer?.kind !== 'object') throw new Error('expected outer to be object')
     const mylist = outer.fields.get('mylist')
     if (mylist?.kind !== 'array') throw new Error('expected mylist to be array')
-    expect(mylist.elements).toHaveLength(1)
-    expect(mylist.elements[0]).toEqual({ kind: 'scalar', raw: 'root-val', valueType: 'string' })
+    expect(mylist.items).toHaveLength(1)
+    expect(mylist.items[0]).toEqual({ kind: 'scalar', raw: 'root-val', valueType: 'string' })
   })
 })
 
