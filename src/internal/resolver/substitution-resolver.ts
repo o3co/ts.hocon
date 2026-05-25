@@ -14,7 +14,7 @@ import {
   type SubstPlaceholder,
   separatorValues,
 } from './types.js'
-import { containsSubstByPath } from './fold-self-ref.js'
+import { containsSubstByPath, stringSegmentsToKey } from './fold-self-ref.js'
 import {
   deepMergeHoconValues,
   lookupPath,
@@ -74,7 +74,7 @@ export class SubstitutionResolver {
     const result = new Map<string, HoconValue>()
     for (const [key, val] of obj.fields) {
       this.resolvingFieldPath.push(key)
-      const fullCacheKey = this.resolvingFieldPath.join('.')
+      const fullCacheKey = stringSegmentsToKey(this.resolvingFieldPath)
       this.cache.delete(fullCacheKey)
       let resolved: HoconValue | undefined
       try {
@@ -125,7 +125,7 @@ export class SubstitutionResolver {
   private cacheDescendants(prefix: string, value: HoconValue): void {
     if (value.kind !== 'object') return
     for (const [key, child] of value.fields) {
-      const childKey = `${prefix}.${key}`
+      const childKey = `${prefix}.${stringSegmentsToKey([key])}`
       this.cache.set(childKey, child)
       this.cacheDescendants(childKey, child)
     }
