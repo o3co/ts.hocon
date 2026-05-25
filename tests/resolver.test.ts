@@ -1227,3 +1227,27 @@ describe('S13a.13: self-ref look-back no-prior short-circuit (spec L841, #84)', 
     expect(obj(r).get('b')).toEqual({ kind: 'scalar', raw: 'foo', valueType: 'string' })
   })
 })
+
+// Regression: dotted-key cache collision between quoted field keys and substitution paths.
+// resolvingFieldPath.join('.') produced 'a.b' for a quoted field whose Map key is 'a.b'
+// (a single key with a literal dot). This collided with segmentsToKey for ${a.b}
+// (two-segment path a → b), causing ${a.b} to return the quoted field's cached value
+// instead of walking the nested path. Fix: use stringSegmentsToKey(resolvingFieldPath)
+// for fullCacheKey so keys containing dots are quoted ('"a.b"' vs 'a.b').
+// Ref: PR #136 must-fix item 2 (Codex P2 + Claude Minor — multi-reviewer convergence).
+describe('Resolver — dotted-key cache-key disambiguation (PR #136 regression)', () => {
+  it('"a.b" field after nested a.b — ${a.b} resolves nested path', () => {  // eslint-disable-line no-template-curly-in-string
+    const r = resolveStr('a.b = "nested"\n"a.b" = "quoted"\nc = ${a.b}')  // eslint-disable-line no-template-curly-in-string
+    expect(obj(r).get('c')).toEqual({ kind: 'scalar', raw: 'nested', valueType: 'string' })
+  })
+
+  it('"a.b" field before nested a.b — ${a.b} resolves nested path', () => {  // eslint-disable-line no-template-curly-in-string
+    const r = resolveStr('"a.b" = "quoted"\na.b = "nested"\nc = ${a.b}')  // eslint-disable-line no-template-curly-in-string
+    expect(obj(r).get('c')).toEqual({ kind: 'scalar', raw: 'nested', valueType: 'string' })
+  })
+
+  it('${"a.b"} resolves quoted key, not nested path', () => {
+    const r = resolveStr('"a.b" = "quoted"\na.b = "nested"\nc = ${"a.b"}')
+    expect(obj(r).get('c')).toEqual({ kind: 'scalar', raw: 'quoted', valueType: 'string' })
+  })
+})

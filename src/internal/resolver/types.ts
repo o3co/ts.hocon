@@ -6,6 +6,8 @@ export type SubstPlaceholder = {
   _kind: 'subst-placeholder'
   segments: Segment[]
   optional: boolean
+  /** Internal sentinel for a folded optional self-ref with no prior value. */
+  knownAbsent: boolean
   listSuffix: boolean  // true when the substitution ends with '[]' (S13c)
   line: number
   col: number

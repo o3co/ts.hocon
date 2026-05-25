@@ -142,9 +142,9 @@ export class StructureBuilder {
     // inner self-refs against each level's priorValues before the outer
     // save site does its full-key fold-or-skip.
     if (existing !== undefined) {
-      const exFolded = foldNestedSelfRefs(existing, childPrefix)
       const oldPrior = obj.priorValues.get(head)
-      const prior = foldOrSkipPrior(exFolded, fullKey, oldPrior)
+      const priorInput = isResObj(existing) ? foldNestedSelfRefs(existing, childPrefix) : existing
+      const prior = foldOrSkipPrior(priorInput, fullKey, oldPrior)
       if (prior !== undefined) obj.priorValues.set(head, prior)
     }
 
@@ -207,9 +207,9 @@ export class StructureBuilder {
     const newVal = await this.astToResolverValueAsync(field.value, childPrefix)
 
     if (existing !== undefined) {
-      const exFolded = foldNestedSelfRefs(existing, childPrefix)
       const oldPrior = obj.priorValues.get(head)
-      const prior = foldOrSkipPrior(exFolded, fullKey, oldPrior)
+      const priorInput = isResObj(existing) ? foldNestedSelfRefs(existing, childPrefix) : existing
+      const prior = foldOrSkipPrior(priorInput, fullKey, oldPrior)
       if (prior !== undefined) obj.priorValues.set(head, prior)
     }
 
@@ -235,7 +235,7 @@ export class StructureBuilder {
         return inner
       }
       case 'subst':
-        return { _kind: 'subst-placeholder', segments: ast.segments, optional: ast.optional, listSuffix: ast.listSuffix, line: ast.pos.line, col: ast.pos.col, prefixLen: 0 }
+        return { _kind: 'subst-placeholder', segments: ast.segments, optional: ast.optional, knownAbsent: false, listSuffix: ast.listSuffix, line: ast.pos.line, col: ast.pos.col, prefixLen: 0 }
       case 'concat':
         return { _kind: 'concat-placeholder', nodes: ast.nodes.map(n => this.astToResolverValue(n, pathPrefix)), line: ast.pos.line, col: ast.pos.col }
       case 'include':
@@ -260,7 +260,7 @@ export class StructureBuilder {
       case 'object':
         return await this.buildAsync(ast, pathPrefix)
       case 'subst':
-        return { _kind: 'subst-placeholder', segments: ast.segments, optional: ast.optional, listSuffix: ast.listSuffix, line: ast.pos.line, col: ast.pos.col, prefixLen: 0 }
+        return { _kind: 'subst-placeholder', segments: ast.segments, optional: ast.optional, knownAbsent: false, listSuffix: ast.listSuffix, line: ast.pos.line, col: ast.pos.col, prefixLen: 0 }
       case 'concat': {
         const nodes = []
         for (const n of ast.nodes) {

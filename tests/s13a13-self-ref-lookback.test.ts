@@ -48,6 +48,11 @@ const SUCCESS_FIXTURES = [
   'sr09-nested-no-prior',         // nested: foo.a = ${?foo.a}bar → foo.a = "bar"
   'sr10-nested-with-prior',       // regression: nested with prior
   'sr11-mutual-ref-forward',      // regression: mutual forward-ref (not self-ref)
+  'sr12-nested-external-ref-no-prior',
+  'sr13-nested-external-ref-with-prior',
+  'sr14-cache-prior-external',
+  'sr15-double-self-ref',
+  'sr16-external-before-self-ref',
 ]
 
 // Error fixtures: parse/resolve must throw ResolveError.
@@ -94,5 +99,28 @@ describe('S13a.13 — dotted-path-at-root cycle-guard alignment', () => {
   it('foo.a = "x"; foo.a = ${foo.a} (required, prior) — resolves to "x"', () => {
     const config = parse(`foo.a = "x"\nfoo.a = ${subst('foo.a')}`)
     expect(config.toObject()).toEqual({ foo: { a: 'x' } })
+  })
+})
+
+// Regression: shouldFoldNested gate was too conservative — skipped foldNestedSelfRefs
+// when newVal is not a ResObj (e.g. newVal = Subst(${?o})). This left ${?o.a} unfolded
+// inside the saved prior ResObj. When the prior was later resolved, ${?o.a} resolved
+// against the current root where root.o = Subst(not a ResObj), so lookupPath returned
+// undefined and the prior concat literal "bar" was used without the "x" prefix.
+// Fix: always call foldNestedSelfRefs when existing is a ResObj, regardless of newVal type.
+// Ref: PR #136 must-fix item 1 (Codex P1 + Claude Important #1 multi-reviewer convergence).
+describe('S13a.13 — shouldFoldNested correctness regression', () => {
+  it('o.a = "x"; o.a = ${?o.a}bar; o = ${?o} — o.a resolves to "xbar"', () => {
+    const config = parse(
+      `o.a = "x"\no.a = ${subst('o.a', true)}bar\no = ${subst('o', true)}`,
+    )
+    expect(config.toObject()).toEqual({ o: { a: 'xbar' } })
+  })
+
+  it('foo.a = "x"; foo.a = ${?foo.a}bar; foo.b = ${foo.a}; foo = ${?foo} — all fields correct', () => {
+    const config = parse(
+      `foo.a = "x"\nfoo.a = ${subst('foo.a', true)}bar\nfoo.b = ${subst('foo.a')}\nfoo = ${subst('foo', true)}`,
+    )
+    expect(config.toObject()).toEqual({ foo: { a: 'xbar', b: 'xbar' } })
   })
 })
