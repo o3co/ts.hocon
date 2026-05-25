@@ -48,6 +48,11 @@ const SUCCESS_FIXTURES = [
   'sr09-nested-no-prior',         // nested: foo.a = ${?foo.a}bar → foo.a = "bar"
   'sr10-nested-with-prior',       // regression: nested with prior
   'sr11-mutual-ref-forward',      // regression: mutual forward-ref (not self-ref)
+  'sr12-nested-external-ref-no-prior',
+  'sr13-nested-external-ref-with-prior',
+  'sr14-cache-prior-external',
+  'sr15-double-self-ref',
+  'sr16-external-before-self-ref',
 ]
 
 // Error fixtures: parse/resolve must throw ResolveError.

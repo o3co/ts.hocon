@@ -74,7 +74,7 @@ export function stringSegmentsToKey(segments: string[]): string {
  * array / HoconValue object — all six wrapping shapes that can carry a
  * substitution placeholder post-parse. */
 export function containsSelfRef(v: ResolverValue, fullKey: string): boolean {
-  if (isSubst(v)) return substFullKey(v) === fullKey
+  if (isSubst(v)) return !v.knownAbsent && substFullKey(v) === fullKey
   if (isConcat(v)) return v.nodes.some(n => containsSelfRef(n, fullKey))
   if (isAppend(v)) {
     return containsSelfRef(v.existing, fullKey) || containsSelfRef(v.elem, fullKey)
@@ -157,12 +157,12 @@ export function foldSelfRef(
  *
  *   * `prior` has no self-ref to `fullKey`           → save a deep-clone → clonedPrior
  *   * `prior` has self-ref AND `old` is defined      → fold against old  → folded
- *   * `prior` has self-ref AND `old` is undefined    → skip save         → undefined
+ *   * optional self-ref AND `old` is undefined       → fold to absent    → folded
+ *   * required self-ref AND `old` is undefined       → skip save         → undefined
  *
- * The skip case (no old prior to fold against) preserves the existing
- * "self-referential substitution with no prior value" error path in
- * `resolveSubst`. Callers must not write to `priorValues` when this
- * returns `undefined`.
+ * The no-prior optional case preserves S13a.13's "optional self-ref with no
+ * prior resolves to undefined" rule while still saving concat literal pieces
+ * for the next overwrite.
  *
  * The "save a deep-clone" semantics for the no-fold case prevents a
  * subtle bug: `deepMergeResObjInto` mutates `dst.fields[k]` in place when
@@ -178,11 +178,71 @@ export function foldOrSkipPrior(
   old: ResolverValue | undefined,
 ): ResolverValue | undefined {
   if (!containsSelfRef(prior, fullKey)) return cloneResolverValue(prior)
-  if (old === undefined) return undefined
+  if (old === undefined) return foldOptionalSelfRefAbsent(prior, fullKey)
   // foldSelfRef already constructs new ResObj/array/object/Concat nodes
   // along the path it traverses, so the result is a fresh tree wherever
   // mutation could matter. No additional clone needed.
   return foldSelfRef(prior, fullKey, old)
+}
+
+function foldOptionalSelfRefAbsent(v: ResolverValue, fullKey: string): ResolverValue | undefined {
+  if (isSubst(v) && substFullKey(v) === fullKey) {
+    if (!v.optional) return undefined
+    return {
+      _kind: 'subst-placeholder',
+      segments: v.segments.map(seg => ({ text: seg.text, line: seg.line, col: seg.col })),
+      optional: v.optional,
+      knownAbsent: true,
+      listSuffix: v.listSuffix,
+      line: v.line,
+      col: v.col,
+      prefixLen: v.prefixLen,
+    } satisfies SubstPlaceholder
+  }
+  if (isConcat(v)) {
+    const nodes: ResolverValue[] = []
+    for (const node of v.nodes) {
+      const folded = foldOptionalSelfRefAbsent(node, fullKey)
+      if (folded === undefined) return undefined
+      nodes.push(folded)
+    }
+    return { _kind: 'concat-placeholder', nodes, line: v.line, col: v.col }
+  }
+  if (isAppend(v)) {
+    const existing = foldOptionalSelfRefAbsent(v.existing, fullKey)
+    const elem = foldOptionalSelfRefAbsent(v.elem, fullKey)
+    if (existing === undefined || elem === undefined) return undefined
+    return { _kind: 'append-placeholder', existing, elem }
+  }
+  if (isResObj(v)) {
+    const fields = new Map<string, ResolverValue>()
+    for (const [key, value] of v.fields) {
+      const folded = foldOptionalSelfRefAbsent(value, fullKey)
+      if (folded === undefined) return undefined
+      fields.set(key, folded)
+    }
+    return { _kind: 'res-obj', fields, priorValues: new Map(v.priorValues) }
+  }
+  const hv = v as HoconValue
+  if (hv.kind === 'array') {
+    const items: HoconValue[] = []
+    for (const item of hv.items) {
+      const folded = foldOptionalSelfRefAbsent(item as ResolverValue, fullKey)
+      if (folded === undefined) return undefined
+      items.push(folded as HoconValue)
+    }
+    return { kind: 'array', items }
+  }
+  if (hv.kind === 'object') {
+    const fields = new Map<string, HoconValue>()
+    for (const [key, value] of hv.fields) {
+      const folded = foldOptionalSelfRefAbsent(value as ResolverValue, fullKey)
+      if (folded === undefined) return undefined
+      fields.set(key, folded as HoconValue)
+    }
+    return { kind: 'object', fields }
+  }
+  return cloneResolverValue(v)
 }
 
 /** Deep-clone a ResolverValue. Used at prior-save sites so subsequent
@@ -210,6 +270,7 @@ export function cloneResolverValue(v: ResolverValue): ResolverValue {
       _kind: 'subst-placeholder',
       segments: v.segments.map(seg => ({ text: seg.text, line: seg.line, col: seg.col })),
       optional: v.optional,
+      knownAbsent: v.knownAbsent,
       listSuffix: v.listSuffix,
       line: v.line,
       col: v.col,
@@ -302,7 +363,7 @@ export function foldNestedSelfRefs(v: ResolverValue, pathPrefix: string[]): Reso
  * the pre-#120 single-Concat detection and widens the scope to Concat /
  * Append / array / object / ResObj interiors. */
 export function containsSubstByPath(v: ResolverValue, target: Segment[]): boolean {
-  if (isSubst(v)) return segmentsTextEqual(v.segments, target)
+  if (isSubst(v)) return !v.knownAbsent && segmentsTextEqual(v.segments, target)
   if (isConcat(v)) return v.nodes.some(n => containsSubstByPath(n, target))
   if (isAppend(v)) {
     return containsSubstByPath(v.existing, target) || containsSubstByPath(v.elem, target)

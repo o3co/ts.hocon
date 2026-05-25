@@ -74,6 +74,8 @@ export class SubstitutionResolver {
     const result = new Map<string, HoconValue>()
     for (const [key, val] of obj.fields) {
       this.resolvingFieldPath.push(key)
+      const fullCacheKey = this.resolvingFieldPath.join('.')
+      this.cache.delete(fullCacheKey)
       let resolved: HoconValue | undefined
       try {
         resolved = this.resolveVal(val, obj)
@@ -90,28 +92,43 @@ export class SubstitutionResolver {
               priorResolved !== undefined &&
               priorResolved.kind === 'object'
             ) {
-              result.set(
-                key,
-                deepMergeHoconValues(
-                  priorResolved as HoconValue & { kind: 'object' },
-                  resolved as HoconValue & { kind: 'object' },
-                ),
+              const finalValue = deepMergeHoconValues(
+                priorResolved as HoconValue & { kind: 'object' },
+                resolved as HoconValue & { kind: 'object' },
               )
+              result.set(key, finalValue)
+              this.cache.set(fullCacheKey, finalValue)
+              this.cacheDescendants(fullCacheKey, finalValue)
               continue
             }
           }
         }
         result.set(key, resolved)
+        this.cache.set(fullCacheKey, resolved)
+        this.cacheDescendants(fullCacheKey, resolved)
       } else {
         // Unresolved optional substitution: fall back to prior value per HOCON spec
         const prior = obj.priorValues.get(key)
         if (prior !== undefined) {
           const priorResolved = this.resolveVal(prior, obj)
-          if (priorResolved !== undefined) result.set(key, priorResolved)
+          if (priorResolved !== undefined) {
+            result.set(key, priorResolved)
+            this.cache.set(fullCacheKey, priorResolved)
+            this.cacheDescendants(fullCacheKey, priorResolved)
+          }
         }
       }
     }
     return { kind: 'object', fields: result }
+  }
+
+  private cacheDescendants(prefix: string, value: HoconValue): void {
+    if (value.kind !== 'object') return
+    for (const [key, child] of value.fields) {
+      const childKey = `${prefix}.${key}`
+      this.cache.set(childKey, child)
+      this.cacheDescendants(childKey, child)
+    }
   }
 
   private resolveVal(v: ResolverValue, scope: ResObj): HoconValue | undefined {
@@ -148,6 +165,8 @@ export class SubstitutionResolver {
     s: SubstPlaceholder,
     scope: ResObj,
   ): HoconValue | undefined {
+    if (s.knownAbsent) return undefined
+
     // Cache key includes listSuffix to prevent `${X}` and `${X[]}` collisions:
     // both resolve via different code paths (scalar fallback vs resolveEnvList)
     // and can produce different values, so they must occupy distinct cache slots.
