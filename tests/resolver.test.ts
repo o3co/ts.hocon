@@ -442,6 +442,55 @@ describe('Resolver - include substitution relativization', () => {
     if (ab?.kind !== 'object') throw new Error('expected "a.b" to be object')
     expect(ab.fields.get('val')).toEqual({ kind: 'scalar', raw: 'ok', valueType: 'string' })
   })
+
+  // S14c.2: original-path config fallback for relativized substitutions.
+  // When a substitution inside an included file references a key that does NOT
+  // exist at the relativized path, the resolver must fall back to the original
+  // (non-relativized) path against the merged root config.
+  // Mirrors go.hocon TestResolver_IncludeRelativizeFallbackToParent and
+  // rs.hocon lightbend_test03_includes_with_substitution_fallback.
+
+  it('S14c.2: relativized substitution falls back to original-path config', () => {
+    // bar is defined at root. Inner ref=${bar} is relativized to outer.bar (misses).
+    // S14c.2 fallback: try root `bar` → hits → resolves.
+    const v = resolveStr('outer { include "inner.conf" }\nbar = "This is in the including file"', {}, {
+      '/inner.conf': 'ref = ${bar}',
+    })
+    const outer = obj(v).get('outer')
+    if (outer?.kind !== 'object') throw new Error('expected outer to be object')
+    expect(outer.fields.get('ref')).toEqual({ kind: 'scalar', raw: 'This is in the including file', valueType: 'string' })
+  })
+
+  it('S14c.2: delayed-merge mirror — single-segment original path with root prior object', () => {
+    // R2 regression: y has a prior value {a:1}, then y=${z}, z={b:2}.
+    // bar.ref=${y} relativized to bar.y misses → S14c.2 fallback to root y.
+    // root y resolves to {b:2} but must deep-merge prior {a:1} → {a:1, b:2}.
+    const v = resolveStr('y = { a: 1 }\ny = ${z}\nz = { b: 2 }\nbar { include "inner.conf" }', {}, {
+      '/inner.conf': 'ref = ${y}',
+    })
+    const bar = obj(v).get('bar')
+    if (bar?.kind !== 'object') throw new Error('expected bar to be object')
+    const ref = bar.fields.get('ref')
+    if (ref?.kind !== 'object') throw new Error('expected ref to be object')
+    expect(ref.fields.get('a')).toEqual({ kind: 'scalar', raw: '1', valueType: 'number' })
+    expect(ref.fields.get('b')).toEqual({ kind: 'scalar', raw: '2', valueType: 'number' })
+  })
+
+  it('S14c.2: ${X[]} cross-source — config wins over env-var list expansion', () => {
+    // ev12c scenario: outer defines S13C_EV12C_X = ["root-val"], inner does mylist=${S13C_EV12C_X[]}.
+    // listSuffix runs after S14c.2 fallback. The fallback hits config, so env-var list is never consulted.
+    const v = resolveStr(
+      'outer { include "ev12c-inner.conf" }\nS13C_EV12C_X = ["root-val"]',
+      {},  // no env vars
+      { '/ev12c-inner.conf': 'mylist = ${S13C_EV12C_X[]}' },
+    )
+    const outer = obj(v).get('outer')
+    if (outer?.kind !== 'object') throw new Error('expected outer to be object')
+    const mylist = outer.fields.get('mylist')
+    if (mylist?.kind !== 'array') throw new Error('expected mylist to be array')
+    expect(mylist.elements).toHaveLength(1)
+    expect(mylist.elements[0]).toEqual({ kind: 'scalar', raw: 'root-val', valueType: 'string' })
+  })
 })
 
 describe('include merge-all probing', () => {
