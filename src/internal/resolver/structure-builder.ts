@@ -143,11 +143,7 @@ export class StructureBuilder {
     // save site does its full-key fold-or-skip.
     if (existing !== undefined) {
       const oldPrior = obj.priorValues.get(head)
-      const shouldFoldNested =
-        isResObj(existing) &&
-        isResObj(newVal) &&
-        [...newVal.fields.keys()].every(key => existing.fields.has(key))
-      const priorInput = shouldFoldNested ? foldNestedSelfRefs(existing, childPrefix) : existing
+      const priorInput = isResObj(existing) ? foldNestedSelfRefs(existing, childPrefix) : existing
       const prior = foldOrSkipPrior(priorInput, fullKey, oldPrior)
       if (prior !== undefined) obj.priorValues.set(head, prior)
     }
@@ -212,11 +208,7 @@ export class StructureBuilder {
 
     if (existing !== undefined) {
       const oldPrior = obj.priorValues.get(head)
-      const shouldFoldNested =
-        isResObj(existing) &&
-        isResObj(newVal) &&
-        [...newVal.fields.keys()].every(key => existing.fields.has(key))
-      const priorInput = shouldFoldNested ? foldNestedSelfRefs(existing, childPrefix) : existing
+      const priorInput = isResObj(existing) ? foldNestedSelfRefs(existing, childPrefix) : existing
       const prior = foldOrSkipPrior(priorInput, fullKey, oldPrior)
       if (prior !== undefined) obj.priorValues.set(head, prior)
     }
