@@ -23,28 +23,17 @@
  * resolve pass over the merged tree never strips the prior. These tests
  * pin that behaviour so a future refactor to a multi-pass shape can't
  * silently regress.
+ *
+ * Hermeticity: env is injected via `ParseOptions.env`; `process.env` is
+ * never read or mutated. Matches the convention documented in
+ * `tests/env-var-list.test.ts` ("parse(input, { env }) ONLY").
  */
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { parse, parseStringWithOptions, defaultParseOptions } from '../src/index.js'
 import type { PackageResolver } from '../src/index.js'
 
-const ENV_KEYS = [
-  'GH128_TS_FILE_UNSET',
-  'GH128_TS_FILE_SET',
-  'GH128_TS_PKG_UNSET',
-  'GH128_TS_PKG_SET',
-  'GH128_TS_PKG_DEFERRED',
-] as const
-
 describe('go.hocon#128 cross-impl — include-child env-with-default preserves prior', () => {
-  beforeEach(() => {
-    for (const k of ENV_KEYS) delete process.env[k]
-  })
-  afterEach(() => {
-    for (const k of ENV_KEYS) delete process.env[k]
-  })
-
-  const buildParseWithFiles = (files: Map<string, string>) => {
+  const buildParseWithFiles = (files: Map<string, string>, env: Record<string, string>) => {
     const readFileSync = (p: string) => {
       const content = files.get(p)
       if (content === undefined) {
@@ -52,7 +41,7 @@ describe('go.hocon#128 cross-impl — include-child env-with-default preserves p
       }
       return content
     }
-    return (input: string) => parse(input, { readFileSync })
+    return (input: string) => parse(input, { readFileSync, env })
   }
 
   it('include "file": env unset → prior in-source default is retained', () => {
@@ -62,19 +51,20 @@ describe('go.hocon#128 cross-impl — include-child env-with-default preserves p
         'registry {\n  instance-id = "localhost"\n  instance-id = ${?GH128_TS_FILE_UNSET}\n}\n',
       ],
     ])
-    const cfg = buildParseWithFiles(files)('include "/virtual/child.conf"\n')
+    const cfg = buildParseWithFiles(files, {})('include "/virtual/child.conf"\n')
     expect(cfg.getString('registry.instance-id')).toBe('localhost')
   })
 
   it('include "file": env set → env value overrides prior default', () => {
-    process.env.GH128_TS_FILE_SET = 'from-env'
     const files = new Map<string, string>([
       [
         '/virtual/child.conf',
         'registry {\n  instance-id = "localhost"\n  instance-id = ${?GH128_TS_FILE_SET}\n}\n',
       ],
     ])
-    const cfg = buildParseWithFiles(files)('include "/virtual/child.conf"\n')
+    const cfg = buildParseWithFiles(files, { GH128_TS_FILE_SET: 'from-env' })(
+      'include "/virtual/child.conf"\n',
+    )
     expect(cfg.getString('registry.instance-id')).toBe('from-env')
   })
 
@@ -84,19 +74,18 @@ describe('go.hocon#128 cross-impl — include-child env-with-default preserves p
       'registry {\n  instance-id = "localhost"\n  instance-id = ${?GH128_TS_PKG_UNSET}\n}\n'
     const cfg = parse(
       'include package("github.com/o3co/ts.hocon/test/issue128-unset", "reference.conf")\n',
-      { packageResolver: resolver, readFileSync },
+      { packageResolver: resolver, readFileSync, env: {} },
     )
     expect(cfg.getString('registry.instance-id')).toBe('localhost')
   })
 
   it('include package(...): env set → env value overrides prior default', () => {
-    process.env.GH128_TS_PKG_SET = 'from-pkg-env'
     const resolver: PackageResolver = () => '/fake/registry/issue128/reference.conf'
     const readFileSync = (_p: string) =>
       'registry {\n  instance-id = "localhost"\n  instance-id = ${?GH128_TS_PKG_SET}\n}\n'
     const cfg = parse(
       'include package("github.com/o3co/ts.hocon/test/issue128-set", "reference.conf")\n',
-      { packageResolver: resolver, readFileSync },
+      { packageResolver: resolver, readFileSync, env: { GH128_TS_PKG_SET: 'from-pkg-env' } },
     )
     expect(cfg.getString('registry.instance-id')).toBe('from-pkg-env')
   })
@@ -105,7 +94,13 @@ describe('go.hocon#128 cross-impl — include-child env-with-default preserves p
     const resolver: PackageResolver = () => '/fake/registry/issue128/reference.conf'
     const readFileSync = (_p: string) =>
       'registry {\n  instance-id = "localhost"\n  instance-id = ${?GH128_TS_PKG_DEFERRED}\n}\n'
-    const opts = { ...defaultParseOptions(), packageResolver: resolver, readFileSync, resolveSubstitutions: false }
+    const opts = {
+      ...defaultParseOptions(),
+      packageResolver: resolver,
+      readFileSync,
+      env: {},
+      resolveSubstitutions: false,
+    }
     const unresolved = parseStringWithOptions(
       'include package("github.com/o3co/ts.hocon/test/issue128-deferred", "reference.conf")\n',
       opts,
