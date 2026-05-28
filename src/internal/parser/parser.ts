@@ -542,7 +542,13 @@ class Parser {
         break
       }
       if (hadSpace) {
-        parts.push({ kind: 'scalar', raw: ' ', valueType: 'string', pos: { line: t.line, col: t.col }, _separator: true })
+        // S10.5 (go.hocon#132): inner whitespace between simple values is
+        // preserved verbatim, so emit the literal whitespace run rather than a
+        // collapsed single space. Fall back to a single space if the lexer
+        // reported precedingSpace but captured no chars (comment-only shape,
+        // which cannot occur mid-value-concat — the loop breaks on newline).
+        const sep = t.precedingWhitespace.length > 0 ? t.precedingWhitespace : ' '
+        parts.push({ kind: 'scalar', raw: sep, valueType: 'string', pos: { line: t.line, col: t.col }, _separator: true })
       }
       parts.push(node)
     }

@@ -850,17 +850,21 @@ describe('spec compliance Phase 3 — substitution & include (resolver-level)', 
 describe('S6.5 - "newline" means 0x000A (LF) only (HOCON spec L183)', () => {
   it('S6.5: CR alone (0x0D) does not act as a field separator', () => {
     // If CR were treated as newline, "x = 1\ry = 2" would produce two fields.
-    // Spec: newline = LF only, so CR is whitespace absorbed into x's unquoted value
-    // and the entire `1\ry = 2` becomes a single string value (with CR normalized
-    // to a space per unquoted-string whitespace rules).
+    // Spec: newline = LF only, so CR is whitespace absorbed into x's value and
+    // the entire `1\ry = 2` becomes a single string value.
     const v = resolveStr('x = 1\ry = 2')
     const fields = obj(v)
-    // Only one field 'x'; 'y' is not a separate top-level key.
+    // Primary assertion (S6.5): only one field 'x'; 'y' is not a separate
+    // top-level key. This guards against CR acting as a separator.
     expect(fields.has('y')).toBe(false)
-    // And x's value is the absorbed-into-one-line string, proving CR was treated
-    // as whitespace rather than dropped or causing truncation. This guards against
-    // a false positive where 'y' could be absent for an unrelated reason.
-    expect(fields.get('x')).toEqual({ kind: 'scalar', raw: '1 y = 2', valueType: 'string' })
+    // x's value is the absorbed-into-one-line string. The CR run between the
+    // simple values is now preserved verbatim per S10.5 (go.hocon#132) — it was
+    // previously collapsed to a single space. NOTE: this is impl-lenient
+    // behaviour; Lightbend rejects `x = 1\ry = 2` outright ("Expecting end of
+    // input or a comma, got '='"), so there is no Lightbend ground truth to
+    // conform to here — the verbatim run matches the S10.5 principle the parser
+    // now follows and is cross-impl consistent with rs.hocon.
+    expect(fields.get('x')).toEqual({ kind: 'scalar', raw: '1\ry = 2', valueType: 'string' })
   })
 
   it('S6.5: LF (0x0A) acts as the field separator', () => {
