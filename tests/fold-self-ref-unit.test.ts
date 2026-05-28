@@ -26,7 +26,6 @@ import {
   foldOrSkipPrior,
 } from '../src/internal/resolver/fold-self-ref.js'
 import type {
-  AppendPlaceholder,
   ConcatPlaceholder,
   ResObj,
   SubstPlaceholder,
@@ -59,18 +58,12 @@ function makeConcat(nodes: SubstPlaceholder[]): ConcatPlaceholder {
   return { _kind: 'concat-placeholder', nodes, line: 1, col: 1 }
 }
 
-function makeAppend(
-  existing: AppendPlaceholder['existing'],
-  elem: AppendPlaceholder['elem'],
-): AppendPlaceholder {
-  return { _kind: 'append-placeholder', existing, elem }
-}
-
 function makeResObj(fields: Record<string, SubstPlaceholder>): ResObj {
   return {
     _kind: 'res-obj',
     fields: new Map(Object.entries(fields)),
     priorValues: new Map(),
+    resetKeys: new Set(),
   }
 }
 
@@ -101,53 +94,6 @@ describe('foldOptionalSelfRefAbsent — Subst branch (baseline)', () => {
     const subst = makeSubst('a', false)
     const result = foldOrSkipPrior(subst, 'a', undefined)
     expect(result).toBeUndefined()
-  })
-})
-
-// ---------------------------------------------------------------------------
-// Append branch — NEW coverage
-// ---------------------------------------------------------------------------
-
-describe('foldOptionalSelfRefAbsent — Append branch', () => {
-  it('Append(optional-self-ref, optional-self-ref) → both sides folded to knownAbsent', () => {
-    // Represents: a += ${?a}  where existing = ${?a}, elem = ${?a}
-    const append = makeAppend(makeSubst('a', true), makeSubst('a', true))
-    const result = foldOrSkipPrior(append, 'a', undefined)
-    expect(result).not.toBeUndefined()
-    const r = result as AppendPlaceholder
-    expect(r._kind).toBe('append-placeholder')
-    const existing = r.existing as SubstPlaceholder
-    const elem = r.elem as SubstPlaceholder
-    expect(existing.knownAbsent).toBe(true)
-    expect(elem.knownAbsent).toBe(true)
-  })
-
-  it('Append(required-self-ref, optional-self-ref) → returns undefined (existing side is required)', () => {
-    // If the existing side has a required self-ref, folding returns undefined → skip save
-    const append = makeAppend(makeSubst('a', false), makeSubst('a', true))
-    const result = foldOrSkipPrior(append, 'a', undefined)
-    expect(result).toBeUndefined()
-  })
-
-  it('Append(optional-self-ref, required-self-ref) → returns undefined (elem side is required)', () => {
-    const append = makeAppend(makeSubst('a', true), makeSubst('a', false))
-    const result = foldOrSkipPrior(append, 'a', undefined)
-    expect(result).toBeUndefined()
-  })
-
-  it('Append(non-self-ref-subst, optional-self-ref) → elem folded, existing unchanged', () => {
-    // existing = ${?b} (different key, not a self-ref to "a")
-    const append = makeAppend(makeSubst('b', true), makeSubst('a', true))
-    const result = foldOrSkipPrior(append, 'a', undefined)
-    expect(result).not.toBeUndefined()
-    const r = result as AppendPlaceholder
-    expect(r._kind).toBe('append-placeholder')
-    const existing = r.existing as SubstPlaceholder
-    const elem = r.elem as SubstPlaceholder
-    // existing = ${?b}: not self-ref to "a", knownAbsent stays false
-    expect(existing.knownAbsent).toBe(false)
-    // elem = ${?a}: folded to knownAbsent
-    expect(elem.knownAbsent).toBe(true)
   })
 })
 

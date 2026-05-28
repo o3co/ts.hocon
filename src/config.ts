@@ -8,7 +8,7 @@ import {
   resolveTree,
   valContainsPlaceholders,
 } from './internal/resolver/resolver.js'
-import { isAppend, isConcat, isResObj, isSubst, mergeUnresolved } from './internal/resolver/types.js'
+import { isConcat, isResObj, isSubst, mergeUnresolved } from './internal/resolver/types.js'
 import type { ResObj, ResolveOptions as InternalResolveOptions } from './internal/resolver/types.js'
 import { numericObjectToArray } from './value/numeric-array.js'
 import type { HoconValue, ScalarValueType } from './value.js'
@@ -477,7 +477,7 @@ function hoconToJs(v: HoconValue): unknown {
 function resObjToKeyShape(tree: ResObj): HoconValue & { kind: 'object' } {
   const fields = new Map<string, HoconValue>()
   for (const [k, v] of tree.fields) {
-    if (isSubst(v) || isConcat(v) || isAppend(v)) {
+    if (isSubst(v) || isConcat(v)) {
       // Placeholder: represent as a synthetic scalar so the key is present in the shape.
       fields.set(k, { kind: 'scalar', raw: '', valueType: 'null' })
     } else if (isResObj(v)) {
@@ -502,8 +502,7 @@ function stripPlaceholderFields(
   for (const [k, val] of v.fields) {
     // SubstPlaceholders are tagged with _kind; HoconValues have `kind`.
     if ((val as { _kind?: string })._kind === 'subst-placeholder' ||
-        (val as { _kind?: string })._kind === 'concat-placeholder' ||
-        (val as { _kind?: string })._kind === 'append-placeholder') {
+        (val as { _kind?: string })._kind === 'concat-placeholder') {
       hadPlaceholders = true
       // Omit the field — getter will throw NotResolvedError.
     } else if (val.kind === 'object') {

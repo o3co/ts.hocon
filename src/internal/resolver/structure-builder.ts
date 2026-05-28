@@ -1,6 +1,7 @@
 import { ResolveError } from '../../errors.js'
 import type { HoconValue } from '../../value.js'
 import type { AstNode, AstField } from '../parser/ast.js'
+import type { Segment } from '../lexer/token.js'
 import {
   type ResObj,
   type ResolverValue,
@@ -8,12 +9,11 @@ import {
   separatorValues,
   isSubst,
   isConcat,
-  isAppend,
   isResObj,
   makeResObj,
 } from './types.js'
 import {
-  cloneResolverValue,
+  containsSelfRef,
   foldNestedSelfRefs,
   foldOrSkipPrior,
   stringSegmentsToKey,
@@ -95,44 +95,35 @@ export class StructureBuilder {
     const fullKey = stringSegmentsToKey(childPrefix)
 
     if (field.append) {
-      // +=: append elem to existing array (or start from [])
-      const existing: ResolverValue = obj.fields.get(head) ?? ({ kind: 'array', items: [] } satisfies HoconValue)
-      // #118 + #120 cross-impl: fold self-references in `existing` against
-      // the OLD prior so:
-      //  (a) the recorded priorValues[head] is self-ref-free (chain invariant)
-      //  (b) the Append's `existing` field (consumed at resolve time by
-      //      resolveAppend) does not pick up the polluted priorValues[head]
-      //      we are about to overwrite. Without this, mixed `${a}` + `+=`
-      //      chains produce wrong values: the unresolved ${a} inside the
-      //      Append's existing would resolve against the NEW prior at
-      //      resolve time, not the prior-at-save-time semantics required
-      //      by the += desugar `a = ${?a} [b]`.
-      const oldPrior = obj.priorValues.get(head)
-      const folded = foldOrSkipPrior(existing, fullKey, oldPrior)
-      if (folded !== undefined) obj.priorValues.set(head, folded)
-      obj.fields.set(head, {
-        _kind: 'append-placeholder',
-        // Use the folded existing (self-ref-free) for the Append. When the
-        // fold returned undefined (self-ref present but no old prior),
-        // fall back to the original existing — resolveSubst will then
-        // raise the "self-ref with no prior value" error at resolve time,
-        // matching the pre-fix behaviour for that edge case.
-        //
-        // Clone `folded` again so the Append.existing and priorValues[head]
-        // do not share the same Subst/Concat references — relativizeResObj
-        // walks BOTH `fields` and `priorValues` and mutates Subst.segments
-        // in place, so a shared reference would get its prefix applied
-        // twice (resulting in e.g. `${outer.outer.base}` instead of
-        // `${outer.base}`). Codex review on PR #131.
-        existing: folded !== undefined ? cloneResolverValue(folded) : existing,
-        elem: this.astToResolverValue(field.value, childPrefix),
-      })
+      // S13b.2: `a += b` ≡ `a = ${?a} [b]` (HOCON.md L732). Desugar to that
+      // exact concat AST and re-dispatch through the normal-assignment path so
+      // every `+=` flows through the chained-self-ref machinery (#118/#120),
+      // which already accumulates `a = ${?a} [...]` as a duplicate-key chain —
+      // including across include boundaries (the cross-include splice in
+      // deepMergeResObjInto). The self-ref uses the full nested path so
+      // `srv.items += x` references `${?srv.items}`; include relativization
+      // rewrites it under a mount prefix. Reset semantics are preserved by the
+      // `resetKeys` flag recorded on a non-self-ref assignment below. See
+      // go.hocon#134.
+      const synthetic = this.desugarAppend(field, childPrefix)
+      this.applyField(obj, synthetic, pathPrefix)
       return
     }
 
     // Normal assignment
     const existing = obj.fields.get(head)
     const newVal = this.astToResolverValue(field.value, childPrefix)
+
+    // go.hocon#134: a non-self-referential assignment to `head` is a *reset* —
+    // its net value does not chain off an outer `${?head}`. Record it so a
+    // cross-include merge discards (rather than splices onto) the destination's
+    // pre-merge value. A desugared `+=` (or explicit `head = ${?head} ...`) is
+    // self-referential and so is NOT a reset; the chain continues across the
+    // include boundary. Once set the flag stays set (a later `+=` chains off the
+    // reset value, so the net still does not chain off an outer prior).
+    if (!containsSelfRef(newVal, fullKey)) {
+      obj.resetKeys.add(head)
+    }
 
     // Save prior value for self-referential substitution resolution.
     // foldNestedSelfRefs pre-pass handles the multi-segment object form
@@ -191,20 +182,18 @@ export class StructureBuilder {
     const fullKey = stringSegmentsToKey(childPrefix)
 
     if (field.append) {
-      const existing: ResolverValue = obj.fields.get(head) ?? ({ kind: 'array', items: [] } satisfies HoconValue)
-      const oldPrior = obj.priorValues.get(head)
-      const folded = foldOrSkipPrior(existing, fullKey, oldPrior)
-      if (folded !== undefined) obj.priorValues.set(head, folded)
-      obj.fields.set(head, {
-        _kind: 'append-placeholder',
-        existing: folded !== undefined ? cloneResolverValue(folded) : existing,
-        elem: await this.astToResolverValueAsync(field.value, childPrefix),
-      })
+      // S13b.2 desugar — see the sync applyField for the rationale (go.hocon#134).
+      const synthetic = this.desugarAppend(field, childPrefix)
+      await this.applyFieldAsync(obj, synthetic, pathPrefix)
       return
     }
 
     const existing = obj.fields.get(head)
     const newVal = await this.astToResolverValueAsync(field.value, childPrefix)
+
+    if (!containsSelfRef(newVal, fullKey)) {
+      obj.resetKeys.add(head)
+    }
 
     if (existing !== undefined) {
       const oldPrior = obj.priorValues.get(head)
@@ -219,6 +208,22 @@ export class StructureBuilder {
     }
 
     obj.fields.set(head, newVal)
+  }
+
+  /** Builds the `key = ${?fullkey} [value]` field that `key += value` desugars
+   * to (S13b.2, HOCON.md L732). `childPrefix` is the field's fully-qualified
+   * path (pathPrefix + key), so a nested `srv { items += x }` references
+   * `${?srv.items}`; include relativization rewrites it under a mount prefix.
+   * `field.key` is already single-segment here (multi-segment keys are split
+   * into nested objects upstream). Returns a NEW AstField (append=false);
+   * positions inherit from the original field so resolve-time errors (the
+   * S13b.2 non-array check, now via the scalar+array concat) keep a location. */
+  private desugarAppend(field: AstField, childPrefix: string[]): AstField {
+    const segments: Segment[] = childPrefix.map(text => ({ text, line: field.pos.line, col: field.pos.col }))
+    const subst: AstNode = { kind: 'subst', segments, optional: true, listSuffix: false, pos: field.pos }
+    const elemArray: AstNode = { kind: 'array', items: [field.value], pos: field.pos }
+    const synthetic: AstNode = { kind: 'concat', nodes: [subst, elemArray], pos: field.pos }
+    return { key: field.key, value: synthetic, append: false, pos: field.pos }
   }
 
   private astToResolverValue(ast: AstNode, pathPrefix: string[]): ResolverValue {
@@ -287,11 +292,6 @@ export class StructureBuilder {
       for (const node of val.nodes) {
         this.relativizeSubstPaths(node, prefixSegments)
       }
-      return
-    }
-    if (isAppend(val)) {
-      this.relativizeSubstPaths(val.existing, prefixSegments)
-      this.relativizeSubstPaths(val.elem, prefixSegments)
       return
     }
     if (isResObj(val)) {

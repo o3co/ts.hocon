@@ -21,18 +21,21 @@ export type ConcatPlaceholder = {
   /** 1-based column of the concat value in the source file (from AST Concat pos). */
   col: number
 }
-export type AppendPlaceholder = {
-  _kind: 'append-placeholder'
-  existing: ResolverValue
-  elem: ResolverValue
-}
 export type ResObj = {
   _kind: 'res-obj'
   fields: Map<string, ResolverValue>
   priorValues: Map<string, ResolverValue>
+  /**
+   * Keys whose net value in THIS object was established by an explicit
+   * non-self-referential assignment (`k = [...]`), i.e. a reset rather than a
+   * `+=`/self-ref append. Used by `deepMergeResObjInto` to decide whether an
+   * included file's `k` chains off the destination's pre-merge value (append
+   * origin → splice) or replaces it (reset origin → discard). See go.hocon#134.
+   */
+  resetKeys: Set<string>
 }
 
-export type ResolverValue = HoconValue | SubstPlaceholder | ConcatPlaceholder | AppendPlaceholder | ResObj
+export type ResolverValue = HoconValue | SubstPlaceholder | ConcatPlaceholder | ResObj
 
 /**
  * Custom resolver for `include package("id", "file")`.
@@ -108,15 +111,12 @@ export function isSubst(v: ResolverValue): v is SubstPlaceholder {
 export function isConcat(v: ResolverValue): v is ConcatPlaceholder {
   return (v as ConcatPlaceholder)._kind === 'concat-placeholder'
 }
-export function isAppend(v: ResolverValue): v is AppendPlaceholder {
-  return (v as AppendPlaceholder)._kind === 'append-placeholder'
-}
 export function isResObj(v: ResolverValue): v is ResObj {
   return (v as ResObj)._kind === 'res-obj'
 }
 
 export function makeResObj(): ResObj {
-  return { _kind: 'res-obj', fields: new Map(), priorValues: new Map() }
+  return { _kind: 'res-obj', fields: new Map(), priorValues: new Map(), resetKeys: new Set() }
 }
 
 /**
