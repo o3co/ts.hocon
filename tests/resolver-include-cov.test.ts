@@ -377,21 +377,22 @@ describe('loadSingleAsync — empty/comment-only include is no-op (async path, #
 })
 
 // ---------------------------------------------------------------------------
-// structure-builder.ts lines 247-249: relativizeSubstPaths isAppend branch
+// relativizeSubstPaths for a `+=` inside a nested include (go.hocon#134)
 //
 // When an include directive appears inside a nested scope, the structure builder
-// calls relativizeResObj on the included content. If the included file contains
-// a `+=` (append placeholder), relativizeSubstPaths must recurse into both
-// `val.existing` and `val.elem`. Lines 247-249 handle this branch.
+// calls relativizeResObj on the included content. Since #134 desugars `+=` to a
+// `${?key} [...]` self-ref concat, the relativization recurses through the
+// Concat branch (the old AppendPlaceholder branch was removed). These tests pin
+// that a `+=` in a nested include still relativizes and resolves correctly.
 // ---------------------------------------------------------------------------
 
-describe('structure-builder relativizeSubstPaths — isAppend branch (lines 247-249)', () => {
-  it('relativizes += (append) inside a nested include', () => {
-    // 'items += 5' inside 'outer { include "inner.conf" }' creates an AppendPlaceholder.
-    // After loading, relativizeResObj walks the included obj's fields → hits the
-    // AppendPlaceholder → exercises the isAppend branch (lines 247-249).
-    // 'items' starts from empty array (no prior in the included file itself),
-    // and after relativization resolves as outer.items = [5].
+describe('structure-builder relativizeSubstPaths — += inside a nested include', () => {
+  it('relativizes += inside a nested include', () => {
+    // 'items += 5' inside 'outer { include "inner.conf" }' desugars to
+    // 'items = ${?items} [5]'. relativizeResObj walks the included obj's fields,
+    // relativizing the desugared `${?items}` self-ref under the `outer` mount.
+    // 'items' starts from empty (no prior in the included file), so after
+    // relativization it resolves as outer.items = [5].
     const v = resolveStr('outer { include "inner.conf" }', {}, {
       '/inner.conf': 'items += 5',
     })
@@ -423,7 +424,8 @@ describe('structure-builder relativizeSubstPaths — isAppend branch (lines 247-
   })
 
   it('relativizes += with substitution in appended element inside nested include (async)', async () => {
-    // Exercises the async path: applyFieldAsync → relativizeResObj → isAppend branch.
+    // Exercises the async path: applyFieldAsync desugars += → relativizeResObj
+    // recurses through the desugared Concat (${?items} [${base}]).
     const v = await resolveAsyncStr('outer { include "inner.conf" }', {}, {
       '/inner.conf': 'base = 10\nitems += ${base}',
     })

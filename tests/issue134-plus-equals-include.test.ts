@@ -30,7 +30,7 @@ import { describe, it, expect } from 'vitest'
 import * as fs from 'node:fs'
 import * as os from 'node:os'
 import * as path from 'node:path'
-import { parse, parseFile } from '../src/parse.js'
+import { parse, parseFile, parseStringWithOptions } from '../src/parse.js'
 
 function withTempDir<T>(prefix: string, fn: (dir: string) => T): T {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), prefix))
@@ -152,5 +152,25 @@ describe('#134 — += accumulation across includes (S13b.2)', () => {
     // (cross-impl with go.hocon / rs.hocon).
     const c = parse(`a = [1, 2]\na += [3]`)
     expect(c.getList('a')).toEqual([1, 2, [3]])
+  })
+
+  it('deferred withFallback + += accumulates without self-ref recursion', () => {
+    // Regression for the desugar's interaction with the E12 withFallback merge
+    // (Codex multi-agent-review). After `+=` desugars to a self-ref concat, the
+    // fallback's `+=` value is a `${?items} [...]` concat; mergeUnresolved must
+    // fold it self-ref-free before recording it as the receiver's prior, or the
+    // receiver's `${?items}` follows a prior that still contains `${?items}` →
+    // stack overflow. Fallback fills, receiver appends: ["f", "r"].
+    const recv = parseStringWithOptions('items += "r"', { resolveSubstitutions: false })
+    const fb = parseStringWithOptions('items += "f"', { resolveSubstitutions: false })
+    expect(recv.withFallback(fb).resolve().getList('items')).toEqual(['f', 'r'])
+  })
+
+  it('degenerate self-ref element: items += ${?items} nests the current value', () => {
+    // `items += ${?items}` ≡ `items = ${?items} [${?items}]`: after `items += "a"`
+    // (→ ["a"]), the optional self-ref *element* resolves to the current array,
+    // nesting it. Pins the literal-correct expansion (cross-impl with rs.hocon).
+    const c = parse('items += "a"\nitems += ${?items}')
+    expect(c.getList('items')).toEqual(['a', ['a']])
   })
 })

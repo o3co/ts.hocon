@@ -1,5 +1,10 @@
 import type { HoconValue } from '../../value.js'
 import type { Segment } from '../lexer/token.js'
+// NB: fold-self-ref.ts imports value-level helpers (isConcat/isResObj/isSubst)
+// from this module, so this is a cyclic import. It is safe because both sides
+// reference the other's bindings only inside function bodies (never at module
+// top-level), which ES modules resolve correctly.
+import { foldOrSkipPrior } from './fold-self-ref.js'
 
 // ---- Internal placeholder types ----
 export type SubstPlaceholder = {
@@ -173,7 +178,16 @@ export function mergeUnresolved(receiver: ResObj, fallback: ResObj): ResObj {
       }
       // Non-object collision: receiver wins; capture fallback's value
       // (existing) as prior for cross-layer self-ref lookback.
-      result.priorValues.set(k, existing)
+      //
+      // go.hocon#134: `existing` is the fallback's live field value, which —
+      // after the `+=` desugar — can be a self-referential concat (`${?k}
+      // [...]`). Recording it raw would make the receiver's `${?k}` resolve to
+      // a prior that still contains `${?k}`, recursing forever
+      // (`items += "r"`.withFallback(`items += "f"`) → stack overflow). Fold it
+      // self-ref-free first, the same discipline deepMergeResObjInto applies on
+      // the include path. `k` is the full key here (top-level merge, no prefix).
+      const foldedPrior = foldOrSkipPrior(existing, k, undefined)
+      if (foldedPrior !== undefined) result.priorValues.set(k, foldedPrior)
     }
     result.fields.set(k, rv)
   }
