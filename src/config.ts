@@ -551,9 +551,15 @@ function renderHoconAsJSON(v: HoconValue): string {
         case 'null': return 'null'
         case 'boolean': return v.raw
         case 'number': {
-          const n = Number(v.raw)
-          if (Number.isFinite(n)) return v.raw
-          return JSON.stringify(v.raw)
+          // Canonicalize leading zeros so the lexeme renders as a valid JSON
+          // number matching Lightbend/rs.hocon ("023"->23, "-08.5"->-8.5);
+          // xx.hocon#50. Render-only: getString/concat still see the verbatim
+          // lexeme (S10.11), so this does not affect string coercion. Emit raw
+          // only when the normalized lexeme is a valid JSON number; otherwise
+          // quote (e.g. `1.`, which ts classifies as a number but go renders as
+          // a string) so we never emit invalid JSON — byte-aligned with go.hocon.
+          const norm = normalizeLeadingZeroNumber(v.raw)
+          return JSON_NUMBER_RE.test(norm) ? norm : JSON.stringify(v.raw)
         }
         case 'string': return JSON.stringify(v.raw)
       }
@@ -574,4 +580,20 @@ function renderHoconAsJSON(v: HoconValue): string {
   }
   // Should never reach here for valid HoconValue.
   throw new Error(`renderHoconAsJSON: unsupported value kind (unresolved placeholder?)`)
+}
+
+/** RFC 8259 JSON number grammar — gates the numeric render fast-path so a
+ * lexeme is only emitted unquoted when it is a valid JSON number. */
+const JSON_NUMBER_RE = /^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$/
+
+/**
+ * normalizeLeadingZeroNumber — strips redundant leading zeros from the integer
+ * part of a numeric lexeme so it renders as a valid JSON number (xx.hocon#50):
+ * "023"->"23", "-08.53"->"-8.53", "007"->"7", while "0", "0.5", "1.0" are
+ * unchanged. The fractional/exponent tail is left verbatim — this only removes
+ * the leading-zero divergence that produced invalid JSON, scoped to the render
+ * path (the source lexeme is still preserved for S10.11 string coercion).
+ */
+function normalizeLeadingZeroNumber(raw: string): string {
+  return raw.replace(/^([+-]?)0+(\d)/, '$1$2')
 }

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — leading-zero numeric values render as valid canonical JSON ([xx.hocon#50](https://github.com/o3co/xx.hocon/issues/50))
+
+- **Leading-zero numeric *value* literals now render as canonical JSON numbers** (Lightbend / rs.hocon parity). `renderHoconAsJSON` emitted numeric-value lexemes verbatim, so `b = 023` / `c = 08.53` produced `{"b":023,"c":08.53}` — not valid JSON, and divergent from Lightbend/rs (which emit `23` / `8.53`). The renderer now strips redundant leading zeros from the integer part of a number lexeme before emitting (`023`→`23`, `-08.53`→`-8.53`, `007`→`7`; `0`, `0.5`, `1.0` unchanged), matching the xx.hocon `lzv01` cross-impl fixture and byte-identical to go.hocon's equivalent fix. Render-only: `getString`/concat still return the verbatim source lexeme (S10.11), so `getString('0100')` is unchanged. The broader numeric-canonical family (exponent `1e3`→`1000.0`, trailing-zero `1.50`→`1.5`, `-0`→`0`) is a separate, untested convergence tracked as a follow-up. No public API change. Pinned by `tests/deferred-resolution.test.ts`.
+
 ## [1.6.1] - 2026-05-29
 
 Bugfix release: S13b.2 `+=` accumulation across includes ([go.hocon#134](https://github.com/o3co/go.hocon/issues/134)) — the follow-up deferred from v1.6.0. No public API changes; safe drop-in upgrade from v1.6.0. `package.json` stays at `"0.0.0-snapshot"`; the release workflow bumps from the tag.
