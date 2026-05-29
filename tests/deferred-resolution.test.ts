@@ -188,6 +188,38 @@ describe('Config._renderJSONForTest', () => {
     // Parse both to compare structurally (key order may differ from JSON.stringify)
     expect(JSON.parse(got)).toEqual(JSON.parse(expected))
   })
+
+  // xx.hocon#50: leading-zero numeric VALUE literals must render as valid,
+  // canonical JSON numbers matching Lightbend/rs.hocon ("023"->23, "08.53"->8.53,
+  // "-023"->-23). Previously ts emitted the raw lexeme verbatim ("023"), which is
+  // not valid JSON and diverged from rs/Lightbend. Asserted on the exact string
+  // (not via JSON.parse, which would throw on the old invalid output and mask the
+  // regression). Render-only: getString still returns the preserved lexeme
+  // (S10.11) — see config.test.ts getString('0100').
+  it('canonicalizes leading-zero numeric values (xx.hocon#50)', () => {
+    const c = parse('a = 01\nb = 023\nc = 08.53\nd = -023\ne = 007\nf = 00\ng = 000.5\nh = 0\ni = 0.5\nj = 1.0\nk = 100\nl = -08.53')
+    expect(c._renderJSONForTest()).toBe(
+      '{"a":1,"b":23,"c":8.53,"d":-23,"e":7,"f":0,"g":0.5,"h":0,"i":0.5,"j":1.0,"k":100,"l":-8.53}',
+    )
+  })
+
+  // xx.hocon#50 is intentionally scoped to leading zeros. The broader
+  // numeric-canonical family (exponent, trailing-zero, negative-zero) still
+  // renders verbatim and diverges from Lightbend/rs (which emit 1000.0 / 1.5 / 0).
+  // Valid JSON, just not yet canonical. Pinned so the follow-up full-canonical
+  // work (xx.hocon#53) must update this test deliberately, not silently. Output
+  // is byte-identical to go.hocon's TestRenderJSONForTest_DeferredNumericFamilyUnchanged.
+  it('leaves the deferred numeric-canonical family verbatim (xx.hocon#53)', () => {
+    const c = parse('a = 1e3\nb = 1.50\nc = -0\nd = 0e5')
+    expect(c._renderJSONForTest()).toBe('{"a":1e3,"b":1.50,"c":-0,"d":0e5}')
+  })
+
+  // xx.hocon#50 review (Copilot): a number-typed lexeme that is not a valid JSON
+  // number (`1.`, trailing dot — number-typed here, string in go) must be quoted,
+  // never emitted as invalid JSON. Output matches go.hocon's `"1."`.
+  it('quotes a number lexeme that is not valid JSON (1.)', () => {
+    expect(parse('a = 1.')._renderJSONForTest()).toBe('{"a":"1."}')
+  })
 })
 
 // ─── E11 package include with deferred (dr17, programmatic) ──────────────────
