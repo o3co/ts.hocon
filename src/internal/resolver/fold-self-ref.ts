@@ -24,21 +24,19 @@
  * as `priorValues[key]` against the OLD prior, so by induction every saved
  * prior is self-ref-free.
  *
- * Scope: walks SubstPlaceholder / ConcatPlaceholder / AppendPlaceholder /
- * HoconValue array / HoconValue object / ResObj recursively. Covers the
- * union of #118 (Subst/Concat patterns), #120 (array-element /
- * object-field patterns), and #131 round-2 (Append-wrapped self-refs
- * introduced by mixed `${a}` + `+=` chains).
+ * Scope: walks SubstPlaceholder / ConcatPlaceholder / HoconValue array /
+ * HoconValue object / ResObj recursively. Covers the union of #118
+ * (Subst/Concat patterns) and #120 (array-element / object-field patterns).
+ * (`+=` is desugared to a `${?key} [...]` self-ref concat upstream — go.hocon#134
+ * — so it flows through the Concat path; there is no longer an Append shape.)
  */
 
 import type { HoconValue } from '../../value.js'
 import type { Segment } from '../lexer/token.js'
 import {
-  type AppendPlaceholder,
   type ConcatPlaceholder,
   type ResolverValue,
   type SubstPlaceholder,
-  isAppend,
   isConcat,
   isResObj,
   isSubst,
@@ -76,9 +74,6 @@ export function stringSegmentsToKey(segments: string[]): string {
 export function containsSelfRef(v: ResolverValue, fullKey: string): boolean {
   if (isSubst(v)) return !v.knownAbsent && substFullKey(v) === fullKey
   if (isConcat(v)) return v.nodes.some(n => containsSelfRef(n, fullKey))
-  if (isAppend(v)) {
-    return containsSelfRef(v.existing, fullKey) || containsSelfRef(v.elem, fullKey)
-  }
   if (isResObj(v)) {
     for (const f of v.fields.values()) {
       if (containsSelfRef(f, fullKey)) return true
@@ -119,13 +114,6 @@ export function foldSelfRef(
       col: v.col,
     } satisfies ConcatPlaceholder
   }
-  if (isAppend(v)) {
-    return {
-      _kind: 'append-placeholder',
-      existing: foldSelfRef(v.existing, fullKey, replacement),
-      elem: foldSelfRef(v.elem, fullKey, replacement),
-    } satisfies AppendPlaceholder
-  }
   if (isResObj(v)) {
     const newFields = new Map<string, ResolverValue>()
     for (const [k, val] of v.fields) {
@@ -133,7 +121,7 @@ export function foldSelfRef(
     }
     // Preserve priorValues from the original so per-object look-back continues
     // to find them post-fold.
-    return { _kind: 'res-obj', fields: newFields, priorValues: new Map(v.priorValues) }
+    return { _kind: 'res-obj', fields: newFields, priorValues: new Map(v.priorValues), resetKeys: new Set(v.resetKeys) }
   }
   const hv = v as HoconValue
   if (hv.kind === 'array') {
@@ -146,6 +134,55 @@ export function foldSelfRef(
     const newFields = new Map<string, HoconValue>()
     for (const [k, val] of hv.fields) {
       newFields.set(k, foldSelfRef(val as ResolverValue, fullKey, replacement) as HoconValue)
+    }
+    return { kind: 'object', fields: newFields }
+  }
+  return v
+}
+
+/** Replace every `knownAbsent` self-reference to `fullKey` with `replacement`.
+ *
+ * Counterpart to `foldSelfRef`, which targets the NON-absent self-refs. An
+ * included file's bare `+=` chain folds its bottom-most `${?key}` to
+ * `knownAbsent` while building in isolation (no in-file prior). When that file
+ * is merged into a destination that already has a value for `key`, this
+ * re-opens the absent bottom so the included chain accumulates onto the
+ * destination's value across the include boundary (go.hocon#134). Walks the
+ * same Subst / Concat / ResObj / array / object shapes as `foldSelfRef`. */
+export function foldKnownAbsentSelfRef(
+  v: ResolverValue,
+  fullKey: string,
+  replacement: ResolverValue,
+): ResolverValue {
+  if (isSubst(v)) {
+    return v.knownAbsent && substFullKey(v) === fullKey ? replacement : v
+  }
+  if (isConcat(v)) {
+    return {
+      _kind: 'concat-placeholder',
+      nodes: v.nodes.map(n => foldKnownAbsentSelfRef(n, fullKey, replacement)),
+      line: v.line,
+      col: v.col,
+    } satisfies ConcatPlaceholder
+  }
+  if (isResObj(v)) {
+    const newFields = new Map<string, ResolverValue>()
+    for (const [k, val] of v.fields) {
+      newFields.set(k, foldKnownAbsentSelfRef(val, fullKey, replacement))
+    }
+    return { _kind: 'res-obj', fields: newFields, priorValues: new Map(v.priorValues), resetKeys: new Set(v.resetKeys) }
+  }
+  const hv = v as HoconValue
+  if (hv.kind === 'array') {
+    return {
+      kind: 'array',
+      items: hv.items.map(item => foldKnownAbsentSelfRef(item as ResolverValue, fullKey, replacement) as HoconValue),
+    }
+  }
+  if (hv.kind === 'object') {
+    const newFields = new Map<string, HoconValue>()
+    for (const [k, val] of hv.fields) {
+      newFields.set(k, foldKnownAbsentSelfRef(val as ResolverValue, fullKey, replacement) as HoconValue)
     }
     return { kind: 'object', fields: newFields }
   }
@@ -208,12 +245,6 @@ function foldOptionalSelfRefAbsent(v: ResolverValue, fullKey: string): ResolverV
     }
     return { _kind: 'concat-placeholder', nodes, line: v.line, col: v.col }
   }
-  if (isAppend(v)) {
-    const existing = foldOptionalSelfRefAbsent(v.existing, fullKey)
-    const elem = foldOptionalSelfRefAbsent(v.elem, fullKey)
-    if (existing === undefined || elem === undefined) return undefined
-    return { _kind: 'append-placeholder', existing, elem }
-  }
   if (isResObj(v)) {
     const fields = new Map<string, ResolverValue>()
     for (const [key, value] of v.fields) {
@@ -221,7 +252,7 @@ function foldOptionalSelfRefAbsent(v: ResolverValue, fullKey: string): ResolverV
       if (folded === undefined) return undefined
       fields.set(key, folded)
     }
-    return { _kind: 'res-obj', fields, priorValues: new Map(v.priorValues) }
+    return { _kind: 'res-obj', fields, priorValues: new Map(v.priorValues), resetKeys: new Set(v.resetKeys) }
   }
   const hv = v as HoconValue
   if (hv.kind === 'array') {
@@ -290,14 +321,7 @@ export function cloneResolverValue(v: ResolverValue): ResolverValue {
     for (const [k, val] of v.fields) newFields.set(k, cloneResolverValue(val))
     const newPriors = new Map<string, ResolverValue>()
     for (const [k, val] of v.priorValues) newPriors.set(k, cloneResolverValue(val))
-    return { _kind: 'res-obj', fields: newFields, priorValues: newPriors }
-  }
-  if (isAppend(v)) {
-    return {
-      _kind: 'append-placeholder',
-      existing: cloneResolverValue(v.existing),
-      elem: cloneResolverValue(v.elem),
-    } satisfies AppendPlaceholder
+    return { _kind: 'res-obj', fields: newFields, priorValues: newPriors, resetKeys: new Set(v.resetKeys) }
   }
   const hv = v as HoconValue
   if (hv.kind === 'array') {
@@ -351,7 +375,7 @@ export function foldNestedSelfRefs(v: ResolverValue, pathPrefix: string[]): Reso
     }
     newFields.set(k, finalVal)
   }
-  return { _kind: 'res-obj', fields: newFields, priorValues: new Map(v.priorValues) }
+  return { _kind: 'res-obj', fields: newFields, priorValues: new Map(v.priorValues), resetKeys: new Set(v.resetKeys) }
 }
 
 /** Path-equality walk: returns true if `v` contains a `Subst` whose
@@ -361,13 +385,10 @@ export function foldNestedSelfRefs(v: ResolverValue, pathPrefix: string[]): Reso
  * Cross-impl note: rs.hocon used path equality already; ts.hocon's pre-fix
  * `resolvingConcats` mechanism was pointer-identity. This helper preserves
  * the pre-#120 single-Concat detection and widens the scope to Concat /
- * Append / array / object / ResObj interiors. */
+ * array / object / ResObj interiors. */
 export function containsSubstByPath(v: ResolverValue, target: Segment[]): boolean {
   if (isSubst(v)) return !v.knownAbsent && segmentsTextEqual(v.segments, target)
   if (isConcat(v)) return v.nodes.some(n => containsSubstByPath(n, target))
-  if (isAppend(v)) {
-    return containsSubstByPath(v.existing, target) || containsSubstByPath(v.elem, target)
-  }
   if (isResObj(v)) {
     for (const f of v.fields.values()) {
       if (containsSubstByPath(f, target)) return true

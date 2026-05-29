@@ -7,7 +7,6 @@ import {
   type ResObj,
   isSubst,
   isConcat,
-  isAppend,
   isResObj,
   makeResObj,
 } from './types.js'
@@ -38,7 +37,7 @@ export function resolveTree(tree: ResObj, opts: ResolveOptions): HoconValue {
 
 /**
  * containsPlaceholders — returns true if the ResObj tree contains any
- * unresolved SubstPlaceholder, ConcatPlaceholder, or AppendPlaceholder.
+ * unresolved SubstPlaceholder or ConcatPlaceholder.
  * Used by Config.isResolved (added in T5).
  */
 export function containsPlaceholders(tree: ResObj): boolean {
@@ -50,7 +49,7 @@ export function containsPlaceholders(tree: ResObj): boolean {
 
 export function valContainsPlaceholders(v: unknown): boolean {
   const rv = v as import('./types.js').ResolverValue
-  if (isSubst(rv) || isConcat(rv) || isAppend(rv)) return true
+  if (isSubst(rv) || isConcat(rv)) return true
   if (isResObj(rv)) return containsPlaceholders(rv)
   const hv = v as HoconValue
   if (hv?.kind === 'array') {
@@ -68,7 +67,7 @@ export function valContainsPlaceholders(v: unknown): boolean {
 export function buildPartialHoconFromResObj(tree: ResObj): HoconValue & { kind: 'object' } {
   const fields = new Map<string, HoconValue>()
   for (const [k, v] of tree.fields) {
-    if (!isSubst(v) && !isConcat(v) && !isAppend(v)) {
+    if (!isSubst(v) && !isConcat(v)) {
       if (isResObj(v)) {
         fields.set(k, buildPartialHoconFromResObj(v))
       } else {

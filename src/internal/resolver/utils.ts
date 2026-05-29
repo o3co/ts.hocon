@@ -1,6 +1,6 @@
 import type { HoconValue } from '../../value.js'
 import type { Segment } from '../lexer/token.js'
-import { foldOrSkipPrior, stringSegmentsToKey } from './fold-self-ref.js'
+import { foldKnownAbsentSelfRef, foldOrSkipPrior, stringSegmentsToKey } from './fold-self-ref.js'
 import {
   type ResObj,
   type ResolverValue,
@@ -80,23 +80,49 @@ export function deepMergeResObjInto(dst: ResObj, src: ResObj, pathPrefix: string
       if (prior !== undefined) dst.priorValues.set(k, prior)
       deepMergeResObjInto(dstVal, srcVal, childPrefix)
     } else {
+      // Non-object collision: distinguish how src's value for `k` composes with
+      // dst's pre-merge value (go.hocon#134, S13b.2 `+=` accumulation across
+      // includes). Three cases:
+      //   (1) src reset `k` (explicit non-self-ref `k = [...]`) → src replaces
+      //       dst; drop dst's stale prior, let src's prior carry over.
+      //   (2a) src is a within-file `+=` chain (has its own prior for `k`) →
+      //        splice dst's value into the chain's knownAbsent bottom so the
+      //        included chain accumulates onto dst across the include boundary.
+      //   (2b) src is a bare `+=` (no in-file prior) → dst's value becomes the
+      //        prior that src's field-level `${?k}` chains off.
+      // Cases 2a/2b keep the same fold-or-skip / self-ref-free-prior discipline
+      // (#118/#120 chain-class invariant) as the both-objects branch above.
       if (dstVal !== undefined) {
-        // Fold-or-skip discipline: when the displaced dst value contains
-        // a self-ref to its full key, fold against the previous prior so
-        // the saved prior is self-ref-free.
-        const priorExisting = dst.priorValues.get(k)
-        const prior = foldOrSkipPrior(dstVal, fullKey, priorExisting)
-        if (prior !== undefined) dst.priorValues.set(k, prior)
+        if (src.resetKeys.has(k)) {
+          dst.priorValues.delete(k)
+        } else {
+          const dstFolded = foldOrSkipPrior(dstVal, fullKey, dst.priorValues.get(k))
+          if (dstFolded !== undefined) {
+            const srcPrior = src.priorValues.get(k)
+            if (srcPrior !== undefined) {
+              dst.priorValues.set(k, foldKnownAbsentSelfRef(srcPrior, fullKey, dstFolded))
+            } else {
+              dst.priorValues.set(k, dstFolded)
+            }
+          }
+          // dstFolded === undefined only for a required self-ref with no prior,
+          // unreachable through `+=`; leave src's prior to carry over.
+        }
       }
       dst.fields.set(k, srcVal)
     }
   }
-  // Carry over priorValues from src that dst doesn't already have
+  // Carry over priorValues from src that dst doesn't already have (and, for a
+  // reset key whose dst prior was dropped above, install src's own prior).
   for (const [k, srcPrior] of src.priorValues) {
     if (!dst.priorValues.has(k)) {
       dst.priorValues.set(k, srcPrior)
     }
   }
+  // go.hocon#134: propagate reset origin so a future merge that treats this
+  // object as an included source composes correctly (union: if either side
+  // reset `k`, the merged value traces back to a reset).
+  for (const k of src.resetKeys) dst.resetKeys.add(k)
 }
 
 export function hoconValueToResObj(hv: HoconValue): ResObj {
