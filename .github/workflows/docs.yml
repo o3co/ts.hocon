@@ -67,14 +67,24 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
           # Stage freshly-built typedoc output outside the work tree.
+          # `docs/.` instead of `docs/*` so we copy dotfiles (e.g. `.nojekyll`)
+          # and don't fail when the directory is empty (unmatched glob).
           BUILT=$(mktemp -d)
-          cp -r docs/* "$BUILT/"
+          cp -r docs/. "$BUILT/"
 
           # Bootstrap gh-pages on the remote if missing (first-time deploy).
+          # The push may race with a concurrent deploy creating the branch
+          # first; treat that as success by re-checking after a failed push.
           if ! git ls-remote --exit-code --heads origin gh-pages > /dev/null 2>&1; then
             EMPTY_TREE=$(git mktree </dev/null)
             EMPTY_COMMIT=$(git commit-tree "$EMPTY_TREE" -m "Initial empty gh-pages")
-            git push origin "$EMPTY_COMMIT:refs/heads/gh-pages"
+            if ! git push origin "$EMPTY_COMMIT:refs/heads/gh-pages"; then
+              if ! git ls-remote --exit-code --heads origin gh-pages > /dev/null 2>&1; then
+                echo "gh-pages bootstrap push failed and branch still absent" >&2
+                exit 1
+              fi
+              echo "gh-pages was created concurrently; continuing"
+            fi
           fi
 
           # Operate on gh-pages in an isolated worktree so the develop work tree
@@ -101,7 +111,8 @@ jobs:
 
             rm -rf "v${VERSION}"
             mkdir -p "v${VERSION}"
-            cp -r "$BUILT/"* "v${VERSION}/"
+            # `$BUILT/.` matches the dotfile/empty-glob fix above.
+            cp -r "$BUILT/." "v${VERSION}/"
 
             cat > index.html << REDIRECT
             <!DOCTYPE html>
