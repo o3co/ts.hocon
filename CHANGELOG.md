@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.1] - 2026-06-14
+
+Cross-impl coordinated patch release (v1.7.1 across go.hocon / ts.hocon / rs.hocon). **No functional changes in ts.hocon.** The substantive change in this patch is rs.hocon's false-positive `circular substitution` fix ([rs.hocon#136](https://github.com/o3co/rs.hocon/pull/136)); ts.hocon was unaffected — it already resolves the same self-ref-below-merge shapes (verified in the cross-impl audit) — so this release carries no ts-side change and exists for cross-impl version parity (precedent: v1.7.0's coordinated sync). No public API changes; safe drop-in upgrade from v1.7.0. `package.json` stays at `"0.0.0-snapshot"`; the release workflow bumps from the tag.
+
 ## [1.7.0] - 2026-05-30
 
 Cross-impl release coordinated to land at v1.7.0 across go.hocon / ts.hocon / rs.hocon. The minor bump is driven by go.hocon's new `GetXxxE` accessor family ([go.hocon#142](https://github.com/o3co/go.hocon/issues/142), additive public API); ts.hocon's content for this cycle is the cross-impl leading-zero JSON-render validity fix ([xx.hocon#50](https://github.com/o3co/xx.hocon/issues/50), byte-aligned with go.hocon's equivalent fix) — no new ts-side public API, but the version syncs with go/rs per project convention. No breaking changes; safe drop-in upgrade from v1.6.1. `package.json` stays at `"0.0.0-snapshot"`; the release workflow bumps from the tag.
