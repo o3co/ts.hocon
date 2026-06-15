@@ -11,7 +11,7 @@ import {
 import { isConcat, isResObj, isSubst, mergeUnresolved } from './internal/resolver/types.js'
 import type { ResObj, ResolveOptions as InternalResolveOptions } from './internal/resolver/types.js'
 import { numericObjectToArray } from './value/numeric-array.js'
-import type { HoconValue, ScalarValueType } from './value.js'
+import type { HoconValue, ReadonlyHoconValue, ScalarValueType } from './value.js'
 
 export class Config {
   /** @internal resolved flag: true when no substitution placeholders remain. */
@@ -81,6 +81,41 @@ export class Config {
     const v = this.lookupNode(path)
     if (v === undefined) return undefined
     return hoconToJs(v)
+  }
+
+  /**
+   * Returns the raw {@link HoconValue} node at `path` as a deeply-immutable
+   * {@link ReadonlyHoconValue} view, or `undefined` if the path is absent. Unlike
+   * `get` (which decodes to a plain JS value), this exposes the value tree for
+   * structural introspection via the `value.ts` accessors (`asString`, `asObject`,
+   * `isScalar`, …).
+   *
+   * `getValue('')` returns the root object node.
+   *
+   * Throws {@link NotResolvedError} when the node (or its subtree) is unresolved:
+   * the `HoconValue` union has no placeholder variant, so an unresolved value
+   * cannot be represented. This matches `getConfig` / `getList`.
+   */
+  getValue(path: string): ReadonlyHoconValue | undefined {
+    const v = this.lookupNode(path)
+    if (v === undefined) {
+      // Absent: a placeholder leaf is omitted from the partial root, so an
+      // unresolved scalar reads as "missing" — distinguish it from a genuinely
+      // absent path (matches the typed scalar getters' requireScalar branch).
+      if (!this._resolved && this._resObjRootSubtreeHasPlaceholders(path)) {
+        throw new NotResolvedError(path)
+      }
+      return undefined
+    }
+    // A present scalar is always a concrete literal/resolved value (placeholder
+    // scalars are omitted, never present) — return it without the placeholder
+    // check, matching getString/getNumber. A present object/array container may
+    // still hide placeholder children omitted from the partial root, so apply
+    // the subtree check there, matching getConfig/getList.
+    if (v.kind !== 'scalar' && !this._resolved && this._resObjRootSubtreeHasPlaceholders(path)) {
+      throw new NotResolvedError(path)
+    }
+    return v
   }
 
   getString(path: string): string {
