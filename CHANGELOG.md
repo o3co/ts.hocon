@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-06-16
+
 ### Added — value introspection: `Config.getValue` + `HoconValue` accessors (1.8)
 
 Cross-impl coordinated MINOR (1.8) responsibility "value → type for any node" + value introspection, ported to the ts idiom (rs.hocon [#140](https://github.com/o3co/rs.hocon/pull/140) / go.hocon [#150](https://github.com/o3co/go.hocon/pull/150) merged). ts already satisfied "value → type" via `getValidated` (zod); this release fills the introspection gap — the public `HoconValue` union previously had no retrieval handle and no accessors.
