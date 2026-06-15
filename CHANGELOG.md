@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — value introspection: `Config.getValue` + `HoconValue` accessors (1.8)
+
+Cross-impl coordinated MINOR (1.8) responsibility "value → type for any node" + value introspection, ported to the ts idiom (rs.hocon [#140](https://github.com/o3co/rs.hocon/pull/140) / go.hocon [#150](https://github.com/o3co/go.hocon/pull/150) merged). ts already satisfied "value → type" via `getValidated` (zod); this release fills the introspection gap — the public `HoconValue` union previously had no retrieval handle and no accessors.
+
+- **`Config.getValue(path): ReadonlyHoconValue | undefined`** — returns the raw value node at `path` for structural introspection, where `get` decodes to a plain JS value. Missing path → `undefined`; unresolved node or subtree → `NotResolvedError` (the `HoconValue` union has no placeholder variant, so an unresolved value cannot be represented — same stance as `getConfig` / `getList`). `getValue('')` returns the root object node.
+- **Value accessor functions** (exported from the package root) — `asString` (strict: scalar/string only), `asNumber` and `asBoolean` (scalar coerced via the same `coerceNumber` / `coerceBoolean` as the typed getters), `asObject`, `asArray`, and the type guards `isObject` / `isArray` / `isScalar` plus `isNull`. They mirror rs.hocon's `HoconValue::as_* / is_*`; `asNumber` unifies rs's `as_i64` + `as_f64` because TS has a single `number` type.
+- **`ReadonlyHoconValue`** — a new exported, deeply-immutable view of `HoconValue` (`ReadonlyMap` / `readonly[]` recursively). `getValue` returns live nodes (not clones) typed as this, so callers cannot mutate the parsed tree; `HoconValue` remains assignable to it, so the accessors accept both forms. Integer-coercion parity (rs/go's non-whole-float reject) is N/A — TS `number` is float64 and int-ness is zod's concern (`z.number().int()`). No breaking changes; additive public API. `package.json` stays at `"0.0.0-snapshot"`; the release workflow bumps from the tag.
+
 ## [1.7.1] - 2026-06-14
 
 Cross-impl coordinated patch release (v1.7.1 across go.hocon / ts.hocon / rs.hocon). **No functional changes in ts.hocon.** The substantive change in this patch is rs.hocon's false-positive `circular substitution` fix ([rs.hocon#136](https://github.com/o3co/rs.hocon/pull/136)); ts.hocon was unaffected — it already resolves the same self-ref-below-merge shapes (verified in the cross-impl audit) — so this release carries no ts-side change and exists for cross-impl version parity (precedent: v1.7.0's coordinated sync). No public API changes; safe drop-in upgrade from v1.7.0. `package.json` stays at `"0.0.0-snapshot"`; the release workflow bumps from the tag.

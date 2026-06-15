@@ -8,5 +8,9 @@ export {
 } from './parse.js'
 export type { ParseOptions, ResolveOptions } from './parse.js'
 export type { PackageResolver } from './internal/resolver/types.js'
-export type { HoconValue, ScalarValueType } from './value.js'
+export type { HoconValue, ReadonlyHoconValue, ScalarValueType } from './value.js'
+export {
+  asString, asNumber, asBoolean, asObject, asArray,
+  isObject, isArray, isScalar, isNull,
+} from './value.js'
 export { fromMap, empty } from './value-factory.js'
