@@ -754,24 +754,26 @@ describe('S18 - plus-sign prefix support in parseDuration/parseBytes', () => {
 })
 
 // S19.8 — duration unit names are case sensitive, lowercase only (HOCON spec L1304)
-// Probe (2026-05-13): "5 MS" → 5, "5 Seconds" → 5000, "5 DAYS" → 432000000.
-// parseDuration applies .toLowerCase() to the unit before lookup, making it case-insensitive.
 // Spec L1304: "The supported unit strings for duration are case sensitive and must be lowercase."
 describe('S19.8 - duration unit names are case-sensitive lowercase (HOCON spec L1304)', () => {
-  it.fails('S19.8: "5 MS" should be rejected — uppercase unit is invalid per spec', () => {
-    // Currently parseDuration lowercases → "ms" → 5 ms. Should reject.
+  it('S19.8: "5 MS" is rejected — uppercase unit is invalid per spec', () => {
     const c = parse('a = "5 MS"')
     expect(() => c.getDuration('a')).toThrow(ConfigError)
   })
 
-  it.fails('S19.8: "5 Seconds" should be rejected — mixed-case unit is invalid per spec', () => {
+  it('S19.8: "5 Seconds" is rejected — mixed-case unit is invalid per spec', () => {
     const c = parse('b = "5 Seconds"')
     expect(() => c.getDuration('b')).toThrow(ConfigError)
   })
 
-  it.fails('S19.8: "5 DAYS" should be rejected — uppercase unit is invalid per spec', () => {
+  it('S19.8: "5 DAYS" is rejected — uppercase unit is invalid per spec', () => {
     const c = parse('c = "5 DAYS"')
     expect(() => c.getDuration('c')).toThrow(ConfigError)
+  })
+
+  it('S19.8: "5 S" is rejected — uppercase single-letter unit is invalid (unlike byte units)', () => {
+    const c = parse('d = "5 S"')
+    expect(() => c.getDuration('d')).toThrow(ConfigError)
   })
 
   it('S19.8: "5 ms" (lowercase) is accepted', () => {

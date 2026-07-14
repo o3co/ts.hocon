@@ -245,7 +245,7 @@ c.getBytes('max-size')          // 536870912 (bytes)
 c.getBytes('max-size', 'MiB')  // 512
 ```
 
-Supported duration units: `ns`, `us`, `ms`, `s`, `m`, `h`, `d` (and long forms like `seconds`, `minutes`).
+Supported duration units: `ns`, `us`, `ms`, `s`, `m`, `h`, `d` (and long forms like `seconds`, `minutes`). Duration unit names are case-sensitive and must be lowercase (HOCON spec); byte units below accept the cases shown.
 Supported byte units: `B`, `KB`/`KiB`, `MB`/`MiB`, `GB`/`GiB`, `TB`/`TiB` (and long forms like `megabytes`, `mebibytes`).
 
 ## Spec Compliance

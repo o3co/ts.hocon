@@ -77,7 +77,8 @@ export function parseDuration(value: string, outputUnit: DurationUnit = 'ms'): n
   if (i === 0) return NaN
   const num = Number(trimmed.slice(0, i))
   if (Number.isNaN(num)) return NaN
-  const unit = trimHoconWs(trimmed.slice(i)).toLowerCase()
+  // S19.8 — unit match is case-sensitive per HOCON.md L1304 (lowercase only).
+  const unit = trimHoconWs(trimmed.slice(i))
   const divisor = OUTPUT_DURATION_UNITS[outputUnit]
   if (divisor === undefined) return NaN
   // S18.1 + S18.4: bare number (no unit) → treat as default unit (ms)

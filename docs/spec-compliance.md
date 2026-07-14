@@ -725,12 +725,11 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
   status: ✅
 - **S19.8** Duration unit names are case sensitive (lowercase only) — §Duration format (L1304)
   tests: tests/config.test.ts (S19.8 describe block)
-  status: ❌
-  notes: `parseDuration` applies `.toLowerCase()` to the unit string before lookup, making
-  unit names case-insensitive. Probe: `"5 MS"` → 5, `"5 Seconds"` → 5000, `"5 DAYS"` →
-  432000000. Spec L1304: "The supported unit strings for duration are case sensitive and must
-  be lowercase." Fix: remove the `.toLowerCase()` call in `parseDuration` and rely on the
-  exact map keys. Tests pinned with `it.fails`.
+  status: ✅
+  notes: `parseDuration` matches the unit string case-sensitively against the lowercase
+  unit map; `"5 MS"`, `"5 Seconds"`, `"5 DAYS"` throw `ConfigError`, lowercase units are
+  accepted. The former `.toLowerCase()` on the unit was removed (BREAKING: previously
+  accepted non-lowercase units are now rejected per spec L1304).
 
 ## S20. Period format
 
