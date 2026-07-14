@@ -443,8 +443,9 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
   tests: tests/resolver.test.ts:67; tests/parse.test.ts:186
   status: ✅
 - **S13b.2** `+=` on non-array prior value → error — §`+=` field separator (L732)
-  tests: tests/resolver.test.ts:696
-  status: ❌ (see #81) — resolver wraps the scalar as a single-element array instead of erroring
+  tests: tests/resolver.test.ts:731,735,739 (S13b.2 error assertions: number scalar, string scalar, object prior)
+  status: ✅ — the resolver now errors instead of wrapping the scalar as a single-element array ([#81](https://github.com/o3co/ts.hocon/issues/81) fixed); numeric-keyed-object prior still succeeds via S15.3, matching the `${?a} [b]` desugar.
+
 - **S13b.3** `+=` works on first mention of key (no prior `=`) — §`+=` field separator (L734)
   tests: tests/resolver.test.ts:74
   status: ✅
@@ -655,9 +656,9 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
   tests: tests/config.test.ts:507 — kept as a sanity check that quoted `"null"` is stored as a string scalar and unquoted `null` is stored as the null scalar; no type-conversion is exercised.
   status: ➖
 - **S17.6** null → other type: error — §Automatic type conversions (L1252)
-  tests: tests/config.test.ts:527 (pin .fails for getString); tests/config.test.ts:532,537,542 (3 passing sub-rules)
-  status: ⚠️ (3-of-4 partial; passing sub-rules are *incidentally* satisfied)
-  `getNumber()`, `getBoolean()`, and `getList()` on a null-typed value throw `ConfigError`, but **not** because `requireScalar` enforces "no null→T conversion" — the impl coincidentally lacks a coercion path from `null` to numeric/boolean/array types, so the typed accessors fall through to "not a number / not a boolean / not an array" errors. The contract is not structurally enforced. `getString()` on null silently returns the raw string `"null"` and is pinned via `.fails`. When fixing #88, add a single explicit `valueType === 'null'` rejection at the `requireScalar` boundary so all four accessors become contract-enforced together. See issue #88.
+  tests: tests/config.test.ts (S17.6 describe block: getString/getNumber/getBoolean/getList on null all throw)
+  status: ✅ — all four typed accessors throw `ConfigError` on a null value ([#88](https://github.com/o3co/ts.hocon/issues/88) fixed; `getString` no longer returns the string `"null"`).
+
 - **S17.7** object → other type: error — §Automatic type conversions (L1254)
   tests: tests/config.test.ts:549
   status: ✅
@@ -778,13 +779,8 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
   status: ✅
 - **S22.2** Intermediate non-object hides earlier object across files — §Config object merging (L1406)
   tests: tests/config.test.ts (S22.2 describe block)
-  status: ❌
-  notes: `deepMergeHocon` always recursively merges objects regardless of intermediate
-  non-object values. Probe: `c1({a:{x:1}}).withFallback(c2({a:42})).withFallback(c3({a:{y:2}}))`
-  → `{a:{x:1,y:2}}`. Expected per spec L1410-1417: `{a:{x:1}}` (the non-object `42` in c2
-  prevents c1's `{x:1}` from merging with c3's `{y:2}`). Fix requires `withFallback` /
-  `deepMergeHocon` to track value-sequence history per key, not just the current types.
-  Tests pinned with `it.fails`.
+  status: ✅ — `c1({a:{x:1}}).withFallback(c2({a:42})).withFallback(c3({a:{y:2}}))` → `{a:{x:1}}` per spec L1410-1417; the non-object `42` prevents the merge across the barrier. Adjacent-object merge and non-object-wins sub-rules pinned in the same block.
+
 - **S22.3** Setting key to null clears earlier object value — §Config object merging (L1436)
   tests: tests/config.test.ts (S22.3 describe block)
   status: ✅
