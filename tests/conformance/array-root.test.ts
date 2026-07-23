@@ -24,14 +24,18 @@ const fixtureDir = fileURLToPath(
 )
 
 describe('S3.5 conformance — array-root fixtures (ar01-ar03) must error', () => {
-  if (!existsSync(fixtureDir)) {
+  // `make testdata` creates the group dir unconditionally, so dir existence
+  // alone is not evidence the fixtures landed — an empty dir must also skip,
+  // or the suite would silently pass with zero assertions executed.
+  const entries = existsSync(fixtureDir)
+    ? readdirSync(fixtureDir)
+        .sort()
+        .filter(f => f.endsWith('.conf') && !f.endsWith('-inner.conf'))
+    : []
+  if (entries.length === 0) {
     it.skip('fixtures unavailable — array-root group not synced (run `make testdata`)', () => {})
     return
   }
-
-  const entries = readdirSync(fixtureDir)
-    .sort()
-    .filter(f => f.endsWith('.conf') && !f.endsWith('-inner.conf'))
 
   for (const entry of entries) {
     it(`${entry} — array-at-file-root document errors (type error, not syntax)`, () => {
