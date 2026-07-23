@@ -104,4 +104,13 @@ jobs:
           make_latest: true
 
       - name: Publish
-        run: pnpm publish --access public --no-git-checks --provenance
+        # npm CLI, not pnpm: npm's trusted-publishing OIDC token exchange is
+        # first-class in the npm client. pnpm 10.30.2 (pinned via
+        # packageManager) signed provenance but its registry PUT was rejected
+        # with E403 once npm's July 2026 token-policy enforcement landed —
+        # v1.9.0 publish failed 3× despite a correctly configured Trusted
+        # Publisher (o3co/ts.hocon + release.yml) and the recommended
+        # "require 2FA and disallow tokens" publishing access. Provenance is
+        # generated automatically under trusted publishing; the explicit flag
+        # keeps the intent visible.
+        run: npm publish --access public --provenance
