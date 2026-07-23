@@ -41,6 +41,8 @@ describe('S3.1 — empty document parses to {} (HOCON.md L134-136)', () => {
   it('S3.1: empty document root is an object node with no fields', () => {
     const root = parse('').getValue('')
     expect(root.kind).toBe('object')
+    if (root.kind !== 'object') throw new Error('unreachable — asserted above')
+    expect(root.fields.size).toBe(0)
   })
 
   it('S3.1: empty document equals explicit {} parse', () => {
