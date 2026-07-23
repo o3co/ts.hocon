@@ -29,6 +29,13 @@ jobs:
         with:
           node-version: "24"
           cache: pnpm
+          # Writes ~/.npmrc with an _authToken placeholder consumed via
+          # NODE_AUTH_TOKEN on the Publish step (granular access token,
+          # bypass-2FA). Temporary fallback while npm support investigates the
+          # registry-side E403 that rejects this package's OIDC
+          # trusted-publishing PUTs (exchange succeeds with 201; PUT 403 —
+          # see PR #156/#157/#158 diagnostics).
+          registry-url: "https://registry.npmjs.org"
 
       - name: Set version from tag
         # Idempotent: skip the bump if package.json is already at the tag's
@@ -113,6 +120,8 @@ jobs:
         # "require 2FA and disallow tokens" publishing access. Provenance is
         # generated automatically under trusted publishing; the explicit flag
         # keeps the intent visible.
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: npm publish --access public --provenance --loglevel verbose
 
       - name: Dump npm debug log on failure
