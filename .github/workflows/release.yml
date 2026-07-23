@@ -125,8 +125,9 @@ jobs:
         # kept preferring OIDC. `env -u` unsets at the shell level, which the
         # runner cannot reinject. --provenance omitted: sigstore needs the
         # OIDC id-token we are removing.
-        run: env -u ACTIONS_ID_TOKEN_REQUEST_URL -u ACTIONS_ID_TOKEN_REQUEST_TOKEN npm publish --access public --loglevel verbose
-
+        # run: env -u ACTIONS_ID_TOKEN_REQUEST_URL -u ACTIONS_ID_TOKEN_REQUEST_TOKEN npm publish --access public --loglevel verbose
+        run: npm publish
+        
       - name: Dump npm debug log on failure
         # Surfaces the OIDC trusted-publishing token exchange (npm redacts
         # authorization headers in its debug logs) so a 403 can be diagnosed
