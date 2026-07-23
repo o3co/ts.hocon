@@ -86,9 +86,12 @@ function buildResolveContext(input: string, opts: ParseOptions): { ast: ReturnTy
   // object-rooted Config API rejects it at the Config boundary with a TYPE
   // error, matching Lightbend's Parseable.forceParsedToObject
   // (ConfigException.WrongType "has type LIST rather than object at file root").
+  // The message carries the source origin + the opening bracket's position
+  // (Lightbend's WrongType includes the origin and line likewise).
   if (ast.kind === 'array') {
+    const origin = opts.originDescription ?? 'input'
     throw new ConfigError(
-      'document has type array rather than object at file root (HOCON.md L989-991); the Config API requires an object root',
+      `${origin}: ${ast.pos.line}:${ast.pos.col}: document has type array rather than object at file root (HOCON.md L989-991); the Config API requires an object root`,
       '',
     )
   }

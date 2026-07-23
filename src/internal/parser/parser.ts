@@ -61,7 +61,10 @@ class Parser {
       if (remaining.kind !== 'eof') {
         throw new ParseError(`Unexpected token '${remaining.value}' after root array`, remaining.line, remaining.col)
       }
-      return arr
+      // Anchor the root array's pos at the opening `[` (parseArray records the
+      // first element's position) so the Config-boundary type error can point
+      // at the bracket that opened the array root.
+      return { ...arr, pos: { line: t.line, col: t.col } }
     }
     return this.parseObject(false)
   }

@@ -28,13 +28,24 @@ describe('S3.5 — array-root document rejected with a type error (HOCON.md L989
     expect(() => parse('[1,2]')).toThrow(/array rather than object at file root/i)
   })
 
+  it('type error carries the origin and the opening bracket position', () => {
+    expect(() => parse('[1,2]')).toThrow(/input: 1:1/)
+    expect(() => parse('\n  [1,2]', { originDescription: 'my-source' })).toThrow(/my-source: 2:3/)
+  })
+
+  it('deferred parse (resolveSubstitutions: false) also rejects with ConfigError', () => {
+    expect(() => parse('[1,2]', { resolveSubstitutions: false })).toThrow(ConfigError)
+  })
+
   it('parse("[1,2]") does NOT throw ParseError (document is valid syntax)', () => {
+    let caught: unknown
     try {
       parse('[1,2]')
-      expect.unreachable('parse must throw')
     } catch (e) {
-      expect(e).not.toBeInstanceOf(ParseError)
+      caught = e
     }
+    expect(caught).toBeDefined()
+    expect(caught).not.toBeInstanceOf(ParseError)
   })
 
   it('multiline array of objects also rejects with ConfigError', () => {
@@ -77,6 +88,31 @@ describe('S3.5 — array-root document rejected with a type error (HOCON.md L989
     expect(run).toThrow(ResolveError)
     expect(run).toThrow(/array at file root/i)
     expect(run).toThrow(/arr\.conf/)
+  })
+
+  it('include of array-root file (async) throws ResolveError — loadSingleAsync guard', async () => {
+    const files: Record<string, string> = { 'arr.conf': '[1,2]' }
+    const run = parseAsync('include "arr.conf"\na = 1', {
+      readFile: async (p: string) => {
+        const v = files[p.split('/').pop()!]
+        if (v === undefined) throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' })
+        return v
+      },
+    })
+    await expect(run).rejects.toThrow(ResolveError)
+    await expect(run).rejects.toThrow(/array at file root/i)
+  })
+
+  it('include package of array-root content (async) throws ResolveError — loadPackageAsync guard', async () => {
+    const run = parseAsync('include package("my-lib", "ref.conf")\na = 1', {
+      packageResolver: () => '/fake/pkg/ref.conf',
+      readFile: async (p: string) => {
+        if (p === '/fake/pkg/ref.conf') return '[1,2]'
+        throw Object.assign(new Error(`ENOENT: ${p}`), { code: 'ENOENT' })
+      },
+    })
+    await expect(run).rejects.toThrow(ResolveError)
+    await expect(run).rejects.toThrow(/array at file root/i)
   })
 
   it('include package of array-root content throws ResolveError naming the resolved path', () => {
