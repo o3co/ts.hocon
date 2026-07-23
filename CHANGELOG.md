@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-07-23
+
+Cross-impl release coordinated to land at v1.9.0 across ts.hocon / go.hocon / rs.hocon / py.hocon. Covers the two same-day spec corrections from [xx.hocon#62](https://github.com/o3co/xx.hocon/pull/62) (S3.1 — empty document parses to `{}`) and [xx.hocon#64](https://github.com/o3co/xx.hocon/pull/64) (S3.5 — array-root document rejected with a type error), plus the S19.8 case-sensitive duration units breaking change already queued in Unreleased. MINOR (not PATCH) because sibling impls add public API surface in the same coordinated cycle (rs `HoconError::Config` variant, go `ResolveError.Cause`/`Unwrap`) and the error-taxonomy / empty-document behavior changes are consumer-observable. `package.json` stays at `"0.0.0-snapshot"`; the release workflow bumps from the tag.
+
 ### Fixed — array-root document rejected with a type error (S3.5, [xx.hocon#64](https://github.com/o3co/xx.hocon/pull/64))
 
 - **`parse("[1,2]")` now throws `ConfigError` ("document has type array rather than
