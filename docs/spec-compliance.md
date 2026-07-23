@@ -1,6 +1,6 @@
 # HOCON Spec Compliance — ts.hocon
 
-This file extends the canonical item definitions in [`xx.hocon/docs/spec-checklist.md`](https://github.com/o3co/xx.hocon/blob/main/docs/spec-checklist.md). It inherits all 209 items in the same order, adding `tests:` and `status:` fields for this implementation.
+This file extends the canonical item definitions in [`xx.hocon/docs/spec-checklist.md`](https://github.com/o3co/xx.hocon/blob/main/docs/spec-checklist.md). It inherits all 210 items in the same order, adding `tests:` and `status:` fields for this implementation.
 
 - **`tests:`** — path to the test or fixture exercising each item, or `—` when no test covers it (test debt).
 - **`status:`** — uses the glyphs defined in the template legend (✅ ⚠️ ❌ 🤷 ➖). Default is 🤷 (no test, unverified).
@@ -86,6 +86,14 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
 - **S3.4** Unbalanced trailing `}` without opening `{` is invalid — §Omit root braces (L138)
   tests: tests/parser.test.ts:234
   status: ❌ ([#55](https://github.com/o3co/ts.hocon/issues/55)) — related test passes but specific case (unbraced root + stray `}`) is not covered
+- **S3.5** Array-root document is valid syntax; object-rooted parse API rejects with a type error — §Include semantics: merging (L989-991)
+  tests: tests/spec-s3-5-array-root.test.ts; tests/conformance/array-root.test.ts (ar01–ar03 `.error` sidecars)
+  status: ✅ — Added 2026-07-23. `Parser.parse()` accepts `[` at root and parses the array
+  value (malformed arrays / trailing content stay `ParseError`); `buildResolveContext()`
+  rejects an array-root AST with `ConfigError` ("document has type array rather than
+  object at file root"), matching Lightbend's `Parseable.forceParsedToObject`
+  (`WrongType`). Previously rejected with `ParseError` "expected key, got lbracket" —
+  right net outcome, wrong kind at the wrong layer.
 
 ## S4. Key-value separator
 
@@ -515,8 +523,10 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
 ### S14b. Include semantics: merging
 
 - **S14b.1** Included root must be an object (array → error) — §Include semantics: merging (L993)
-  tests: tests/resolver.test.ts:781
-  status: ✅
+  tests: tests/resolver.test.ts:781; tests/spec-s3-5-array-root.test.ts (include + package variants)
+  status: ✅ — Diagnostics improved with S3.5 (2026-07-23): the include loader now raises
+  `ResolveError` "included file has array at file root … (HOCON.md L993-994)" naming the
+  included source, instead of the parser's generic "expected key" syntax error.
 - **S14b.2** Included keys merge per duplicate-key rules — §Include semantics: merging (L997)
   tests: tests/resolver.test.ts:255
   status: ✅

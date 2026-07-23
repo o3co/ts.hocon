@@ -47,6 +47,22 @@ class Parser {
 
       return { kind: 'object', fields: allFields, pos: first.pos }
     }
+    if (t.kind === 'lbracket') {
+      // S3.5 (HOCON.md L989-991): "both JSON and HOCON allow arrays as root
+      // values in a document" — an array-root document is valid syntax. The
+      // object-rooted Config API rejects it AFTER the parse, at the Config
+      // boundary (see buildResolveContext / IncludeLoader), matching
+      // Lightbend's Parseable.forceParsedToObject (WrongType, not a syntax
+      // error). Malformed arrays and trailing content remain syntax errors.
+      this.advance()
+      const arr = this.parseArray()
+      this.skip('newline')
+      const remaining = this.peek()
+      if (remaining.kind !== 'eof') {
+        throw new ParseError(`Unexpected token '${remaining.value}' after root array`, remaining.line, remaining.col)
+      }
+      return arr
+    }
     return this.parseObject(false)
   }
 
