@@ -184,6 +184,26 @@ describe('E11 conformance — include-package fixtures (ipk01-ipk14)', () => {
     expect(config.get('app')).toBe('host')
   })
 
+  // ipk08 variant: whitespace-only / comment-only registered content also
+  // contributes {} — same S3.1 rule as zero-byte (an empty document parses to
+  // the empty object; corrected 2026-07-23, xx.hocon E10). Regression guard:
+  // the package path used to reject non-zero-byte empty documents.
+  it('ipk08 variant: whitespace-only registered content contributes {}', () => {
+    const registry: Registry = new Map([
+      [registryKey('github.com/example/lib', 'empty.conf'), '   \n\t\n'],
+    ])
+    const config = parseFixture('ipk08-empty-content', registry)
+    expect(config.get('app')).toBe('host')
+  })
+
+  it('ipk08 variant: comment-only registered content contributes {}', () => {
+    const registry: Registry = new Map([
+      [registryKey('github.com/example/lib', 'empty.conf'), '# nothing here\n'],
+    ])
+    const config = parseFixture('ipk08-empty-content', registry)
+    expect(config.get('app')).toBe('host')
+  })
+
   // ipk09: empty string file argument — ParseError (E11 decision 6)
   it('ipk09-file-empty: ParseError on empty file argument', () => {
     expect(() => parse(fixtureContent('ipk09-file-empty'), {}))
