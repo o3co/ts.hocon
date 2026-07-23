@@ -113,4 +113,15 @@ jobs:
         # "require 2FA and disallow tokens" publishing access. Provenance is
         # generated automatically under trusted publishing; the explicit flag
         # keeps the intent visible.
-        run: npm publish --access public --provenance
+        run: npm publish --access public --provenance --loglevel verbose
+
+      - name: Dump npm debug log on failure
+        # Surfaces the OIDC trusted-publishing token exchange (npm redacts
+        # authorization headers in its debug logs) so a 403 can be diagnosed
+        # from the Actions log instead of guessing. Remove once publishing is
+        # stable again.
+        if: failure()
+        run: |
+          npm --version
+          node --version
+          tail -n 150 /home/runner/.npm/_logs/*-debug-0.log || true
