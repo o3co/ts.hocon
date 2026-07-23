@@ -122,7 +122,15 @@ jobs:
         # keeps the intent visible.
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm publish --access public --provenance --loglevel verbose
+          # Force token auth: npm 11+ auto-detects the Actions OIDC env and
+          # prefers it over NODE_AUTH_TOKEN (verified in run 30005076744 —
+          # the exchange POST fired despite the token being set). Blanking
+          # the detection vars makes this run genuinely test the granular
+          # token. --provenance dropped for this path: sigstore needs the
+          # OIDC id-token we just disabled.
+          ACTIONS_ID_TOKEN_REQUEST_URL: ""
+          ACTIONS_ID_TOKEN_REQUEST_TOKEN: ""
+        run: npm publish --access public --loglevel verbose
 
       - name: Dump npm debug log on failure
         # Surfaces the OIDC trusted-publishing token exchange (npm redacts
