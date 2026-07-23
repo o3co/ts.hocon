@@ -1,9 +1,12 @@
 // tests/resolver-include-cov.test.ts
 //
 // Additional coverage for resolver include relativization paths (ts.hocon#49).
-// Targets uncovered lines per codecov/patch report on PR #47:
+// Targets uncovered lines per codecov/patch report on PR #47 (line numbers
+// historical — the loader has since changed, e.g. the S3.1 empty-content
+// special-cases were removed when the corrected S3.1 made empty documents
+// parse to {} naturally):
 //
-//   include-loader.ts: 305-344 (loadPackageAsync), 412 (loadSingleAsync empty-content)
+//   include-loader.ts: loadPackageAsync + loadSingleAsync empty-content
 //   structure-builder.ts: 247-249 (relativizeSubstPaths isAppend branch),
 //                         259-260 (relativizeSubstPaths HoconValue array branch)
 //   substitution-resolver.ts: 286-288 (listSuffix + useSystemEnvironment=false),
@@ -166,7 +169,8 @@ describe('loadPackageAsync — include package() via resolveAsync', () => {
   })
 
   it('loadPackageAsync: empty registered content (zero bytes) contributes {} (ipk08)', async () => {
-    // Lines 339: content.length === 0 → return makeResObj()
+    // Corrected S3.1: empty content tokenizes to an empty stream and parses to
+    // an empty object AST — contributes {} (no special-case in the loader).
     const resolver: PackageResolver = () => '/fake/pkg/empty.conf'
     const v = await resolveAsync(parseTokens(tokenize('a = 1\ninclude package("foo", "empty.conf")')), {
       env: {},
@@ -336,11 +340,12 @@ describe('loadAsync — no-extension probing (lines 240, 245)', () => {
 })
 
 // ---------------------------------------------------------------------------
-// include-loader.ts line 412: loadSingleAsync empty-content carve-out
+// loadSingleAsync — empty included content
 //
 // When an async include resolves to a file whose tokens have no content tokens
-// (empty, whitespace-only, comment-only), loadSingleAsync returns makeResObj()
-// instead of erroring (Lightbend-compat #105). The sync path is covered by
+// (empty, whitespace-only, comment-only), the empty stream parses to an empty
+// object AST and contributes {} (corrected S3.1; originally the #105
+// Lightbend-compat carve-out). The sync path is covered by
 // issue105-empty-include.test.ts; this section adds async coverage.
 // ---------------------------------------------------------------------------
 

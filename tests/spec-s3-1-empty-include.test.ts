@@ -9,7 +9,7 @@
 // serves as a regression guard against any strict-reject behaviour returning.
 
 import { describe, expect, it } from 'vitest'
-import { parse } from '../src/index.js'
+import { parse, parseAsync } from '../src/index.js'
 
 const fileReader = (files: Record<string, string>) => (p: string) => {
   const v = files[p.split('/').pop()!]
@@ -90,6 +90,26 @@ describe('S3.1 — included file is empty/comment-only contributes {} (#105)', (
 
   it('include package: comment-only registered content contributes {}', () => {
     expect(pkgParse('# nothing here\n').getNumber('a')).toBe(1)
+  })
+
+  // Async variant pins loadPackageAsync (the async path previously carried its
+  // own assertNonEmptyDocument guard — a sync-only pin would not catch it
+  // regressing independently).
+  const pkgParseAsync = (content: string) =>
+    parseAsync('include package("my-lib", "ref.conf")\na = 1', {
+      packageResolver: () => '/fake/pkg/ref.conf',
+      readFile: async (p: string) => {
+        if (p === '/fake/pkg/ref.conf') return content
+        throw Object.assign(new Error(`ENOENT: ${p}`), { code: 'ENOENT' })
+      },
+    })
+
+  it('include package (async): whitespace-only registered content contributes {}', async () => {
+    expect((await pkgParseAsync('   \n\t\n')).getNumber('a')).toBe(1)
+  })
+
+  it('include package (async): comment-only registered content contributes {}', async () => {
+    expect((await pkgParseAsync('# nothing here\n')).getNumber('a')).toBe(1)
   })
 
   // --- Top-level parity: same rule applies outside includes ---
