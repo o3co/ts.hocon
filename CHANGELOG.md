@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — empty document parses to `{}` (S3.1 corrected, [xx.hocon#62](https://github.com/o3co/xx.hocon/pull/62))
+
+- **`parse("")` (and whitespace-only / comment-only / BOM-only input) returns an empty
+  `Config` instead of throwing `ParseError`.** The S3.1 checklist item "Empty file is
+  invalid (HOCON.md L130)" misread the L130-132 *JSON baseline* as HOCON-normative; the
+  L134-136 brace-omission relaxation parses any document not beginning with `[` or `{`
+  as if enclosed in `{}` — an empty document is therefore the empty object. Confirmed by
+  the reference implementation (Lightbend's `"Empty document"` error is
+  `ConfigSyntax.JSON`-only; `ConfigFactory.parseString("")` is a valid empty config in
+  its own test suite). Restores pre-1.3.0 behavior — the Phase 6 #3h
+  `assertNonEmptyDocument` guard was a regression (`src/internal/parser/empty-check.ts`
+  removed). The rule now applies uniformly: top-level parse, file includes (the former
+  go.hocon#105 carve-out is simply the rule), and package includes (whitespace-only /
+  comment-only registered content now contributes `{}` like zero-byte content — the
+  zero-byte-only asymmetry is gone). Pure loosening — no previously-valid input changes
+  meaning; previously-rejected empty documents now succeed. Pinned by
+  `tests/spec-s3-1-empty-file.test.ts`, `tests/spec-s3-1-empty-include.test.ts`,
+  `tests/conformance/empty-file.test.ts` (ef01–ef06 `{}` sidecars now normative,
+  per-impl override removed), and ipk08 whitespace/comment variants.
+
 ### Changed — **BREAKING**: duration unit names are case-sensitive (S19.8, HOCON.md L1304)
 
 - **`getDuration` now rejects non-lowercase duration units** per HOCON.md L1304 ("The

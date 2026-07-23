@@ -1,18 +1,15 @@
 // tests/spec-s3-1-empty-include.test.ts
 //
-// Lightbend-compat carve-out for go.hocon#105 — empty / whitespace-only /
-// comment-only / BOM-only INCLUDED files contribute an empty config
-// instead of erroring with S3.1.
-//
-// S3.1 (HOCON.md L130) "empty files are invalid documents" remains
-// enforced for TOP-LEVEL parses (parse(""), parseFile on empty as root) —
-// see tests/spec-s3-1-empty-top-level.test.ts. This file pins the
-// narrower include-path carve-out and serves as a regression guard
-// against the previous strict-reject behaviour returning.
+// S3.1 — empty / whitespace-only / comment-only / BOM-only INCLUDED files
+// contribute an empty config. Originally shipped as a narrow Lightbend-compat
+// carve-out for go.hocon#105 while top-level parses still rejected; since the
+// S3.1 correction (xx.hocon E10, revoked 2026-07-23) this is simply the rule —
+// an empty document parses to {} everywhere, top-level and include path alike
+// (HOCON.md §Omit root braces L134-136). This file pins the include path and
+// serves as a regression guard against any strict-reject behaviour returning.
 
-import { describe, it, expect } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { parse } from '../src/index.js'
-import { ParseError } from '../src/errors.js'
 
 const fileReader = (files: Record<string, string>) => (p: string) => {
   const v = files[p.split('/').pop()!]
@@ -22,8 +19,8 @@ const fileReader = (files: Record<string, string>) => (p: string) => {
   return v
 }
 
-describe('S3.1 — included file is empty/comment-only (Lightbend-compat carve-out #105)', () => {
-  // --- Carve-out cases: must NOT throw, contribute empty ---
+describe('S3.1 — included file is empty/comment-only contributes {} (#105)', () => {
+  // --- Empty-include cases: must NOT throw, contribute empty ---
 
   it('include: completely empty included file is no-op', () => {
     const files = { 'empty.conf': '' }
@@ -71,17 +68,41 @@ describe('S3.1 — included file is empty/comment-only (Lightbend-compat carve-o
     ).not.toThrow()
   })
 
-  // --- Top-level scope preserved ---
+  // --- Package-include path: same rule (regression guard for the former
+  //     whitespace-only reject on loadPackage/loadPackageAsync) ---
 
-  it('top-level parse("") still rejects per S3.1', () => {
-    expect(() => parse('')).toThrow(ParseError)
+  const pkgParse = (content: string) =>
+    parse('include package("my-lib", "ref.conf")\na = 1', {
+      packageResolver: () => '/fake/pkg/ref.conf',
+      readFileSync: (p: string) => {
+        if (p === '/fake/pkg/ref.conf') return content
+        throw Object.assign(new Error(`ENOENT: ${p}`), { code: 'ENOENT' })
+      },
+    })
+
+  it('include package: zero-byte registered content contributes {}', () => {
+    expect(pkgParse('').getNumber('a')).toBe(1)
   })
 
-  it('top-level whitespace-only still rejects per S3.1', () => {
-    expect(() => parse('   \n\t')).toThrow(ParseError)
+  it('include package: whitespace-only registered content contributes {}', () => {
+    expect(pkgParse('   \n\t\n').getNumber('a')).toBe(1)
   })
 
-  it('top-level comment-only still rejects per S3.1', () => {
-    expect(() => parse('# only a comment\n')).toThrow(ParseError)
+  it('include package: comment-only registered content contributes {}', () => {
+    expect(pkgParse('# nothing here\n').getNumber('a')).toBe(1)
+  })
+
+  // --- Top-level parity: same rule applies outside includes ---
+
+  it('top-level parse("") parses to {} per corrected S3.1', () => {
+    expect(parse('').keys()).toEqual([])
+  })
+
+  it('top-level whitespace-only parses to {} per corrected S3.1', () => {
+    expect(parse('   \n\t').keys()).toEqual([])
+  })
+
+  it('top-level comment-only parses to {} per corrected S3.1', () => {
+    expect(parse('# only a comment\n').keys()).toEqual([])
   })
 })

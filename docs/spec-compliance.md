@@ -68,12 +68,15 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
 
 ## S3. Omit root braces
 
-- **S3.1** Empty file is invalid — §Omit root braces (L130)
-  tests: tests/spec-s3-1-empty-file.test.ts; tests/conformance/empty-file.test.ts; tests/config.test.ts (S3.1 describe block)
+- **S3.1** Empty document (empty / whitespace-only / comment-only / BOM-only file) parses to the empty object `{}` — §Omit root braces (L130-136)
+  tests: tests/spec-s3-1-empty-file.test.ts; tests/spec-s3-1-empty-include.test.ts; tests/conformance/empty-file.test.ts; tests/config.test.ts (S3.1 describe block)
   status: ✅
-  notes: Fixed in Phase 6 #3h. `buildResolveContext()` in `src/parse.ts` now checks the
-  token stream after `tokenize()` and throws `ParseError` if only EOF/newline tokens are
-  present (covers empty, whitespace-only, comment-only, BOM-only input).
+  notes: Corrected 2026-07-23 (xx.hocon E10). The item previously read "Empty file is
+  invalid" — a misreading of the L130-132 JSON baseline as HOCON-normative; the L134
+  brace-omission relaxation makes an empty document the empty object. The Phase 6 #3h
+  `assertNonEmptyDocument` guard (a regression vs. pre-1.3.0 releases) is removed from
+  `buildResolveContext()` and the include-loader package paths; empty documents parse
+  to `{}` uniformly at top level and on every include path.
 - **S3.2** Root non-object/non-array is invalid (when explicitly enclosed) — §Omit root braces (L131)
   tests: tests/parser.test.ts:355
   status: ✅

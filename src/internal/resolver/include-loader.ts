@@ -1,7 +1,6 @@
 import { createRequire } from 'node:module'
 import * as nodePath from 'node:path'
 import { PackageLookupError, ParseError, ResolveError } from '../../errors.js'
-import { assertNonEmptyDocument, hasContentTokens } from '../parser/empty-check.js'
 import type { AstNode } from '../parser/ast.js'
 import { tokenize } from '../lexer/lexer.js'
 import { parseTokens } from '../parser/parser.js'
@@ -291,13 +290,10 @@ export class IncludeLoader {
     const resolvedPath = resolver(identifier, file, undefined, baseDir)
 
     const content = readFileSync(resolvedPath)
-    // Empty content (zero bytes) is valid for package includes (ipk08); contributes {}.
-    // Whitespace-only content is NOT zero-bytes — it falls through to S3.1/E10 enforcement
-    // via assertNonEmptyDocument below.
-    if (content.length === 0) return makeResObj()
-
+    // S3.1 (corrected, xx.hocon E10): empty / whitespace-only / comment-only
+    // content is a valid empty document — parseTokens yields an empty object
+    // AST, contributing {} (ipk08 and variants). No emptiness guard.
     const tokens = tokenize(content)
-    assertNonEmptyDocument(tokens, resolvedPath)
     const ast = parseTokens(tokens)
     return this.onBuildResObj(ast, {
       ...this.opts,
@@ -342,12 +338,9 @@ export class IncludeLoader {
       : async (p: string) => readFileSync(p)
 
     const content = await read(resolvedPath)
-    // Empty content (zero bytes) is valid for package includes (ipk08); contributes {}.
-    // Whitespace-only content falls through to S3.1/E10 enforcement via assertNonEmptyDocument.
-    if (content.length === 0) return makeResObj()
-
+    // S3.1 (corrected, xx.hocon E10): empty / whitespace-only / comment-only
+    // content is a valid empty document contributing {} — same rule as loadPackage.
     const tokens = tokenize(content)
-    assertNonEmptyDocument(tokens, resolvedPath)
     const ast = parseTokens(tokens)
     return this.onBuildResObjAsync(ast, {
       ...this.opts,
@@ -376,13 +369,10 @@ export class IncludeLoader {
     }
 
     const tokens = tokenize(content)
-    // Lightbend-compat carve-out (#105): an empty / whitespace-only /
-    // comment-only included file contributes an empty config rather than
-    // erroring with S3.1. Top-level empty parses (parse("")) remain invalid;
-    // this scope is intentionally narrow — the include path only.
-    if (!hasContentTokens(tokens)) {
-      return makeResObj()
-    }
+    // S3.1 (corrected, xx.hocon E10): an empty / whitespace-only / comment-only
+    // document parses to the empty object everywhere — the former #105
+    // include-path carve-out is now simply the rule; parseTokens on an empty
+    // stream yields an empty object AST contributing {}.
     const ast = parseTokens(tokens)
     // Spread all opts to preserve packageResolver / resolveFrom / readFile across nested includes.
     return this.onBuildResObj(ast, {
@@ -415,10 +405,7 @@ export class IncludeLoader {
     }
 
     const tokens = tokenize(content)
-    // Lightbend-compat carve-out (#105): same rule as loadSingle.
-    if (!hasContentTokens(tokens)) {
-      return makeResObj()
-    }
+    // S3.1 (corrected, xx.hocon E10): same rule as loadSingle — empty document contributes {}.
     const ast = parseTokens(tokens)
     // Spread all opts to preserve packageResolver / resolveFrom across nested includes.
     return this.onBuildResObjAsync(ast, {

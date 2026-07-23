@@ -617,17 +617,17 @@ describe('S1.1 - UTF-8 handling (HOCON spec L117)', () => {
   })
 })
 
-// S3.1 — empty file is invalid (HOCON spec L130)
-// Probe (2026-05-13): parse('') returns an empty Config without throwing.
-// Spec L130: "Empty files are invalid documents."
-describe('S3.1 - empty file is invalid (HOCON spec L130)', () => {
-  // Fixed in Phase 6 #3h: buildResolveContext() now throws ParseError for empty/whitespace/comment-only input.
-  it('S3.1: parse("") should throw — empty file is invalid per spec L130', () => {
-    expect(() => parse('')).toThrow()
+// S3.1 — empty document parses to {} (HOCON spec L134-136)
+// L130-132 is the JSON baseline; the HOCON brace-omission relaxation makes an
+// empty document the empty object. The cluster 3h reject-guard was a
+// regression, revoked 2026-07-23 (xx.hocon E10).
+describe('S3.1 - empty document parses to {} (HOCON spec L134-136)', () => {
+  it('S3.1: parse("") returns an empty Config', () => {
+    expect(parse('').keys()).toEqual([])
   })
 
-  it('S3.1: parse("   \\n  ") (whitespace-only) should throw — same rule', () => {
-    expect(() => parse('   \n  ')).toThrow()
+  it('S3.1: parse("   \\n  ") (whitespace-only) returns an empty Config — same rule', () => {
+    expect(parse('   \n  ').keys()).toEqual([])
   })
 })
 

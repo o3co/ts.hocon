@@ -38,8 +38,11 @@ describe('E11 must-fix #2 — packageResolver receives undefined for includingFi
   })
 })
 
-describe('E11 must-fix #3 — empty vs whitespace-only registered content', () => {
-  it('zero-byte registered content is valid (E11 carve-out, contributes {})', () => {
+describe('E11 must-fix #3 — empty and whitespace-only registered content contribute {}', () => {
+  // S3.1 (corrected, xx.hocon E10): an empty document parses to {} on every
+  // path — zero-byte, whitespace-only, and comment-only registered content all
+  // contribute {} uniformly (the former zero-byte-only distinction is gone).
+  it('zero-byte registered content is valid (contributes {})', () => {
     const resolver: PackageResolver = () => '/fake/registry/foo/empty.conf'
     const readFileSync = (_p: string) => '' // zero bytes
     const cfg = parse(
@@ -49,20 +52,24 @@ describe('E11 must-fix #3 — empty vs whitespace-only registered content', () =
     expect(cfg.getNumber('a')).toBe(1)
   })
 
-  it('whitespace-only registered content fires S3.1/E10 enforcement (throws)', () => {
+  it('whitespace-only registered content contributes {}', () => {
     const resolver: PackageResolver = () => '/fake/registry/foo/ws.conf'
     const readFileSync = (_p: string) => '   \n\n  ' // whitespace only — NOT zero bytes
-    expect(() =>
-      parse('include package("foo", "ws.conf")', { packageResolver: resolver, readFileSync }),
-    ).toThrow()
+    const cfg = parse(
+      'a = 1\ninclude package("foo", "ws.conf")',
+      { packageResolver: resolver, readFileSync },
+    )
+    expect(cfg.getNumber('a')).toBe(1)
   })
 
-  it('comment-only registered content fires S3.1/E10 enforcement (throws)', () => {
+  it('comment-only registered content contributes {}', () => {
     const resolver: PackageResolver = () => '/fake/registry/foo/comment.conf'
     const readFileSync = (_p: string) => '# only a comment\n'
-    expect(() =>
-      parse('include package("foo", "comment.conf")', { packageResolver: resolver, readFileSync }),
-    ).toThrow()
+    const cfg = parse(
+      'a = 1\ninclude package("foo", "comment.conf")',
+      { packageResolver: resolver, readFileSync },
+    )
+    expect(cfg.getNumber('a')).toBe(1)
   })
 })
 

@@ -1,7 +1,6 @@
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { Config } from './config.js'
-import { assertNonEmptyDocument } from './internal/parser/empty-check.js'
 import { tokenize } from './internal/lexer/lexer.js'
 import { parseTokens } from './internal/parser/parser.js'
 import { buildTree, containsPlaceholders, resolve, resolveAsync } from './internal/resolver/resolver.js'
@@ -77,10 +76,10 @@ async function defaultReadFile(filePath: string): Promise<string> {
 
 function buildResolveContext(input: string, opts: ParseOptions): { ast: ReturnType<typeof parseTokens>; resolveOpts: InternalResolveOptions } {
   const tokens = tokenize(input)
-  // S3.1 — HOCON.md L130: empty files (including whitespace-only and comment-only) are invalid.
-  // Delegated to the shared assertNonEmptyDocument helper so the same guard fires
-  // on both the top-level parse path and the include-loader parse path.
-  assertNonEmptyDocument(tokens, 'input')
+  // S3.1 — HOCON.md L134-136: a document that does not begin with `[` or `{`
+  // is parsed as if enclosed in `{}`, so an empty / whitespace-only /
+  // comment-only document parses to the empty object. (L130-132 is the JSON
+  // baseline, not HOCON-normative — see xx.hocon E10, corrected 2026-07-23.)
   const ast = parseTokens(tokens)
   const resolveOpts: InternalResolveOptions = {
     env: getEnv(opts),
