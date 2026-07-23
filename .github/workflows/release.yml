@@ -117,12 +117,17 @@ jobs:
         # "require 2FA and disallow tokens" publishing access. Provenance is
         # generated automatically under trusted publishing; the explicit flag
         # keeps the intent visible.
-        # Staged publishing via OIDC (docs §Step 2 example: `npm stage
-        # publish`): the direct-publish PUT has been rejected 403 by the
-        # registry across every auth class; staging submits for maintainer
-        # review instead of publishing directly — a maintainer then approves
-        # with 2FA (npm stage approve / npmjs.com Staged Packages tab).
-        run: npm stage publish --loglevel verbose
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          # Force token auth: npm 11+ auto-detects the Actions OIDC env and
+          # prefers it over NODE_AUTH_TOKEN (verified in run 30005076744 —
+          # the OIDC exchange fired despite the token being set). Blanking
+          # the detection vars makes this run genuinely exercise the granular
+          # access token. --provenance omitted: sigstore needs the OIDC
+          # id-token we just disabled.
+          ACTIONS_ID_TOKEN_REQUEST_URL: ""
+          ACTIONS_ID_TOKEN_REQUEST_TOKEN: ""
+        run: npm publish --access public --loglevel verbose
 
       - name: Dump npm debug log on failure
         # Surfaces the OIDC trusted-publishing token exchange (npm redacts
