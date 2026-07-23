@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — array-root document rejected with a type error (S3.5, [xx.hocon#64](https://github.com/o3co/xx.hocon/pull/64))
+
+- **`parse("[1,2]")` now throws `ConfigError` ("document has type array rather than
+  object at file root", HOCON.md L989-991) instead of `ParseError` "expected key, got
+  lbracket".** An array-root document is syntactically valid HOCON ("both JSON and
+  HOCON allow arrays as root values in a document"); the reference implementation
+  parses it and rejects at the Config boundary (`Parseable.forceParsedToObject`,
+  `ConfigException.WrongType`). The parser now accepts `[` at root and parses the
+  array value — malformed arrays (`[1,2`) and trailing content after the root array
+  remain `ParseError`s — and `buildResolveContext()` rejects the array-root AST with
+  the type error. Include paths (file + package, sync + async) raise `ResolveError`
+  "included file has array at file root … (HOCON.md L993-994)" naming the included
+  source, improving the S14b.1 diagnostic (previously the generic parser error).
+  Net behavior is unchanged (array-root documents still error) — only the error class,
+  layer, and message change. Pinned by `tests/spec-s3-5-array-root.test.ts` and
+  `tests/conformance/array-root.test.ts` (xx.hocon `array-root/ar01–ar03` `.error`
+  sidecars).
+
 ### Fixed — empty document parses to `{}` (S3.1 corrected, [xx.hocon#62](https://github.com/o3co/xx.hocon/pull/62))
 
 - **`parse("")` (and whitespace-only / comment-only / BOM-only input) returns an empty

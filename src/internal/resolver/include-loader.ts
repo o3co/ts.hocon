@@ -31,6 +31,23 @@ function isPnpPath(p: string): boolean {
 }
 
 /**
+ * S14b.1 (HOCON.md L993-994): an included file must contain an object, not an
+ * array. The document itself is valid HOCON syntax (S3.5, L989-991) — the
+ * rejection is a type constraint at include-load time, naming the included
+ * source, matching Lightbend's forceParsedToObject on the include path.
+ */
+function assertObjectRootedInclude(ast: AstNode, sourcePath: string): void {
+  if (ast.kind === 'array') {
+    throw new ResolveError(
+      `included file has array at file root — an included file must contain an object, not an array (HOCON.md L993-994): ${sourcePath}`,
+      sourcePath,
+      ast.pos.line,
+      ast.pos.col,
+    )
+  }
+}
+
+/**
  * Validate the file argument of `package("id", "file")` per E11 decision 6.
  * Runs on the post-HOCON-unescape string value.
  * Throws `ParseError` on violation (structural constraint, not a resolution failure).
@@ -295,6 +312,7 @@ export class IncludeLoader {
     // AST, contributing {} (ipk08 and variants). No emptiness guard.
     const tokens = tokenize(content)
     const ast = parseTokens(tokens)
+    assertObjectRootedInclude(ast, resolvedPath)
     return this.onBuildResObj(ast, {
       ...this.opts,
       baseDir: nodePath.dirname(resolvedPath),
@@ -342,6 +360,7 @@ export class IncludeLoader {
     // content is a valid empty document contributing {} — same rule as loadPackage.
     const tokens = tokenize(content)
     const ast = parseTokens(tokens)
+    assertObjectRootedInclude(ast, resolvedPath)
     return this.onBuildResObjAsync(ast, {
       ...this.opts,
       baseDir: nodePath.dirname(resolvedPath),
@@ -374,6 +393,7 @@ export class IncludeLoader {
     // include-path carve-out is now simply the rule; parseTokens on an empty
     // stream yields an empty object AST contributing {}.
     const ast = parseTokens(tokens)
+    assertObjectRootedInclude(ast, candidate)
     // Spread all opts to preserve packageResolver / resolveFrom / readFile across nested includes.
     return this.onBuildResObj(ast, {
       ...this.opts,
@@ -407,6 +427,7 @@ export class IncludeLoader {
     const tokens = tokenize(content)
     // S3.1 (corrected, xx.hocon E10): same rule as loadSingle — empty document contributes {}.
     const ast = parseTokens(tokens)
+    assertObjectRootedInclude(ast, candidate)
     // Spread all opts to preserve packageResolver / resolveFrom across nested includes.
     return this.onBuildResObjAsync(ast, {
       ...this.opts,

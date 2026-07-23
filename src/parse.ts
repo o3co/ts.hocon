@@ -1,6 +1,7 @@
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { Config } from './config.js'
+import { ConfigError } from './errors.js'
 import { tokenize } from './internal/lexer/lexer.js'
 import { parseTokens } from './internal/parser/parser.js'
 import { buildTree, containsPlaceholders, resolve, resolveAsync } from './internal/resolver/resolver.js'
@@ -81,6 +82,19 @@ function buildResolveContext(input: string, opts: ParseOptions): { ast: ReturnTy
   // comment-only document parses to the empty object. (L130-132 is the JSON
   // baseline, not HOCON-normative — see xx.hocon E10, corrected 2026-07-23.)
   const ast = parseTokens(tokens)
+  // S3.5 — HOCON.md L989-991: an array-root document is valid syntax, but the
+  // object-rooted Config API rejects it at the Config boundary with a TYPE
+  // error, matching Lightbend's Parseable.forceParsedToObject
+  // (ConfigException.WrongType "has type LIST rather than object at file root").
+  // The message carries the source origin + the opening bracket's position
+  // (Lightbend's WrongType includes the origin and line likewise).
+  if (ast.kind === 'array') {
+    const origin = opts.originDescription ?? 'input'
+    throw new ConfigError(
+      `${origin}: ${ast.pos.line}:${ast.pos.col}: document has type array rather than object at file root (HOCON.md L989-991); the Config API requires an object root`,
+      '',
+    )
+  }
   const resolveOpts: InternalResolveOptions = {
     env: getEnv(opts),
     baseDir: opts.baseDir,
