@@ -4,16 +4,27 @@ import type { Config } from '../config.js'
 import { ConfigError } from '../errors.js'
 
 /**
- * Read a YAML document as HOCON config, via `yaml` (eemeli).
+ * Read a YAML document as HOCON config.
  *
- * The library follows the YAML 1.2 core schema, so the "Norway problem" does
- * not arise: `no`, `yes`, `on` and `off` stay strings and only `true`/`false`
- * are booleans (spec F5.1).
+ * This is a HOCON library, not a YAML implementation, and the API keeps that
+ * boundary. What this package owns is the decoded-tree → HOCON step, exposed
+ * directly as {@link fromYamlValue}: root must be a mapping, `${...}` stays
+ * literal, NaN and infinity are refused, a multi-document stream is refused,
+ * binary becomes its base64 text. How YAML *text* becomes a tree — whether
+ * `010` is 8 or 10, whether `no` is a boolean — is the YAML library's answer,
+ * not a contract here.
  *
- * Anchors, aliases and merge keys are resolved before the tree is mapped, and
- * non-string scalar keys arrive as their string forms (F5.2, F5.3). A
- * multi-document stream is refused: a config is one document, and this library
- * throws on the second rather than dropping it silently (F5.7).
+ * `parseYaml` is a convenience front on `yaml` (eemeli), pinned to
+ * `version: '1.2'` so a library default cannot drift under it. A caller who
+ * needs a different library, version or schema decodes the text themselves and
+ * hands the tree to {@link fromYamlValue} — that is the supported way to swap
+ * parsers, and it keeps the choice, and its consequences, in the caller's
+ * hands:
+ *
+ * ```ts
+ * import jsy from 'js-yaml'
+ * const cfg = fromYamlValue(jsy.load(src), 'their-file.yml')
+ * ```
  *
  * See docs/specs/format-ingestion-mapping.md items F5.x in the hocon scope.
  */
@@ -39,21 +50,56 @@ export function parseYaml(input: string, originDescription?: string): Config {
     throw new ConfigError(`yaml: ${doc.errors[0]?.message ?? 'parse error'}`, '')
   }
 
-  const value: unknown = doc.toJS({ mapAsMap: false })
+  return fromYamlValue(doc.toJS({ mapAsMap: false }), originDescription)
+}
+
+/**
+ * Build a Config from an already-decoded YAML value tree, produced by whatever
+ * YAML library and settings the caller chose. This is the tree-level boundary
+ * this module actually owns (spec F5); `parseYaml` is just a default decoder in
+ * front of it.
+ *
+ * Leaf normalization accepts the shapes common across JS YAML libraries, not
+ * only the default one: a `Map` (eemeli with `mapAsMap`) has its scalar keys
+ * stringified per F5.3, a `Date` (js-yaml 4 timestamps) becomes its ISO string
+ * — the same reasoning as F4.2 for TOML dates — and a `Uint8Array` becomes
+ * base64 (F5.5).
+ */
+export function fromYamlValue(value: unknown, originDescription?: string): Config {
   // An empty document is the empty object, as an empty HOCON document is
   // (S3.1), rather than a root-type failure (spec F5.9).
   if (value === null || value === undefined) return fromMap({}, originDescription)
-  if (typeof value !== 'object' || Array.isArray(value)) {
+  const normalized = convert(value, '')
+  if (typeof normalized !== 'object' || normalized === null || Array.isArray(normalized)) {
     throw new ConfigError(
-      `yaml: document root is ${Array.isArray(value) ? 'an array' : typeof value}, but a config root must be an object (spec F0.3)`,
+      `yaml: document root is ${Array.isArray(normalized) ? 'an array' : typeof normalized}, but a config root must be an object (spec F0.3)`,
       '',
     )
   }
-  return fromMap(convert(value, '') as Record<string, unknown>, originDescription)
+  return fromMap(normalized as Record<string, unknown>, originDescription)
 }
 
 function convert(v: unknown, atPath: string): unknown {
   if (Array.isArray(v)) return v.map((e, i) => convert(e, `${atPath}[${i}]`))
+  if (v instanceof Date) {
+    // js-yaml 4 resolves timestamps to Date. HOCON has no datetime, so the
+    // ISO text is the honest form (F4.2's reasoning).
+    return v.toISOString()
+  }
+  if (v instanceof Map) {
+    // eemeli's mapAsMap shape; scalar keys stringify per F5.3.
+    const out: Record<string, unknown> = {}
+    for (const [k, e] of v) {
+      if (k !== null && typeof k === 'object') {
+        throw new ConfigError(
+          `yaml: a collection key at "${atPath}" is not usable as an object key (spec F5.3)`,
+          atPath,
+        )
+      }
+      out[String(k)] = convert(e, atPath === '' ? String(k) : `${atPath}.${String(k)}`)
+    }
+    return out
+  }
   if (v instanceof Uint8Array) {
     // !!binary — HOCON has no binary type, so keep the base64 text the source
     // itself carried (spec F5.5).

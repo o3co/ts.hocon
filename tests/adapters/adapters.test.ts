@@ -159,3 +159,30 @@ describe('use as a substitution source under HOCON', () => {
     expect(cfg.withFallback(base).resolve().getString('image')).toBe('postgres:16')
   })
 })
+
+describe('yaml fromYamlValue — bring your own parser', () => {
+  it('accepts a tree decoded by another library', async () => {
+    const { fromYamlValue } = await import('../../src/adapters/yaml.js')
+    const jsy = (await import('js-yaml')).default
+    const cfg = fromYamlValue(jsy.load('db:\n  host: h\n  port: 5432\n'), 'via-js-yaml')
+    expect(cfg.getString('db.host')).toBe('h')
+    expect(cfg.getNumber('db.port')).toBe(5432)
+  })
+
+  it('normalizes Date and Map leaves from foreign trees', async () => {
+    const { fromYamlValue } = await import('../../src/adapters/yaml.js')
+    const cfg = fromYamlValue({
+      at: new Date(Date.UTC(2002, 11, 14)),
+      m: new Map<unknown, unknown>([[1, 'one'], [true, 'yes-key']]),
+    })
+    expect(cfg.getString('at')).toBe('2002-12-14T00:00:00.000Z')
+    expect(cfg.getString('m."1"')).toBe('one')
+    expect(cfg.getString('m."true"')).toBe('yes-key')
+  })
+
+  it('still refuses NaN and non-object roots from injected trees', async () => {
+    const { fromYamlValue } = await import('../../src/adapters/yaml.js')
+    expect(() => fromYamlValue({ a: Number.NaN })).toThrow(/F0\.6/)
+    expect(() => fromYamlValue([1, 2])).toThrow(/F0\.3/)
+  })
+})
