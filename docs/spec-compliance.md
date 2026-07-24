@@ -817,13 +817,11 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
   independence. `setNested` last-segment write guards on existing-object presence (object wins).
   The reverse order (string first, dotted key second) already works correctly.
 - **S23.5** Multi-line values (backslash continuation) — §Note on Java properties similarity (L1587)
-  out-of-scope: declared in each implementation's README — the `.properties` reader supports only basic `key=value` syntax to avoid pulling a full Java properties parser into a non-JVM library.
-  tests: —
-  status: ➖
+  tests: tests/properties.test.ts (continuations, even-run backslashes, continuation into `#`, whitespace separator); tests/conformance/properties-syntax.test.ts (ps01, ps03, ps04)
+  status: ✅ — In scope since 2026-07-24 (was ➖). `parseProperties` gained a logical-line/escape layer; the out-of-scope rationale assumed a full Java properties reader was expensive, which it is not.
 - **S23.6** Unicode escapes in `.properties` — §Note on Java properties similarity (L1587)
-  out-of-scope: same rationale as S23.5.
-  tests: —
-  status: ➖
+  tests: tests/properties.test.ts (escape set, escaped separators, surrogate pair, malformed escape); tests/conformance/properties-syntax.test.ts (ps02, ps05)
+  status: ✅ — In scope since 2026-07-24 (was ➖). A `\uXXXX` becomes one UTF-16 code unit, so an adjacent surrogate pair forms its astral character on its own and a lone surrogate is representable — the same as Java. go.hocon and rs.hocon must reject a lone surrogate instead (S1.2.6).
 
 ## S24. Conventional config files (JVM)
 

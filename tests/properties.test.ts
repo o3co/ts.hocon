@@ -12,9 +12,54 @@ describe('parseProperties', () => {
     expect(result).toEqual({ host: 'localhost' })
   })
 
-  it('trims whitespace around key and value', () => {
+  // Java skips whitespace before a value but never after it, so the trailing
+  // run survives. Pinned by the ps04 fixture against the Lightbend oracle; this
+  // test asserted the opposite until S23.5/S23.6 came in scope on 2026-07-24.
+  it('skips whitespace around the separator but keeps it after the value', () => {
     const result = parseProperties('  host  =  localhost  ')
-    expect(result).toEqual({ host: 'localhost' })
+    expect(result).toEqual({ host: 'localhost  ' })
+  })
+
+  it('accepts whitespace alone as the separator (S23.5)', () => {
+    expect(parseProperties('host localhost')).toEqual({ host: 'localhost' })
+    expect(parseProperties('f value = 3')).toEqual({ f: 'value = 3' })
+  })
+
+  it('joins backslash continuations (S23.5)', () => {
+    expect(parseProperties('a = one\\\ntwo')).toEqual({ a: 'onetwo' })
+    expect(parseProperties('a = one\\\n      two')).toEqual({ a: 'onetwo' })
+  })
+
+  it('an even run of trailing backslashes is not a continuation (S23.5)', () => {
+    expect(parseProperties('a = end\\\\\nb = 2')).toEqual({ a: 'end\\', b: '2' })
+  })
+
+  it('a continuation line starting with # is value text, not a comment (S23.5)', () => {
+    expect(parseProperties('a = one\\\n#two')).toEqual({ a: 'one#two' })
+  })
+
+  it('applies the escape set, dropping the backslash of an unknown escape (S23.6)', () => {
+    expect(parseProperties('a = x\\ty')).toEqual({ a: 'x\ty' })
+    expect(parseProperties('a = \\u00e9')).toEqual({ a: '\u00e9' })
+    expect(parseProperties('a = q\\zr')).toEqual({ a: 'qzr' })
+  })
+
+  it('an escaped separator belongs to the key (S23.6)', () => {
+    expect(parseProperties('b\\:c = 2')).toEqual({ 'b:c': '2' })
+    expect(parseProperties('a\\ b = 1')).toEqual({ 'a b': '1' })
+  })
+
+  // JS strings are UTF-16, as Java's are, so an adjacent surrogate pair forms
+  // its astral character on its own and a lone surrogate is representable.
+  // go.hocon and rs.hocon have to reject a lone surrogate (S1.2.6).
+  it('combines a surrogate pair, and tolerates a lone surrogate (S23.6)', () => {
+    expect(parseProperties('a = \\ud83d\\ude00')).toEqual({ a: '\u{1F600}' })
+    expect(parseProperties('a = \\ud83d')).toEqual({ a: '\ud83d' })
+  })
+
+  it('rejects a malformed unicode escape (S23.6)', () => {
+    expect(() => parseProperties('a = \\u12')).toThrow(/malformed/)
+    expect(() => parseProperties('a = \\uZZZZ')).toThrow(/malformed/)
   })
 
   it('skips comment lines (# and !)', () => {

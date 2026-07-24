@@ -21,6 +21,31 @@
       "types": "./dist/zod.d.ts",
       "import": "./dist/zod.js",
       "require": "./dist/zod.cjs"
+    },
+    "./adapters/properties": {
+      "types": "./dist/adapters/properties.d.ts",
+      "import": "./dist/adapters/properties.js",
+      "require": "./dist/adapters/properties.cjs"
+    },
+    "./adapters/env": {
+      "types": "./dist/adapters/env.d.ts",
+      "import": "./dist/adapters/env.js",
+      "require": "./dist/adapters/env.cjs"
+    },
+    "./adapters/jsonc": {
+      "types": "./dist/adapters/jsonc.d.ts",
+      "import": "./dist/adapters/jsonc.js",
+      "require": "./dist/adapters/jsonc.cjs"
+    },
+    "./adapters/toml": {
+      "types": "./dist/adapters/toml.d.ts",
+      "import": "./dist/adapters/toml.js",
+      "require": "./dist/adapters/toml.cjs"
+    },
+    "./adapters/yaml": {
+      "types": "./dist/adapters/yaml.d.ts",
+      "import": "./dist/adapters/yaml.js",
+      "require": "./dist/adapters/yaml.cjs"
     }
   },
   "main": "./dist/index.cjs",
@@ -39,10 +64,18 @@
     "docs": "typedoc"
   },
   "peerDependencies": {
-    "zod": ">=4.0.0"
+    "zod": ">=4.0.0",
+    "smol-toml": ">=1.0.0",
+    "yaml": ">=2.0.0"
   },
   "peerDependenciesMeta": {
     "zod": {
+      "optional": true
+    },
+    "smol-toml": {
+      "optional": true
+    },
+    "yaml": {
       "optional": true
     }
   },
@@ -51,10 +84,12 @@
     "@types/node": "^25.9.5",
     "@vitest/coverage-v8": "4.1.10",
     "js-yaml": "^4.3.0",
+    "smol-toml": "^1.7.0",
     "tsup": "^8.5.1",
     "typedoc": "^0.28.20",
     "typescript": "^5.9.3",
     "vitest": "4.1.10",
+    "yaml": "^2.9.0",
     "zod": "^4.4.3"
   },
   "repository": {

@@ -391,13 +391,45 @@ const config = parseWithSchema(hoconInput, schema) // fails fast on startup
 
 The four parser implementations ([ts.hocon](https://github.com/o3co/ts.hocon), [rs.hocon](https://github.com/o3co/rs.hocon), [go.hocon](https://github.com/o3co/go.hocon), [py.hocon](https://github.com/o3co/py.hocon)) are all tracked against the same Lightbend HOCON spec — see the [cross-impl roll-up](https://github.com/o3co/xx.hocon/blob/main/docs/compliance-matrix.md) for per-impl conformance rates.
 
+## Format adapters
+
+Config files that belong to *other* programs can be mounted as HOCON, so a
+`${...}` in your document can reach into them:
+
+```ts
+import { parseStringWithOptions } from '@o3co/ts.hocon'
+import { loadEnv } from '@o3co/ts.hocon/adapters/env'
+
+const base = loadEnv({ prefix: 'APP_' })            // APP_DB__HOST -> db.host
+const cfg = parseStringWithOptions(src, { resolveSubstitutions: false })
+const merged = cfg.withFallback(base).resolve()
+```
+
+Deferring resolution matters: the plain `parse` resolves as it goes, so a
+`${...}` aimed at the fallback would fail before the fallback is attached.
+
+| Subpath | Needs | Notes |
+| --- | --- | --- |
+| `@o3co/ts.hocon/adapters/properties` | — | `java.util.Properties`, sharing the `include` syntax layer |
+| `@o3co/ts.hocon/adapters/env` | — | Bulk-mounts a prefixed namespace; also reads `.env` |
+| `@o3co/ts.hocon/adapters/jsonc` | — | JSON with comments and trailing commas |
+| `@o3co/ts.hocon/adapters/toml` | `smol-toml` | Optional peer dependency |
+| `@o3co/ts.hocon/adapters/yaml` | `yaml` | Optional peer dependency; YAML 1.2 core schema |
+
+The TOML and YAML libraries are **optional peer dependencies**, so installing
+this package still pulls in nothing — you add the one you actually use. Plain
+JSON needs no adapter at all, HOCON being a JSON superset.
+
+Foreign data stays data: a `${a.b}` in a mounted value is literal text, never a
+reference, because the file belongs to a program that never agreed to HOCON's
+syntax.
+
 ## Known Limitations
 
 - **`include url(...)`** is not supported. Fetching remote configuration is outside the scope of this parser. Use your application's HTTP client to fetch the content, then pass it to `parse()`.
 - **`include classpath(...)`** is not supported. This is a JVM-specific include form with no equivalent outside Java runtimes.
 - **No watch/reload** — the library parses config at load time. For live-reloading, re-call `parse()` or `parseFile()` on change.
 - **No streaming parser** — the entire input is loaded into memory. For very large configs, validate input size before parsing (see Security Considerations).
-- **`.properties` include** — supports basic `key=value` / `key:value` syntax. Does not support multiline values (backslash continuation), Unicode escapes, or key escaping from the full Java .properties specification.
 
 ## Security Considerations
 
