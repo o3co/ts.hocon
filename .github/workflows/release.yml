@@ -108,33 +108,10 @@ jobs:
           make_latest: true
 
       - name: Publish
-        # npm CLI, not pnpm: npm's trusted-publishing OIDC token exchange is
-        # first-class in the npm client. pnpm 10.30.2 (pinned via
-        # packageManager) signed provenance but its registry PUT was rejected
-        # with E403 once npm's July 2026 token-policy enforcement landed —
-        # v1.9.0 publish failed 3× despite a correctly configured Trusted
-        # Publisher (o3co/ts.hocon + release.yml) and the recommended
-        # "require 2FA and disallow tokens" publishing access. Provenance is
-        # generated automatically under trusted publishing; the explicit flag
-        # keeps the intent visible.
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        # Force token auth. Step-level env blanking of ACTIONS_ID_TOKEN_* is
-        # IGNORED by the runner (reserved prefix — run 30005827460 showed the
-        # idtoken fetch hitting a real URL despite blank overrides), so npm
-        # kept preferring OIDC. `env -u` unsets at the shell level, which the
-        # runner cannot reinject. --provenance omitted: sigstore needs the
-        # OIDC id-token we are removing.
-        # run: env -u ACTIONS_ID_TOKEN_REQUEST_URL -u ACTIONS_ID_TOKEN_REQUEST_TOKEN npm publish --access public --loglevel verbose
-        run: npm publish
-        
-      - name: Dump npm debug log on failure
-        # Surfaces the OIDC trusted-publishing token exchange (npm redacts
-        # authorization headers in its debug logs) so a 403 can be diagnosed
-        # from the Actions log instead of guessing. Remove once publishing is
-        # stable again.
-        if: failure()
-        run: |
-          npm --version
-          node --version
-          tail -n 150 /home/runner/.npm/_logs/*-debug-0.log || true
+        # OIDC trusted publishing (no NODE_AUTH_TOKEN): under `id-token: write`
+        # the registry token exchange and sigstore provenance are signed from
+        # the workflow's own OIDC identity. This is the setup that shipped every
+        # release through v1.8.0. The token-auth / `env -u` workarounds tried in
+        # between were chasing a 403 that npm confirmed was a registry-side
+        # outage coinciding with the first v1.9.0 attempt, not a config fault.
+        run: pnpm publish --access public --no-git-checks --provenance
