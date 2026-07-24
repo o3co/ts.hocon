@@ -501,15 +501,23 @@ function isDecimalDigit(ch: string): boolean {
   return ch >= '0' && ch <= '9'
 }
 
+/**
+ * Forbidden characters for unquoted strings per S8.1 (HOCON.md L245-247):
+ * `$ " { } [ ] : = , + # ` ^ ? ! @ * & \`. Note `(` and `)` are deliberately
+ * NOT members (xx.hocon#34) and `+` is only forbidden as the `+=` operator,
+ * so both predicates below special-case it rather than listing it here.
+ * Backtick is a full member of the set (xx.hocon#68) — it is only ordinary
+ * content inside a quoted string, which never reaches these predicates.
+ */
 function isUnquotedStart(ch: string): boolean {
   if (ch === '' || isHoconWhitespace(ch)) return false
-  if ('{}[],:=+#"$?!@*&^\\'.includes(ch)) return false
+  if ('{}[],:=+#"$?!@*&^`\\'.includes(ch)) return false
   return true
 }
 
 function isUnquotedContinue(ch: string, nextFn: () => string): boolean {
   if (ch === '' || isHoconWhitespace(ch)) return false
-  if ('{}[],:=#"$?!@*&^\\'.includes(ch)) return false
+  if ('{}[],:=#"$?!@*&^`\\'.includes(ch)) return false
   if (ch === '+' && nextFn() === '=') return false
   if (ch === '/' && nextFn() === '/') return false
   return true

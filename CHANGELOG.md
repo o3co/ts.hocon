@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — empty path segments rejected in key position (S11.7, [xx.hocon#68](https://github.com/o3co/xx.hocon/issues/68))
+
+- **`a..b: 3`, `.a: 3`, `a...c: 4`, `o { a..b: 3 }` and `a...c."": 4` now throw
+  `ParseError` instead of silently collapsing the empty elements** (they previously
+  parsed to `{"a":{"b":3}}`, `{"a":3}`, `{"a":{"c":4}}`, … ). HOCON.md L515-519: "If a
+  path element is an empty string, it must always be quoted … But `a..b` is invalid and
+  should generate an error. Following the same rule, a path that starts or ends with a
+  `.` is invalid and should generate an error." The substitution-path parser
+  (`parseSubstBody`) enforced this from the start; the key-path parser
+  (`parser.ts:parseKey`) dropped empty pieces with `parts.filter(s => s.length > 0)`
+  after splitting an unquoted key token at `.`. Empty pieces are now rejected except the
+  two that are not empty segments: a trailing piece (the dot-continuation separator,
+  still caught by the existing trailing-dot check) and a leading piece when the dot is a
+  separator after an already-complete segment (the E13 path-whitespace forms `a .b`,
+  `a . b`, `a. .b` — unchanged). Quoted empty segments stay legal, so `a."".b: 3` →
+  `{"a":{"":{"b":3}}}` per S11.6. Pinned by `tests/issue68-path-empty-segment.test.ts`
+  and the xx.hocon `path-empty-segment/pe01–pe08` fixtures.
+
+### Fixed — backtick rejected in unquoted strings (S8.1, [xx.hocon#68](https://github.com/o3co/xx.hocon/issues/68))
+
+- **`` a = `t` ``, `` `k` = 1 `` and `` a = x`y `` now throw `ParseError`** instead of
+  producing the strings `` "`t`" `` / `` "x`y" `` and the key `` "`k`" ``. HOCON.md
+  L245-247 lists `` $ " { } [ ] : = , + # ` ^ ? ! @ * & \ `` as the forbidden set for
+  unquoted strings; backtick was the only member `isUnquotedStart` /
+  `isUnquotedContinue` in `src/internal/lexer/lexer.ts` did not exclude. Backtick inside
+  a quoted string remains ordinary content (`a = "x\`y"` → `{"a":"x\`y"}`), and
+  parentheses are still accepted — they are deliberately not in the forbidden set
+  (xx.hocon#34). Flips the S8.1 compliance cell ⚠️ → ✅. Pinned by
+  `tests/issue68-path-empty-segment.test.ts` and the xx.hocon
+  `unquoted-forbidden/uf01–uf04` fixtures.
+
 ## [1.9.0] - 2026-07-23
 
 Cross-impl release coordinated to land at v1.9.0 across ts.hocon / go.hocon / rs.hocon / py.hocon. Covers the two same-day spec corrections from [xx.hocon#62](https://github.com/o3co/xx.hocon/pull/62) (S3.1 — empty document parses to `{}`) and [xx.hocon#64](https://github.com/o3co/xx.hocon/pull/64) (S3.5 — array-root document rejected with a type error), plus the S19.8 case-sensitive duration units breaking change (queued since the previous cycle, shipped here). MINOR (not PATCH) because sibling impls add public API surface in the same coordinated cycle (rs `HoconError::Config` variant, go `ResolveError.Cause`/`Unwrap`) and the error-taxonomy / empty-document behavior changes are consumer-observable. `package.json` stays at `"0.0.0-snapshot"`; the release workflow bumps from the tag.

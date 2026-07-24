@@ -219,6 +219,30 @@ class Parser {
           : t.value
         // Split unquoted key at dots
         const parts = raw.split('.')
+        // S11.7 (HOCON.md L515-519): an empty path element must be written as a
+        // quoted "" — `a..b`, `.a` and `a...c` are BadPath errors, not paths
+        // whose empty elements silently collapse away. Two empty pieces are NOT
+        // empty segments and are exempt:
+        //   - the LAST piece, when `raw` ends with `.` — that dot is the
+        //     continuation separator carried by `trailingDot` below (consumed by
+        //     the next token, or rejected by the end-of-key check);
+        //   - the FIRST piece, when the leading `.` is acting as a separator
+        //     after an already-complete segment (`a .b`, `a. .b` — the E13
+        //     path-WS forms). In the no-space forms the separator dot was
+        //     already removed by the strip above, so a leading `.` that survives
+        //     there really is an empty segment (`a."b"..c`).
+        // Quoted segments never reach here, so `a."".b` stays legal (S11.6).
+        const leadingDotIsSeparator = spaceConcat || postDotPrefix !== ''
+        for (let i = 0; i < parts.length; i++) {
+          if (parts[i] !== '') continue
+          if (i === parts.length - 1) continue
+          if (i === 0 && leadingDotIsSeparator) continue
+          throw new ParseError(
+            `path has ${i === 0 ? 'a leading' : 'two adjacent'} period '.' — ` +
+              `empty key segment not allowed, use quoted "" (HOCON.md path rules)`,
+            t.line, t.col,
+          )
+        }
         const filtered = parts.filter(s => s.length > 0)
         if (spaceConcat) {
           // E13 path-WS preservation: the literal preceding whitespace becomes

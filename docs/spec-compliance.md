@@ -171,8 +171,8 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
 ## S8. Unquoted strings
 
 - **S8.1** Forbidden characters rejected (``$ " { } [ ] : = , + # ` ^ ? ! @ * & \``) and whitespace — §Unquoted strings (L245)
-  tests: tests/lexer.test.ts:191
-  status: ⚠️ — cited test covers only a subset of the forbidden set; `isUnquotedStart` / `isUnquotedContinue` in src/internal/lexer/lexer.ts do not exclude `` ` `` (backtick), so the impl allows it in unquoted strings contrary to spec L245
+  tests: tests/lexer.test.ts:191, tests/issue68-path-empty-segment.test.ts (S8.1 describe block)
+  status: ✅ — `isUnquotedStart` / `isUnquotedContinue` in src/internal/lexer/lexer.ts now exclude `` ` `` (backtick) alongside the rest of the set (xx.hocon#68, uf01–uf04 fixtures). `(` and `)` remain accepted — they are not spec-forbidden (xx.hocon#34)
 - **S8.2** `//` inside an unquoted string starts a comment — §Unquoted strings (L248)
   tests: tests/lexer.test.ts:29
   status: ✅
@@ -300,8 +300,8 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
   tests: tests/lightbend/testdata/subst-tokenize/st09-empty-quoted-key.conf (fixture)
   status: ✅
 - **S11.7** `a..b` and paths starting/ending with `.` are errors — §Path expressions (L517)
-  tests: tests/lightbend/testdata/subst-tokenize/st-err09-empty-segment-leading-dot.conf (fixture)
-  status: ✅
+  tests: tests/lightbend/testdata/subst-tokenize/st-err09-empty-segment-leading-dot.conf (fixture), tests/issue68-path-empty-segment.test.ts (S11.7 describe block)
+  status: ✅ — held in substitution position from the start; the KEY-position path parser silently collapsed the empty segments until xx.hocon#68 (pe01–pe08 fixtures)
 - **S11.8** Path expression always stringifies (single `true` → `"true"`) — §Path expressions (L504)
   tests: tests/parser.test.ts:402
   status: ✅

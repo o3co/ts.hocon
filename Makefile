@@ -9,11 +9,13 @@ DEFERRED_RESOLUTION_EXP_DIR := tests/lightbend/testdata/expected/hocon/deferred-
 KEY_HYPHEN_DIR              := tests/lightbend/testdata/hocon/key-hyphen-position
 PATH_EXPR_WS_DIR            := tests/lightbend/testdata/hocon/path-expr-whitespace
 ARRAY_ROOT_DIR              := tests/lightbend/testdata/hocon/array-root
+PATH_EMPTY_SEGMENT_DIR      := tests/lightbend/testdata/hocon/path-empty-segment
+UNQUOTED_FORBIDDEN_DIR      := tests/lightbend/testdata/hocon/unquoted-forbidden
 
 .PHONY: testdata test
 
 testdata:
-	@if [ -f .xx-hocon-version ] && [ -d "$(EXPECTED_DIR)" ] && [ -d "$(UNITS_DIR)" ] && [ -d "$(UNQUOTED_STARTS_DIR)" ] && [ -d "$(UNQUOTED_PARENS_DIR)" ] && [ -d "$(DEFERRED_RESOLUTION_DIR)" ] && [ -d "$(KEY_HYPHEN_DIR)" ] && [ -d "$(PATH_EXPR_WS_DIR)" ] && [ -d "$(ARRAY_ROOT_DIR)" ]; then \
+	@if [ -f .xx-hocon-version ] && [ -d "$(EXPECTED_DIR)" ] && [ -d "$(UNITS_DIR)" ] && [ -d "$(UNQUOTED_STARTS_DIR)" ] && [ -d "$(UNQUOTED_PARENS_DIR)" ] && [ -d "$(DEFERRED_RESOLUTION_DIR)" ] && [ -d "$(KEY_HYPHEN_DIR)" ] && [ -d "$(PATH_EXPR_WS_DIR)" ] && [ -d "$(ARRAY_ROOT_DIR)" ] && [ -d "$(PATH_EMPTY_SEGMENT_DIR)" ] && [ -d "$(UNQUOTED_FORBIDDEN_DIR)" ]; then \
 	  remote_sha=$$(curl -sf "https://api.github.com/repos/$(TESTDATA_REPO)/commits/$(TESTDATA_REF)" | grep '"sha"' | head -1 | cut -d'"' -f4) && \
 	  local_sha=$$(cat .xx-hocon-version) && \
 	  if [ "$$remote_sha" = "$$local_sha" ]; then \
@@ -31,6 +33,8 @@ testdata:
 	mkdir -p "$(KEY_HYPHEN_DIR)" && \
 	mkdir -p "$(PATH_EXPR_WS_DIR)" && \
 	mkdir -p "$(ARRAY_ROOT_DIR)" && \
+	mkdir -p "$(PATH_EMPTY_SEGMENT_DIR)" && \
+	mkdir -p "$(UNQUOTED_FORBIDDEN_DIR)" && \
 	curl -sfL "https://github.com/$(TESTDATA_REPO)/archive/$(TESTDATA_REF).tar.gz" -o "$$tmpdir/archive.tar.gz" && \
 	tar xzf "$$tmpdir/archive.tar.gz" -C "$$tmpdir" --strip-components=1 && \
 	cp -R "$$tmpdir/expected/hocon/." "$(EXPECTED_DIR)/" && \
@@ -41,6 +45,8 @@ testdata:
 	cp -R "$$tmpdir/testdata/hocon/key-hyphen-position/." "$(KEY_HYPHEN_DIR)/" && \
 	cp -R "$$tmpdir/testdata/hocon/path-expr-whitespace/." "$(PATH_EXPR_WS_DIR)/" && \
 	{ [ ! -d "$$tmpdir/testdata/hocon/array-root" ] || cp -R "$$tmpdir/testdata/hocon/array-root/." "$(ARRAY_ROOT_DIR)/"; } && \
+	cp -R "$$tmpdir/testdata/hocon/path-empty-segment/." "$(PATH_EMPTY_SEGMENT_DIR)/" && \
+	cp -R "$$tmpdir/testdata/hocon/unquoted-forbidden/." "$(UNQUOTED_FORBIDDEN_DIR)/" && \
 	curl -sf "https://api.github.com/repos/$(TESTDATA_REPO)/commits/$(TESTDATA_REF)" | grep '"sha"' | head -1 | cut -d'"' -f4 > .xx-hocon-version && \
 	echo "Done. Fetched $$(cat .xx-hocon-version)"
 
