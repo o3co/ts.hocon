@@ -238,7 +238,7 @@ class Parser {
           if (i === parts.length - 1) continue
           if (i === 0 && leadingDotIsSeparator) continue
           throw new ParseError(
-            `path has ${i === 0 ? 'a leading' : 'two adjacent'} period '.' — ` +
+            `path has ${i === 0 ? "a leading period '.'" : "two adjacent periods '.'"} — ` +
               `empty key segment not allowed, use quoted "" (HOCON.md path rules)`,
             t.line, t.col,
           )

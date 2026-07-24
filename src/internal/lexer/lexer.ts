@@ -504,8 +504,10 @@ function isDecimalDigit(ch: string): boolean {
 /**
  * Forbidden characters for unquoted strings per S8.1 (HOCON.md L245-247):
  * `$ " { } [ ] : = , + # ` ^ ? ! @ * & \`. Note `(` and `)` are deliberately
- * NOT members (xx.hocon#34) and `+` is only forbidden as the `+=` operator,
- * so both predicates below special-case it rather than listing it here.
+ * NOT members (xx.hocon#34). `+` is handled asymmetrically: `isUnquotedStart`
+ * lists it outright (an unquoted string may not begin with `+`), while
+ * `isUnquotedContinue` rejects it only when it forms the `+=` operator, so a
+ * `+` inside a token stays ordinary content.
  * Backtick is a full member of the set (xx.hocon#68) — it is only ordinary
  * content inside a quoted string, which never reaches these predicates.
  */

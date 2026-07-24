@@ -127,8 +127,11 @@ describe('xx.hocon#68 fixture conformance (pe01-pe08, uf01-uf04)', () => {
       .map(name => [dir, name] as const),
   )
 
-  it('discovered the expected number of error fixtures', () => {
-    expect(ERROR_FIXTURES.length).toBe(10)
+  // Lower bound, not an exact count: this fails loudly when `make testdata`
+  // has not run (0 discovered) without needing an edit every time xx.hocon
+  // adds a pe*/uf* fixture.
+  it('discovered the error fixtures (testdata present)', () => {
+    expect(ERROR_FIXTURES.length).toBeGreaterThanOrEqual(10)
   })
 
   for (const [dir, name] of ERROR_FIXTURES) {
