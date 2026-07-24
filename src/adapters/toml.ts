@@ -25,8 +25,11 @@ function convert(v: unknown, atPath: string): unknown {
   if (Array.isArray(v)) return v.map((e, i) => convert(e, `${atPath}[${i}]`))
   if (v instanceof Date) {
     // TomlDate.toISOString() renders each of the four TOML date-time types in
-    // its own shape: offset, local date-time, date only, time only.
-    return v.toISOString()
+    // its own shape: offset, local date-time, date only, time only. It always
+    // writes milliseconds, so `07:32:00` comes back as `07:32:00.000`; trailing
+    // zeros are dropped to keep the source's own precision, which is what
+    // F4.2 pins and what Go's RFC3339Nano already did.
+    return v.toISOString().replace(/\.(\d*?)0+(?=Z?$)/, (_m, keep: string) => (keep ? `.${keep}` : ''))
   }
   if (v !== null && typeof v === 'object') {
     const out: Record<string, unknown> = {}

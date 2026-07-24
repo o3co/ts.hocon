@@ -104,11 +104,18 @@ id = 2
     expect(cfg.getList('db.replicas')).toEqual([{ id: 1 }, { id: 2 }])
   })
 
+  // F4.2 — and the fractional part keeps the source's precision rather than
+  // the library's: smol-toml always writes milliseconds, so a bare 07:32:00
+  // would otherwise come back as 07:32:00.000 and disagree with the other
+  // implementations. Caught by the shared fixtures, not by this test.
   it('renders all four date-time types as strings (F4.2)', () => {
-    const cfg = parseTomlConfig('a = 1979-05-27T07:32:00Z\nb = 1979-05-27\nc = 07:32:00\n')
-    expect(cfg.getString('a')).toBe('1979-05-27T07:32:00.000Z')
+    const cfg = parseTomlConfig(
+      'a = 1979-05-27T07:32:00Z\nb = 1979-05-27\nc = 07:32:00\nd = 07:32:00.500\n',
+    )
+    expect(cfg.getString('a')).toBe('1979-05-27T07:32:00Z')
     expect(cfg.getString('b')).toBe('1979-05-27')
-    expect(cfg.getString('c')).toBe('07:32:00.000')
+    expect(cfg.getString('c')).toBe('07:32:00')
+    expect(cfg.getString('d')).toBe('07:32:00.5')
   })
 
   it('refuses infinity (F0.6)', () => {
