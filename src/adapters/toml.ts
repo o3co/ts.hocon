@@ -1,0 +1,45 @@
+import { parse as parseToml } from 'smol-toml'
+import { fromMap } from '../value-factory.js'
+import type { Config } from '../config.js'
+import { ConfigError } from '../errors.js'
+
+/**
+ * Read a TOML document as HOCON config, via `smol-toml`.
+ *
+ * TOML's types line up with HOCON's apart from dates: HOCON has no datetime, so
+ * all four TOML date-time types become their RFC 3339 string forms, which is
+ * the honest representation rather than a lossy number (spec F4.2).
+ *
+ * `smol-toml` refuses an integer it cannot represent losslessly, so a value past
+ * the safe-integer range is an error here rather than silently rounded — go's
+ * adapter accepts those, its int64 being wide enough (spec F0.5).
+ *
+ * See docs/specs/format-ingestion-mapping.md items F4.x in the hocon scope.
+ */
+export function parseTomlConfig(input: string, originDescription?: string): Config {
+  const doc = parseToml(input) as Record<string, unknown>
+  return fromMap(convert(doc, '') as Record<string, unknown>, originDescription)
+}
+
+function convert(v: unknown, atPath: string): unknown {
+  if (Array.isArray(v)) return v.map((e, i) => convert(e, `${atPath}[${i}]`))
+  if (v instanceof Date) {
+    // TomlDate.toISOString() renders each of the four TOML date-time types in
+    // its own shape: offset, local date-time, date only, time only.
+    return v.toISOString()
+  }
+  if (v !== null && typeof v === 'object') {
+    const out: Record<string, unknown> = {}
+    for (const [k, e] of Object.entries(v as Record<string, unknown>)) {
+      out[k] = convert(e, atPath === '' ? k : `${atPath}.${k}`)
+    }
+    return out
+  }
+  if (typeof v === 'number' && !Number.isFinite(v)) {
+    throw new ConfigError(
+      `toml: ${v} at "${atPath}" is not representable in HOCON (spec F0.6)`,
+      atPath,
+    )
+  }
+  return v
+}

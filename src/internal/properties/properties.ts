@@ -12,8 +12,6 @@ import { ParseError } from '../../errors.js'
  * never after it).
  */
 export function parseProperties(input: string): Record<string, unknown> {
-  const root: Record<string, unknown> = Object.create(null)
-
   // Collect (key, value) pairs first so we can sort before inserting.
   // S23.4 — HOCON.md L1485: when a key conflict exists between a scalar ("a=hello")
   // and an object expansion ("a.b=world"), the object must always win.
@@ -27,13 +25,22 @@ export function parseProperties(input: string): Record<string, unknown> {
     pairs.push([key, unescapeProps(rawValue, line)])
   }
 
-  // Sort by key so conflict-direction is input-order independent.
-  pairs.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+  return nestPairs(pairs)
+}
 
-  for (const [key, value] of pairs) {
+/**
+ * Turn dotted-key pairs into a nested object, applying the S23.4 object-wins
+ * rule. Keys are sorted first so the outcome does not depend on input order.
+ *
+ * Exported because the `env` adapter mounts variables the same way and must not
+ * carry a second copy of this rule.
+ */
+export function nestPairs(pairs: [string, string][]): Record<string, unknown> {
+  const root: Record<string, unknown> = Object.create(null)
+  const sorted = [...pairs].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+  for (const [key, value] of sorted) {
     setNested(root, key.split('.'), value)
   }
-
   return root
 }
 
