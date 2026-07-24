@@ -18,9 +18,15 @@ import { ConfigError } from '../errors.js'
  * See docs/specs/format-ingestion-mapping.md items F5.x in the hocon scope.
  */
 export function parseYaml(input: string, originDescription?: string): Config {
-  // merge: true is required — without it `<<` stays a literal key rather
-  // than merging, which would silently produce a `<<` field (spec F5.2).
-  const docs = YAML.parseAllDocuments(input, { merge: true })
+  // version is declared rather than defaulted. The same library returns 8 for
+  // `010` under 1.1 and 10 under 1.2, and resolves `no` to false under 1.1 —
+  // the Norway problem is a schema choice, not a library defect. F5.1 pins the
+  // 1.2 core schema, so say so instead of trusting a default that a major
+  // release could move.
+  //
+  // merge: true is required alongside it — `<<` is a 1.1 feature, so under 1.2
+  // it would otherwise stay a literal key and leak into the config (spec F5.2).
+  const docs = YAML.parseAllDocuments(input, { version: '1.2', merge: true })
   if (docs.length > 1) {
     throw new ConfigError(
       'yaml: multi-document streams are not supported (spec F5.7); a config is one document',
