@@ -38,6 +38,7 @@ testdata:
 	curl -sfL "https://github.com/$(TESTDATA_REPO)/archive/$(TESTDATA_REF).tar.gz" -o "$$tmpdir/archive.tar.gz" && \
 	tar xzf "$$tmpdir/archive.tar.gz" -C "$$tmpdir" --strip-components=1 && \
 	cp -R "$$tmpdir/expected/hocon/." "$(EXPECTED_DIR)/" && \
+	{ [ ! -d "$$tmpdir/testdata/format-ingestion" ] || { rm -rf tests/lightbend/testdata/format-ingestion && cp -R "$$tmpdir/testdata/format-ingestion" tests/lightbend/testdata/format-ingestion; }; } && \
 	cp -R "$$tmpdir/testdata/hocon/units-default/." "$(UNITS_DIR)/" && \
 	cp -R "$$tmpdir/testdata/hocon/unquoted-starts/." "$(UNQUOTED_STARTS_DIR)/" && \
 	cp -R "$$tmpdir/testdata/hocon/unquoted-parens/." "$(UNQUOTED_PARENS_DIR)/" && \
