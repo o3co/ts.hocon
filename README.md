@@ -397,7 +397,6 @@ The four parser implementations ([ts.hocon](https://github.com/o3co/ts.hocon), [
 - **`include classpath(...)`** is not supported. This is a JVM-specific include form with no equivalent outside Java runtimes.
 - **No watch/reload** — the library parses config at load time. For live-reloading, re-call `parse()` or `parseFile()` on change.
 - **No streaming parser** — the entire input is loaded into memory. For very large configs, validate input size before parsing (see Security Considerations).
-- **`.properties` include** — supports basic `key=value` / `key:value` syntax. Does not support multiline values (backslash continuation), Unicode escapes, or key escaping from the full Java .properties specification.
 
 ## Security Considerations
 
