@@ -403,7 +403,7 @@ The four parser implementations ([ts.hocon](https://github.com/o3co/ts.hocon), [
 
 When parsing untrusted HOCON input, be aware of:
 
-- **Path traversal in includes:** `include "../../../etc/passwd"` will resolve relative to `baseDir`. Use a custom `readFileSync`/`readFile` that validates paths if parsing untrusted input.
+- **Path traversal in includes:** a relative `include` path resolves against `baseDir` and can climb out of it with `..` segments to reach sensitive files such as `/etc/passwd`. Use a custom `readFileSync`/`readFile` that validates paths if parsing untrusted input.
 - **Input size:** The parser has no built-in input size limit. For untrusted input, validate size before calling `parse()`.
 - **Include depth:** Limited to 50 levels to prevent stack overflow from deep include chains.
 
