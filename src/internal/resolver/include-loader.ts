@@ -1,5 +1,6 @@
 import { createRequire } from 'node:module'
 import * as nodePath from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { PackageLookupError, ParseError, ResolveError } from '../../errors.js'
 import type { AstNode } from '../parser/ast.js'
 import { tokenize } from '../lexer/lexer.js'
@@ -17,23 +18,44 @@ import {
   isFileNotFoundError,
 } from './utils.js'
 
-// createRequire works in both CJS and ESM Node contexts (Node ≥ 12).
-// Using import.meta.url makes this module's directory the resolution anchor,
-// which is overridden per-call via the `paths` option.
-//
-// Two things are deliberate here, both regressions waiting to happen otherwise:
-//  - The CJS bundle rewrites `import.meta` to `{}`, so in that format the
-//    expression `createRequire(import.meta.url)` is `createRequire(undefined)`
-//    and throws ERR_INVALID_ARG_VALUE. Prefer the native `require` that CJS
-//    already has; only an ESM context (where `typeof require` is 'undefined')
-//    falls through to createRequire(import.meta.url), which is real there.
-//  - Resolution is lazy (first use, not module scope), so no bundling artifact
-//    of this line can ever crash `require()`/`import()` of an entrypoint again.
-//    tools/smoke-entrypoints.mjs gates that in CI.
+/**
+ * The `require` used to resolve `include package(...)`, in whichever module
+ * format this code was bundled into.
+ *
+ * Getting this wrong has now broken one format twice, in opposite directions,
+ * so the rules are written down:
+ *
+ *  - **Probe the capability, never `typeof require`.** esbuild rewrites a bare
+ *    `require` identifier in *ESM* output into a shim that is a `Proxy` over a
+ *    function: `typeof` reports `"function"` while `.resolve` is `undefined`,
+ *    so a `typeof` guard picks it and every package include fails with a
+ *    misleading "module not found". Asking for `.resolve` directly is the only
+ *    check that describes what this code actually needs.
+ *  - **Never call `createRequire(import.meta.url)` unguarded.** The *CJS*
+ *    bundle rewrites `import.meta` to `{}`, making that `createRequire(undefined)`
+ *    — an ERR_INVALID_ARG_VALUE thrown at module load, which is what shipped in
+ *    1.10.0. The cwd anchor keeps a bundler shape we have not seen yet from
+ *    reintroducing it.
+ *  - **Stay lazy.** Resolution happens on first use, so no bundling artifact of
+ *    these lines can crash `require()`/`import()` of an entrypoint.
+ *
+ * The anchor barely matters in practice: {@link defaultPackageResolver} always
+ * passes an explicit `paths`, which is what actually decides resolution.
+ *
+ * `tools/smoke-entrypoints.mjs` exercises a real package include through both
+ * built formats, because vitest runs against `src/`, where the bundler shapes
+ * this comment is about do not exist.
+ */
 let _require: NodeRequire | undefined
 function getRequire(): NodeRequire {
   if (_require === undefined) {
-    _require = typeof require === 'function' ? require : createRequire(import.meta.url)
+    const candidate: unknown = typeof require === 'function' ? require : undefined
+    if (typeof (candidate as NodeRequire | undefined)?.resolve === 'function') {
+      _require = candidate as NodeRequire
+    } else {
+      const metaUrl = (import.meta as { url?: string }).url
+      _require = createRequire(metaUrl ?? pathToFileURL(nodePath.join(process.cwd(), 'noop.js')))
+    }
   }
   return _require
 }
