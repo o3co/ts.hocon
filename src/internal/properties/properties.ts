@@ -52,24 +52,38 @@ export type PathPair = [segments: string[], value: string]
  */
 export function nestPairs(pairs: PathPair[]): Record<string, unknown> {
   const root: Record<string, unknown> = Object.create(null)
-  // Sort on the NUL-joined form: NUL cannot occur in a segment, so ordering
-  // follows segment boundaries and never confuses `a.b` (one segment) with
-  // `a` → `b` (two). Array.sort is stable, so equal paths keep input order and
-  // the last one wins (F0.7).
-  const sorted = [...pairs].sort(([a], [b]) => {
-    const ka = joinKey(a)
-    const kb = joinKey(b)
-    return ka < kb ? -1 : ka > kb ? 1 : 0
-  })
+  // Ordered segment-wise, so `a.b` (one segment) and `a` → `b` (two) sort as the
+  // different paths they are, with no delimiter to assume. Array.sort is stable,
+  // so equal paths keep input order and the last one wins (F0.7).
+  const sorted = [...pairs].sort(([a], [b]) => compareSegments(a, b))
   for (const [segments, value] of sorted) {
     setNested(root, segments, value)
   }
   return root
 }
 
-/** NUL cannot appear in a segment, so distinct paths cannot collide as keys. */
-export function joinKey(segments: readonly string[]): string {
-  return segments.join('\x00')
+/** Lexicographic order on the segment lists themselves. */
+function compareSegments(a: readonly string[], b: readonly string[]): number {
+  const n = Math.min(a.length, b.length)
+  for (let i = 0; i < n; i++) {
+    const x = a[i] as string
+    const y = b[i] as string
+    if (x !== y) return x < y ? -1 : 1
+  }
+  return a.length - b.length
+}
+
+/**
+ * A collision-free key for a segment list, for callers that need one path per
+ * map entry (the env adapter's F1.6 collision check).
+ *
+ * JSON encoding rather than a joined string: a `.properties` key can contain
+ * any character, NUL included (F2.3 honours `\u0000`), so no single delimiter is
+ * safe in general. `JSON.stringify` escapes unambiguously, so two segment lists
+ * share a key only when they are equal.
+ */
+export function pathKey(segments: readonly string[]): string {
+  return JSON.stringify(segments)
 }
 
 interface LogicalLine {

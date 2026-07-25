@@ -7,17 +7,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed — every CJS entrypoint threw at load time
+### Changed (behavior) — read this before upgrading
 
-- **`require('@o3co/ts.hocon')` (and all six other subpath exports) crashed
-  with `ERR_INVALID_ARG_VALUE` in 1.10.0.** The include loader evaluated
+Several fixes below change what previously "worked", always by refusing or
+reshaping input that was being mangled silently. In brief:
+
+| What changed | Before | Now |
+| --- | --- | --- |
+| JSONC `1/*c*/2`, `tr/*c*/ue` | parsed as `12` / `true` | `SyntaxError` |
+| JSONC `//` comment ending at CR | ate the rest of the line, dropping keys with no error | ends at the CR |
+| JSONC/YAML integer past 2^53 | silently rounded | exact via `getString`; past int64 it errors |
+| JSONC integer past 2^53 with no `JSON.parse` source access | silently rounded | `ConfigError` |
+| `APP_FOO.BAR` (env) | nested as `foo` → `bar` | one key `"foo.bar"`; coexists with `APP_FOO__BAR` |
+| env key case folding | full Unicode (`İ` → `i̇`) | ASCII-only (`İ` unchanged) |
+| `__proto__`/`constructor`/`prototype` keys from properties, env, YAML, TOML | silently dropped | preserved, so `toObject()` output now contains them |
+| Leading BOM | became part of the first key (properties) or a syntax error (JSONC/TOML) | stripped |
+| `-0` from an adapter | `"0"` | `"-0"` |
+
+The `__proto__` one deserves a second look if you hand `toObject()` output to
+other code: `Object.assign({}, data)` and naive deep merges are unsafe with such
+a key present (the hazard is the destination's prototype, not this library's
+output). Use spread or `structuredClone`, or the new
+`toObject({ nullPrototype: true })`. See SECURITY.md.
+
+### Fixed — CJS entrypoints threw at load, then ESM `include package(...)` broke
+
+- **`require('@o3co/ts.hocon')` (and all six other subpath exports) crashed with
+  `ERR_INVALID_ARG_VALUE` in 1.10.0.** The include loader evaluated
   `createRequire(import.meta.url)` at module scope, and the CJS bundle shims
   `import.meta` to `{}`, so every `require()` of the package executed
-  `createRequire(undefined)` before any user code ran. The require function is
-  now resolved lazily and prefers the native CJS `require` when it exists, so
-  both module formats load. A smoke gate (`pnpm smoke`,
-  `tools/smoke-entrypoints.mjs`) now runs in CI after the build and fails if
-  any export stops loading under `require()` or `import()`.
+  `createRequire(undefined)` before any user code ran.
+- The first fix for that guarded on `typeof require === 'function'`, which
+  **broke `include package(...)` in the ESM bundle**: esbuild rewrites a bare
+  `require` in ESM output into a Proxy whose `typeof` is `"function"` but whose
+  `.resolve` is `undefined`, so every package include failed with a misleading
+  "module not found". The loader now probes for `.resolve` itself and falls back
+  to `createRequire(import.meta.url)`, with a cwd anchor as a last resort. Both
+  formats load *and* resolve package includes; verified against a packed
+  tarball, not just the sources.
+- **The smoke gate now uses each entrypoint, not just loads it** (`pnpm smoke`,
+  `tools/smoke-entrypoints.mjs`): it resolves a real `include package(...)`
+  through both bundles, parses a document with every adapter, and checks the
+  declaration files each condition points at. It runs on PRs **and in the
+  release workflow**, which previously published with no smoke step at all.
+
+### Fixed — CJS TypeScript consumers could not compile (TS1479)
+
+- **Every subpath pointed both module conditions at one `dist/*.d.ts`.** The
+  package is `"type": "module"`, so TypeScript read those declarations as ESM and
+  rejected `require()` imports from a `node16`/`nodenext` CJS project with
+  TS1479 — the entrypoints loaded but did not typecheck. Each condition now has
+  its own `types`, so `require` resolves the `.d.cts` files tsup was already
+  emitting.
 
 ### Fixed — `toObject()` lost `__proto__` keys and let config data choose the result's prototype
 
@@ -76,6 +117,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `fromMap` accepts a `bigint` up to the int64 bound accordingly, keeping its
   digits verbatim in the value's raw text; it previously refused anything past
   `Number.MAX_SAFE_INTEGER`.
+- On a runtime **without** `JSON.parse` source access (not Node ≥ 22, but
+  `parse()` is documented as browser-usable) JSONC now **refuses** a document
+  containing such an integer instead of quietly returning the rounded double —
+  falling back to `Number`-only decoding is the case F0.5 forbids. Documents
+  with no oversized integer are unaffected.
+
+### Fixed — a JSONC `//` comment ran past a CR, deleting keys with no error
+
+- **`{"a":1,//c\r"b":2,\n"c":3}` parsed as `{"a":1,"c":3}`.** The line-comment
+  scanner stopped only at LF, so a CR-terminated comment swallowed the rest of
+  the line and the trailing-comma pass then tidied the remains into valid JSON —
+  a key vanished and nothing complained. A `//` comment now ends at any line
+  terminator (LF, CR, U+2028, U+2029). Same shape as the bug in another HOCON
+  library that motivated this project's implementation-preference rule, and
+  py.hocon was found with it too.
+
+### Fixed — YAML and TOML dropped `__proto__` keys (F2.9's principle)
+
+- **`[a.__proto__]` in TOML yielded `{"a":{}}`, and a `__proto__` mapping in
+  YAML disappeared**, including through the public `fromYamlValue` injection
+  point. Both libraries hand the key over correctly; the adapters lost it by
+  building objects with `out[k] = …` on a `{}` carrier, which writes through
+  `Object.prototype`'s setter — the same defect already fixed in `toObject()`.
+  Both now materialize objects with own-property definition.
+
+### Fixed — a leading BOM corrupted the first key or broke the parse (F0.9)
+
+- **A Windows editor's UTF-8 BOM made `.properties` produce the key `"\ufeffa"`**
+  — a lookup of `a` then missed and the value was silently unreachable — while
+  JSONC and TOML failed with confusing syntax errors. Every adapter now strips a
+  leading U+FEFF (the core parser already did). A U+FEFF anywhere else is data
+  and is left alone.
+
+### Changed — env keys fold case ASCII-only (F1.3)
+
+- **`APP_İ` (U+0130) mapped to `i` + U+0307** under JS's full Unicode
+  lowercasing, while Go's simple mapping produces plain `i` — which decides
+  whether it collides with `APP_I` under F1.6. Case folding is now ASCII-only in
+  every implementation, so `İ` stays itself. Environment variable names are
+  ASCII in practice.
+
+### Added — `toObject({ nullPrototype: true })`
+
+- Returns the same data with `null`-prototype objects, for handing config to
+  code you do not control. It inherits nothing, so `x.constructor` and
+  `x.__proto__` read config data or `undefined` rather than something global.
+  It cannot fix a consumer that copies into a plain `{}` — that hazard belongs
+  to the destination object. See SECURITY.md.
+
+### Fixed — `-0` from an adapter lost its sign
+
+- `{"z": -0}` read back as `"0"` while the core parser keeps `"-0"` for the same
+  literal. Negative zero is a real IEEE-754 value and is no longer normalized
+  away on the way in.
 
 ### Fixed — a JSONC block comment could weld two tokens into one
 

@@ -1,6 +1,6 @@
 import { fromMap } from '../value-factory.js'
 import type { Config } from '../config.js'
-import { type PathPair, joinKey, nestPairs } from '../internal/properties/properties.js'
+import { type PathPair, nestPairs, pathKey } from '../internal/properties/properties.js'
 import { ConfigError } from '../errors.js'
 import { stripBom } from '../internal/strip-bom.js'
 
@@ -64,11 +64,12 @@ export function loadEnv(opts: EnvOptions & { env?: Record<string, string | undef
     const value = source[name]
     if (value === undefined) continue
     const path = toPath(name.slice(prefix.length))
-    // Collisions are compared on the NUL-joined segments, as go.hocon's
-    // adapter does: `APP_FOO.BAR` (one segment "foo.bar") and `APP_FOO__BAR`
-    // (two segments) are different paths and must both survive, which a
-    // dot-joined comparison would conflate (F1.2/F1.6).
-    const key = joinKey(path)
+    // Collisions are compared on the segment list, as go.hocon's adapter does
+    // (it joins with NUL; this encodes, which needs no delimiter to be safe):
+    // `APP_FOO.BAR` (one segment "foo.bar") and `APP_FOO__BAR` (two segments)
+    // are different paths and must both survive, which a dot-joined comparison
+    // would conflate (F1.2/F1.6).
+    const key = pathKey(path)
     const prev = seen.get(key)
     if (prev !== undefined) {
       // F1.6: two names can reach one path and the environment has no

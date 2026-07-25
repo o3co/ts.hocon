@@ -32,8 +32,11 @@ import { parse } from '@o3co/ts.hocon'          // ESM
 const { parse } = require('@o3co/ts.hocon')     // CJS
 ```
 
-CI ではビルドのたびに 7 つの export すべてを両形式でロードして検証しているため、
-1.10.0 のように `require` できないパッケージが公開されることはありません。
+CI では PR ごと・リリースごとに、ビルド成果物に対して 7 つの export すべてを両形式で
+ロードし、実際に呼び出し（バンドル形式で挙動が変わる package include を含む）、各条件が
+自前の型定義を宣言しているかまで検証します。1.10.0 で CJS の 7 エントリポイントすべてが
+ロード時に例外を投げた実績があるためのゲートであり、この種の欠陥を検出するものです
+（あらゆる欠陥が起こり得ないという保証ではありません）。
 
 ### 2. 使い方
 
@@ -348,7 +351,7 @@ const merged = cfg.withFallback(base).resolve()
 | `@o3co/ts.hocon/adapters/env` | — | プレフィックス付き名前空間の一括マウント。`.env` の読み込みも可能 |
 | `@o3co/ts.hocon/adapters/jsonc` | — | コメントと末尾カンマを許す JSON |
 | `@o3co/ts.hocon/adapters/toml` | `smol-toml` | オプショナルなピア依存 |
-| `@o3co/ts.hocon/adapters/yaml` | `yaml` | オプショナルなピア依存。スカラー解決はライブラリ側の挙動で、`version: '1.2'` を明示指定 |
+| `@o3co/ts.hocon/adapters/yaml` | `yaml` 2.9.x | オプショナルなピア依存。スカラー解決はそのライブラリの答えで、`version: '1.2'` を明示してドリフトを防止 |
 
 TOML と YAML のライブラリは **オプショナルなピア依存** なので、本パッケージを入れても
 何も追加でインストールされません — 実際に使うものだけを足してください。プレーンな JSON に

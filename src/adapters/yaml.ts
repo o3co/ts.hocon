@@ -38,9 +38,10 @@ import { stripBom } from '../internal/strip-bom.js'
 export function parseYaml(input: string, originDescription?: string): Config {
   // version is declared rather than defaulted. The same library returns 8 for
   // `010` under 1.1 and 10 under 1.2, and resolves `no` to false under 1.1 —
-  // the Norway problem is a schema choice, not a library defect. F5.1 pins the
-  // 1.2 core schema, so say so instead of trusting a default that a major
-  // release could move.
+  // the Norway problem is a schema choice, not a library defect. F5.1 states no
+  // baseline schema — scalar resolution is the library's answer — so the point
+  // of declaring the version is that the answer cannot drift under us when a
+  // major release moves its default. The library is `yaml` (eemeli) 2.9.x.
   //
   // merge: true is required alongside it — `<<` is a 1.1 feature, so under 1.2
   // it would otherwise stay a literal key and leak into the config (spec F5.2).
@@ -117,8 +118,11 @@ function convert(v: unknown, atPath: string): unknown {
     return Object.fromEntries(entries)
   }
   if (v instanceof Uint8Array) {
-    // !!binary — HOCON has no binary type, so keep the base64 text the source
-    // itself carried (spec F5.5).
+    // !!binary — HOCON has no binary type, so the bytes become base64 text
+    // (spec F5.5). This re-encodes what the library decoded rather than echoing
+    // the source's own characters, so the result is canonical base64: the
+    // library silently drops characters outside the alphabet while decoding, and
+    // whitespace/line breaks in the source do not survive.
     return bytesToBase64(v)
   }
   if (v !== null && typeof v === 'object') {
@@ -168,6 +172,9 @@ function bytesToBase64(bytes: Uint8Array): string {
   return btoa(binary)
 }
 
+const MAX_SAFE = BigInt(Number.MAX_SAFE_INTEGER)
+const MIN_SAFE = BigInt(Number.MIN_SAFE_INTEGER)
+
 function isSafeIntegerBigInt(v: bigint): boolean {
-  return v <= BigInt(Number.MAX_SAFE_INTEGER) && v >= BigInt(Number.MIN_SAFE_INTEGER)
+  return v <= MAX_SAFE && v >= MIN_SAFE
 }

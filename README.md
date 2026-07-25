@@ -36,8 +36,12 @@ import { parse } from '@o3co/ts.hocon'          // ESM
 const { parse } = require('@o3co/ts.hocon')     // CJS
 ```
 
-CI loads all seven exports both ways after each build, so a package that cannot
-be `require`d (as 1.10.0's could not) fails the pipeline instead of shipping.
+On every PR and every release, CI loads all seven exports both ways against the
+built artifact, calls each one (including a package-scoped `include`, which
+behaves differently per bundle format), and checks that each condition declares
+its own type declarations. That gate exists because 1.10.0 shipped with all
+seven CJS entrypoints throwing at load; it catches that class of defect rather
+than promising none can exist.
 
 ### 2. Use
 
@@ -436,7 +440,7 @@ Deferring resolution matters: the plain `parse` resolves as it goes, so a
 | `@o3co/ts.hocon/adapters/env` | — | Bulk-mounts a prefixed namespace; also reads `.env` |
 | `@o3co/ts.hocon/adapters/jsonc` | — | JSON with comments and trailing commas |
 | `@o3co/ts.hocon/adapters/toml` | `smol-toml` | Optional peer dependency |
-| `@o3co/ts.hocon/adapters/yaml` | `yaml` | Optional peer dependency; scalar resolution is the library's, pinned to `version: '1.2'` |
+| `@o3co/ts.hocon/adapters/yaml` | `yaml` 2.9.x | Optional peer dependency; scalar resolution is that library's answer, with `version: '1.2'` declared so it cannot drift |
 
 The TOML and YAML libraries are **optional peer dependencies**, so installing
 this package still pulls in nothing — you add the one you actually use. Plain
