@@ -57,11 +57,14 @@ const eq = (got, want, what) => {
 }
 
 // ─── functional check per entrypoint ─────────────────────────────────────────
-// Each throws on any surprise. `load` fetches a peer dependency through the same
-// module system as the entrypoint under test, so a CJS check never silently
-// exercises an ESM copy.
+// Each throws on any surprise. `load` really does fetch a peer dependency
+// through the module system under test — require() for the CJS pass, import()
+// for the ESM one — because the peers have dual builds of their own, and a gate
+// that reached ESM entrypoints' dependencies through CJS would be exercising a
+// configuration no consumer runs. That is the same mistake this gate exists to
+// catch, one level down.
 const checks = {
-  '.': (m) => {
+  '.': async (m) => {
     // The bundler-shape canary: include package(...) goes through
     // require.resolve, whose shape differs between the ESM and CJS bundles.
     const cfg = m.parseFile(appConf)
@@ -69,8 +72,8 @@ const checks = {
     eq(cfg.getString('local'), 'from-package', 'substitution across the include')
     eq(m.parse('a = 1\nb = ${a}').getNumber('b'), 1, 'parse + substitution')
   },
-  './zod': (m, load) => {
-    const { z } = load('zod')
+  './zod': async (m, load) => {
+    const { z } = await load('zod')
     const out = m.parseWithSchema(
       'include package("smoke-fixture-pkg", "reference.conf")',
       z.object({ included: z.string() }),
@@ -78,20 +81,20 @@ const checks = {
     )
     eq(out.included, 'from-package', 'parseWithSchema include package')
   },
-  './adapters/properties': (m) => {
+  './adapters/properties': async (m) => {
     eq(m.parsePropertiesConfig('db.host = local\n').getString('db.host'), 'local', 'properties adapter')
   },
-  './adapters/env': (m) => {
+  './adapters/env': async (m) => {
     eq(m.loadEnv({ prefix: 'SMOKE_', env: { SMOKE_DB__HOST: 'local' } }).getString('db.host'), 'local', 'env adapter')
     eq(m.parseDotEnv('A__B=1\n').getString('a.b'), '1', 'dotenv adapter')
   },
-  './adapters/jsonc': (m) => {
+  './adapters/jsonc': async (m) => {
     eq(m.parseJsonc('{"a": 1 /* c */, "b": [1,2,],}').getNumber('a'), 1, 'jsonc adapter')
   },
-  './adapters/toml': (m) => {
+  './adapters/toml': async (m) => {
     eq(m.parseTomlConfig('[db]\nhost = "local"\n').getString('db.host'), 'local', 'toml adapter')
   },
-  './adapters/yaml': (m) => {
+  './adapters/yaml': async (m) => {
     eq(m.parseYaml('db:\n  host: local\n').getString('db.host'), 'local', 'yaml adapter')
   },
 }
@@ -122,7 +125,7 @@ for (const subpath of subpaths) {
     if (mod === null || typeof mod !== 'object' || Object.keys(mod).length === 0) {
       throw new Error('module loaded but exposes no exports')
     }
-    check(mod, (dep) => require(dep))
+    await check(mod, async (dep) => require(dep))
     console.log(`ok   require('${specifier}')  + functional check`)
   } catch (e) {
     fail(`require('${specifier}')`, e)
@@ -134,7 +137,7 @@ for (const subpath of subpaths) {
     if (Object.keys(mod).length === 0) {
       throw new Error('module loaded but exposes no exports')
     }
-    check(mod, (dep) => require(dep))
+    await check(mod, async (dep) => await import(dep))
     console.log(`ok   import('${specifier}')   + functional check`)
   } catch (e) {
     fail(`import('${specifier}')`, e)
