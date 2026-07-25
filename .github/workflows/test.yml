@@ -52,6 +52,14 @@ jobs:
       - name: Test
         run: pnpm test
 
+      - name: Build
+        run: pnpm build
+
+      # Regression gate for v1.10.0's broken CJS artifact: every subpath in
+      # package.json "exports" must load under require() AND import().
+      - name: Smoke-test published entrypoints
+        run: pnpm smoke
+
       - name: Test with coverage
         if: matrix.node == '24' && matrix.os == 'ubuntu-latest'
         run: pnpm coverage

@@ -20,7 +20,23 @@ import {
 // createRequire works in both CJS and ESM Node contexts (Node ≥ 12).
 // Using import.meta.url makes this module's directory the resolution anchor,
 // which is overridden per-call via the `paths` option.
-const _require = createRequire(import.meta.url)
+//
+// Two things are deliberate here, both regressions waiting to happen otherwise:
+//  - The CJS bundle rewrites `import.meta` to `{}`, so in that format the
+//    expression `createRequire(import.meta.url)` is `createRequire(undefined)`
+//    and throws ERR_INVALID_ARG_VALUE. Prefer the native `require` that CJS
+//    already has; only an ESM context (where `typeof require` is 'undefined')
+//    falls through to createRequire(import.meta.url), which is real there.
+//  - Resolution is lazy (first use, not module scope), so no bundling artifact
+//    of this line can ever crash `require()`/`import()` of an entrypoint again.
+//    tools/smoke-entrypoints.mjs gates that in CI.
+let _require: NodeRequire | undefined
+function getRequire(): NodeRequire {
+  if (_require === undefined) {
+    _require = typeof require === 'function' ? require : createRequire(import.meta.url)
+  }
+  return _require
+}
 
 /**
  * Detect Yarn Berry PnP store paths. PnP resolves to ZIP-internal paths that
@@ -115,7 +131,7 @@ function defaultPackageResolver(
 
   let resolved: string
   try {
-    resolved = _require.resolve(`${identifier}/${file}`, { paths: from })
+    resolved = getRequire().resolve(`${identifier}/${file}`, { paths: from })
   } catch {
     throw new PackageLookupError(
       `include package("${identifier}", "${file}"): module not found (starting from: ${from.join(', ')})`,

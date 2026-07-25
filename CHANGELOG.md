@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — every CJS entrypoint threw at load time
+
+- **`require('@o3co/ts.hocon')` (and all six other subpath exports) crashed
+  with `ERR_INVALID_ARG_VALUE` in 1.10.0.** The include loader evaluated
+  `createRequire(import.meta.url)` at module scope, and the CJS bundle shims
+  `import.meta` to `{}`, so every `require()` of the package executed
+  `createRequire(undefined)` before any user code ran. The require function is
+  now resolved lazily and prefers the native CJS `require` when it exists, so
+  both module formats load. A smoke gate (`pnpm smoke`,
+  `tools/smoke-entrypoints.mjs`) now runs in CI after the build and fails if
+  any export stops loading under `require()` or `import()`.
+
 ## [1.10.0] - 2026-07-25
 
 ### Added — format adapters for config owned by other programs
