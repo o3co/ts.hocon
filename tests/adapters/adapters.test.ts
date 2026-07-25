@@ -84,6 +84,19 @@ describe('env adapter', () => {
     expect(cfg.getString('foo.bar')).toBe('nested')
   })
 
+  // F1.3: ASCII-only case folding. JS's full Unicode lowercasing turns İ
+  // (U+0130) into "i" + U+0307 while Go's simple mapping produces plain "i" —
+  // which decides whether APP_İ collides with APP_I under F1.6. Pinning the
+  // mapping is what keeps the four implementations agreeing.
+  it('lowercases ASCII only, leaving other codepoints alone (F1.3)', () => {
+    expect(loadEnv({ prefix: 'APP_', env: { 'APP_İ': 'x' } }).keys()).toEqual(['İ'])
+    expect(loadEnv({ prefix: 'APP_', env: { APP_MiXeD__KeY: 'x' } }).keys()).toEqual(['mixed'])
+    // …so it does not collide with the ASCII I, which would be nondeterministic.
+    const both = loadEnv({ prefix: 'APP_', env: { 'APP_İ': 'dotted', APP_I: 'ascii' } })
+    expect(both.getString('"İ"')).toBe('dotted')
+    expect(both.getString('i')).toBe('ascii')
+  })
+
   // F2.9: no key denylist — these are ordinary variable names, and dropping
   // them is data loss. Safety comes from how the tree is built. (`__proto__`
   // itself cannot be spelled as an env segment, `__` being the separator; the

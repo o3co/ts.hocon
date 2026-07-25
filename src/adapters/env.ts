@@ -131,13 +131,24 @@ export function parseDotEnv(input: string, opts: EnvOptions = {}): Config {
  * never had: `APP_FOO.BAR` must be the single top-level key `"foo.bar"`,
  * addressable as a quoted path, and must not collide with `APP_FOO__BAR`.
  * go.hocon's env adapter carries `[]string` for the same reason.
+ *
+ * Case folding is ASCII-only (F1.3). JS's `toLowerCase` applies the full
+ * Unicode mapping, so `İ` (U+0130) becomes `i` + U+0307, while Go's simple
+ * mapping yields plain `i` — which decides whether `APP_İ` collides with
+ * `APP_I` under F1.6. Environment variable names are ASCII in practice, so
+ * pinning the mapping costs nothing and keeps the implementations agreeing.
  */
 function toPath(name: string): string[] {
-  const segs = name.split(SEPARATOR).map(s => s.toLowerCase())
+  const segs = name.split(SEPARATOR).map(asciiLower)
   if (segs.some(s => s === '')) {
     throw new ConfigError(`env: "${name}" produces an empty path segment`, name)
   }
   return segs
+}
+
+/** `A`–`Z` → `a`–`z`, every other codepoint untouched (F1.3). */
+function asciiLower(s: string): string {
+  return s.replace(/[A-Z]/g, c => String.fromCharCode(c.charCodeAt(0) + 32))
 }
 
 function dotEnvValue(v: string, origin: string, line: number, name: string): string {
