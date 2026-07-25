@@ -49,15 +49,27 @@ import {
 let _require: NodeRequire | undefined
 function getRequire(): NodeRequire {
   if (_require === undefined) {
-    const candidate: unknown = typeof require === 'function' ? require : undefined
-    if (typeof (candidate as NodeRequire | undefined)?.resolve === 'function') {
-      _require = candidate as NodeRequire
-    } else {
-      const metaUrl = (import.meta as { url?: string }).url
-      _require = createRequire(metaUrl ?? pathToFileURL(nodePath.join(process.cwd(), 'noop.js')))
-    }
+    _require = pickRequire(
+      typeof require === 'function' ? require : undefined,
+      (import.meta as { url?: string }).url,
+    )
   }
   return _require
+}
+
+/**
+ * Choose the require to use, given whatever the bundler left behind.
+ *
+ * @internal Exported for tests only. Both failure modes above live in bundled
+ * artifacts, which vitest never sees, so the *decision* is unit-tested here with
+ * the shapes the bundlers actually produce, and the built artifacts are covered
+ * end-to-end by `tools/smoke-entrypoints.mjs`.
+ */
+export function pickRequire(candidate: unknown, metaUrl: string | undefined): NodeRequire {
+  if (typeof (candidate as NodeRequire | undefined)?.resolve === 'function') {
+    return candidate as NodeRequire
+  }
+  return createRequire(metaUrl ?? pathToFileURL(nodePath.join(process.cwd(), 'noop.js')))
 }
 
 /**

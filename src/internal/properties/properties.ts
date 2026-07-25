@@ -224,15 +224,13 @@ function unescapeProps(s: string, line: number): string {
 function setNested(obj: Record<string, unknown>, segments: string[], value: string): void {
   let current = obj
   for (let i = 0; i < segments.length - 1; i++) {
-    const seg = segments[i]
-    if (seg === undefined) return
+    const seg = segments[i] as string
     if (!(seg in current) || typeof current[seg] !== 'object' || current[seg] === null) {
       current[seg] = Object.create(null)
     }
     current = current[seg] as Record<string, unknown>
   }
-  const last = segments[segments.length - 1]
-  if (last === undefined) return
+  const last = segments[segments.length - 1] as string
   // S23.4 — HOCON.md L1485: object must always win over scalar.
   // If the last segment already holds an object, do not overwrite it with a scalar.
   if (typeof current[last] === 'object' && current[last] !== null) return
