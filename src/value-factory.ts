@@ -22,7 +22,8 @@ import type { HoconValue } from './value.js'
  *   null            → scalar/null
  *   Array<unknown>  → array (elements recursively coerced)
  *   Record<string,unknown> → object (values recursively coerced)
- *   undefined / function / symbol / bigint (> MAX_SAFE_INTEGER) → ConfigError
+ *   bigint          → scalar/number, digits kept verbatim (out of int64 = error)
+ *   undefined / function / symbol → ConfigError
  *
  * originDescription (optional) provides a source name for error messages.
  * E12 decision 13.
@@ -44,6 +45,10 @@ export function empty(originDescription?: string): Config {
 }
 
 // ─── internal coercion helpers ────────────────────────────────────────────────
+
+/** HOCON integers are int64-wide (spec F0.5); past these bounds is an error. */
+const INT64_MAX = 9223372036854775807n
+const INT64_MIN = -9223372036854775808n
 
 function coerceObject(obj: Record<string, unknown>, atPath: string): Map<string, HoconValue> {
   const fields = new Map<string, HoconValue>()
@@ -79,10 +84,15 @@ function coerceValue(v: unknown, atPath: string): HoconValue {
     case 'boolean':
       return { kind: 'scalar', raw: v ? 'true' : 'false', valueType: 'boolean' }
     case 'bigint': {
-      // Allow BigInt within Number.MAX_SAFE_INTEGER range.
-      if (v > BigInt(Number.MAX_SAFE_INTEGER) || v < BigInt(Number.MIN_SAFE_INTEGER)) {
+      // F0.5: integers map to int64, and overflowing it is an error. A bigint
+      // is how a format adapter carries an integer literal that a JS `number`
+      // cannot hold exactly — decoding such a literal into a number and
+      // rounding it is precisely the forbidden case — so its digits go into
+      // the scalar's raw text verbatim. Getters still apply the JS number
+      // model, exactly as they do for the same literal in HOCON source text.
+      if (v > INT64_MAX || v < INT64_MIN) {
         throw new ConfigError(
-          `fromMap: bigint ${v} exceeds Number.MAX_SAFE_INTEGER (not representable as HOCON number) at path "${atPath}"`,
+          `fromMap: integer ${v} is out of int64 range (HOCON integers are int64; spec F0.5) at path "${atPath}"`,
           atPath,
         )
       }

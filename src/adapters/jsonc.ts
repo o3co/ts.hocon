@@ -17,7 +17,7 @@ import { ConfigError } from '../errors.js'
  * See docs/specs/format-ingestion-mapping.md items F3.x in the hocon scope.
  */
 export function parseJsonc(input: string, originDescription?: string): Config {
-  const doc: unknown = JSON.parse(stripTrailingCommas(stripComments(input)))
+  const doc: unknown = JSON.parse(stripTrailingCommas(stripComments(input)), bigIntReviver)
   if (doc === null || typeof doc !== 'object' || Array.isArray(doc)) {
     throw new ConfigError(
       `jsonc: document root is ${Array.isArray(doc) ? 'an array' : typeof doc}, but a config root must be an object (spec F0.3)`,
@@ -25,6 +25,32 @@ export function parseJsonc(input: string, originDescription?: string): Config {
     )
   }
   return fromMap(doc as Record<string, unknown>, originDescription)
+}
+
+/**
+ * The reviver's third argument, standard since ES2025 and present in Node 22
+ * (this package's minimum). `source` is the literal's own source text, which is
+ * the only place an integer past 2^53 still exists intact after decoding.
+ */
+type ParseContext = { source?: string }
+
+/** A JSON number literal is an integer when it has no fraction and no exponent. */
+function isIntegerLiteral(source: string): boolean {
+  return !/[.eE]/.test(source)
+}
+
+/**
+ * Route an integer literal that a JS `number` cannot hold exactly into a
+ * BigInt, so `fromMap` receives its digits rather than a rounded double
+ * (spec F0.5: `Number`-only decoding is exactly the forbidden case). Values
+ * past int64 are refused there, floats and safe integers pass through
+ * untouched.
+ */
+function bigIntReviver(this: unknown, _key: string, value: unknown, context?: ParseContext): unknown {
+  if (typeof value !== 'number' || Number.isSafeInteger(value)) return value
+  const source = context?.source
+  if (source === undefined || !isIntegerLiteral(source)) return value
+  return BigInt(source)
 }
 
 /**

@@ -30,6 +30,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is always `Object.prototype`, and the global `Object.prototype` is never
   touched.
 
+### Fixed — JSONC and YAML silently rounded large integers (F0.5)
+
+- **`9007199254740993` arrived as `9007199254740992`** from both adapters, even
+  through `getString`, while the core parser preserves the literal's own text.
+  Both decoded integers into JS `number`s, which is exactly what spec F0.5
+  forbids. JSONC now reads the literal's source text through the `JSON.parse`
+  reviver (standard since Node 22, this package's minimum) and YAML decodes with
+  `intAsBigInt`, so an integer too wide for a double reaches the value model as
+  a BigInt and keeps its digits. Integers **beyond int64 are now an error**
+  (`9223372036854775808` is refused) rather than silently rounded; floats and
+  safe integers are untouched. Getters still apply the JS number model — the
+  ingest is what had to be lossless, and the core parser rounds the same
+  literal identically.
+- `fromMap` accepts a `bigint` up to the int64 bound accordingly, keeping its
+  digits verbatim in the value's raw text; it previously refused anything past
+  `Number.MAX_SAFE_INTEGER`.
+
 ### Fixed — a JSONC block comment could weld two tokens into one
 
 - **`parseJsonc('{"a":1/*x*/2}')` silently parsed as `{"a":12}`.** The comment

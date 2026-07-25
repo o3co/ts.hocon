@@ -92,6 +92,42 @@ describe('jsonc adapter', () => {
     expect(() => parseJsonc('{"a":tr/*x*/ue}')).toThrow()
   })
 
+  // F0.5: `Number`-only decoding is the forbidden case — an integer literal
+  // past 2^53 must reach the value model through its source text.
+  it('ingests an integer past the safe range losslessly (F0.5)', () => {
+    expect(parseJsonc('{"big": 9007199254740993}').getString('big')).toBe('9007199254740993')
+    expect(parseJsonc('{"big": -9007199254740993}').getString('big')).toBe('-9007199254740993')
+    // getNumber still rounds — the JS number model does, and the core parser
+    // rounds the same literal identically. The ingest is what must be lossless.
+    expect(parseJsonc('{"big": 9007199254740993}').getNumber('big')).toBe(9007199254740992)
+  })
+
+  it('refuses an integer beyond int64 (F0.5 overflow = error)', () => {
+    expect(() => parseJsonc('{"huge": 9223372036854775808}')).toThrow(/int64/)
+  })
+
+  it('leaves floats and safe integers alone', () => {
+    const cfg = parseJsonc('{"f": 1.5, "n": 42, "neg": -7, "exp": 1e3, "big_float": 9007199254740993.5}')
+    expect(cfg.getNumber('f')).toBe(1.5)
+    expect(cfg.getString('f')).toBe('1.5')
+    expect(cfg.getNumber('n')).toBe(42)
+    expect(cfg.getNumber('neg')).toBe(-7)
+    expect(cfg.getNumber('exp')).toBe(1000)
+    expect(cfg.getNumber('big_float')).toBe(9007199254740994)
+  })
+
+  // The lossless path depends on the reviver's third argument, standard since
+  // Node 22 (the package's minimum). Asserted directly so a regression in the
+  // runtime is not mistaken for a bug in the adapter.
+  it('the runtime exposes JSON.parse reviver source text (node >= 22)', () => {
+    let source: unknown
+    JSON.parse('{"a": 9007199254740993}', function (key, value, context?: { source?: string }) {
+      if (key === 'a') source = context?.source
+      return value as unknown
+    } as (this: unknown, key: string, value: unknown) => unknown)
+    expect(source).toBe('9007199254740993')
+  })
+
   it('keeps newlines inside a block comment for line positions (F3.2)', () => {
     // The dangling comma after the removed span is a syntax error whose
     // reported line must still be 3, not collapsed onto line 1.
@@ -176,6 +212,34 @@ describe('yaml adapter', () => {
   it('refuses NaN and a sequence root', () => {
     expect(() => parseYaml('a: .nan')).toThrow()
     expect(() => parseYaml('- 1\n- 2')).toThrow(/F0\.3/)
+  })
+
+  // F0.5, same rule as the JSONC adapter: decoding into a JS number only would
+  // silently round 9007199254740993 down to ...992.
+  it('ingests an integer past the safe range losslessly (F0.5)', () => {
+    expect(parseYaml('big: 9007199254740993').getString('big')).toBe('9007199254740993')
+    expect(parseYaml('big: -9007199254740993').getString('big')).toBe('-9007199254740993')
+  })
+
+  it('refuses an integer beyond int64 (F0.5 overflow = error)', () => {
+    expect(() => parseYaml('huge: 9223372036854775808')).toThrow(/int64/)
+  })
+
+  it('leaves floats and safe integers as plain numbers', () => {
+    const cfg = parseYaml('f: 1.5\nn: 42\nneg: -7\nlist: [1, 2]\n')
+    expect(cfg.getNumber('f')).toBe(1.5)
+    expect(cfg.getString('f')).toBe('1.5')
+    expect(cfg.getNumber('n')).toBe(42)
+    expect(cfg.getNumber('neg')).toBe(-7)
+    expect(cfg.getList('list')).toEqual([1, 2])
+    expect(cfg.toObject()).toEqual({ f: 1.5, n: 42, neg: -7, list: [1, 2] })
+  })
+
+  it('normalizes a bigint in an injected tree too (F0.5)', async () => {
+    const { fromYamlValue } = await import('../../src/adapters/yaml.js')
+    expect(fromYamlValue({ big: 9007199254740993n }).getString('big')).toBe('9007199254740993')
+    expect(fromYamlValue({ n: 42n }).getNumber('n')).toBe(42)
+    expect(() => fromYamlValue({ huge: 9223372036854775808n })).toThrow(/int64/)
   })
 })
 

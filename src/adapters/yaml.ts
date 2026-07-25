@@ -37,7 +37,13 @@ export function parseYaml(input: string, originDescription?: string): Config {
   //
   // merge: true is required alongside it — `<<` is a 1.1 feature, so under 1.2
   // it would otherwise stay a literal key and leak into the config (spec F5.2).
-  const docs = YAML.parseAllDocuments(input, { version: '1.2', merge: true })
+  //
+  // intAsBigInt: true is the F0.5 half of it. The library decodes an integer
+  // into a JS number otherwise, so 9007199254740993 would silently arrive as
+  // ...992 — the precision loss the spec forbids. Every integer therefore
+  // arrives as a bigint and `convert` narrows the ones a number holds exactly
+  // back to number, leaving the rest for the value factory's int64 check.
+  const docs = YAML.parseAllDocuments(input, { version: '1.2', merge: true, intAsBigInt: true })
   if (docs.length > 1) {
     throw new ConfigError(
       'yaml: multi-document streams are not supported (spec F5.7); a config is one document',
@@ -118,5 +124,16 @@ function convert(v: unknown, atPath: string): unknown {
       atPath,
     )
   }
+  if (typeof v === 'bigint') {
+    // An integer a JS number holds exactly is a number here; a wider one stays
+    // a bigint so its digits reach the value model intact (F0.5), where the
+    // int64 bound is enforced. Injected trees get the same treatment — another
+    // library configured for big integers produces the same shape.
+    return isSafeIntegerBigInt(v) ? Number(v) : v
+  }
   return v
+}
+
+function isSafeIntegerBigInt(v: bigint): boolean {
+  return v <= BigInt(Number.MAX_SAFE_INTEGER) && v >= BigInt(Number.MIN_SAFE_INTEGER)
 }
