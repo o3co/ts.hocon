@@ -41,6 +41,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   joins on `.` and re-splits along the way; `parseDotEnv` gets the same
   treatment, and `.properties` keys still split on `.` per F2.1.
 
+### Fixed — properties/env silently dropped `__proto__`, `constructor` and `prototype` keys (F2.9)
+
+- **A `.properties` file or environment variable whose key was one of those
+  three lost that key entirely**, and the nesting step left the parent it had
+  already created behind as an empty object. They are ordinary keys in a file
+  another program owns, so dropping them is data loss. They are now preserved,
+  and prototype-pollution safety comes from construction instead of a denylist:
+  the nesting carrier is a null-prototype object, so these names define plain
+  own properties, and `toObject()` emits them as own properties too. Nothing
+  reaches `Object.prototype`.
+
 ### Fixed — JSONC and YAML silently rounded large integers (F0.5)
 
 - **`9007199254740993` arrived as `9007199254740992`** from both adapters, even

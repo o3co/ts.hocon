@@ -195,20 +195,29 @@ function unescapeProps(s: string, line: number): string {
   return out
 }
 
-const DANGEROUS_KEYS = new Set(['__proto__', 'constructor', 'prototype'])
-
+/**
+ * Insert one path into the tree.
+ *
+ * F2.9: there is no key denylist. `__proto__`, `constructor` and `prototype`
+ * are ordinary keys in a file another program owns, and dropping them is silent
+ * data loss (the old denylist also left the parent it had already created
+ * behind as a phantom empty object). Prototype-pollution safety comes from the
+ * carrier instead: every level is an `Object.create(null)` object, which
+ * inherits no `__proto__` setter and no `constructor`, so assigning any of
+ * these names defines a plain own property and reaches nothing global.
+ */
 function setNested(obj: Record<string, unknown>, segments: string[], value: string): void {
   let current = obj
   for (let i = 0; i < segments.length - 1; i++) {
     const seg = segments[i]
-    if (seg === undefined || DANGEROUS_KEYS.has(seg)) return
+    if (seg === undefined) return
     if (!(seg in current) || typeof current[seg] !== 'object' || current[seg] === null) {
       current[seg] = Object.create(null)
     }
     current = current[seg] as Record<string, unknown>
   }
   const last = segments[segments.length - 1]
-  if (last === undefined || DANGEROUS_KEYS.has(last)) return
+  if (last === undefined) return
   // S23.4 — HOCON.md L1485: object must always win over scalar.
   // If the last segment already holds an object, do not overwrite it with a scalar.
   if (typeof current[last] === 'object' && current[last] !== null) return

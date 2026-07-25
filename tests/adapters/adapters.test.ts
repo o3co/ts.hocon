@@ -84,6 +84,18 @@ describe('env adapter', () => {
     expect(cfg.getString('foo.bar')).toBe('nested')
   })
 
+  // F2.9: no key denylist — these are ordinary variable names, and dropping
+  // them is data loss. Safety comes from how the tree is built. (`__proto__`
+  // itself cannot be spelled as an env segment, `__` being the separator; the
+  // properties adapter covers that one.)
+  it('preserves constructor / prototype names (F2.9)', () => {
+    const cfg = loadEnv({
+      prefix: 'APP_',
+      env: { APP_CONSTRUCTOR__Y: 'b', APP_PROTOTYPE: 'c' },
+    })
+    expect(cfg.getString('constructor.y')).toBe('b')
+    expect(cfg.getString('prototype')).toBe('c')
+  })
 })
 
 describe('jsonc adapter', () => {
