@@ -98,6 +98,41 @@ function isLineTerminator(c: string | undefined): boolean {
 }
 
 /**
+ * The line breaks contained in `span`, in order, spelled the way JSON accepts
+ * them \u2014 the replacement text for a removed comment.
+ *
+ * The invariant being kept is that the stripped document has the *same line
+ * structure as the source*, so a position `JSON.parse` reports still points at
+ * the line the author wrote. That means: CR counts (V8 treats a lone CR as a
+ * break), CRLF is emitted as the pair so it stays **one** break rather than two,
+ * and U+2028/U+2029 become `\n` \u2014 they are line breaks to an editor, but not
+ * JSON whitespace, so emitting one verbatim would turn a comment into a syntax
+ * error.
+ *
+ * The one case this cannot reach is a U+2028 inside a *string literal*: it is
+ * data, preserved verbatim, and `JSON.parse` does not count it as a break. Line
+ * numbers can therefore trail an editor's for such a document \u2014 a property of
+ * JSON itself, not of comment stripping.
+ */
+function lineBreaksOf(span: string): string {
+  let out = ''
+  for (let i = 0; i < span.length; i++) {
+    const c = span[i]
+    if (c === '\r') {
+      if (span[i + 1] === '\n') {
+        out += '\r\n'
+        i++
+      } else {
+        out += '\r'
+      }
+    } else if (c === '\n' || c === '\u2028' || c === '\u2029') {
+      out += '\n'
+    }
+  }
+  return out
+}
+
+/**
  * Remove `//` line comments and block comments, leaving string literals alone.
  *
  * F3.2: a comment is replaced by *whitespace*, never the empty string — it must
@@ -124,12 +159,13 @@ export function stripComments(src: string): string {
     }
     if (c === '/' && src[i + 1] === '/') {
       while (i < src.length && !isLineTerminator(src[i])) i++
-      // LF and CR are JSON whitespace, so leaving the terminator in the stream
-      // both separates the tokens and keeps line numbers honest. U+2028/U+2029
-      // are *not* JSON whitespace — emitting one would be a syntax error — so
-      // they are consumed and replaced by a space.
+      // LF and CR are JSON whitespace, so the terminator is left in the stream:
+      // it separates the tokens and keeps the line count right, CRLF included
+      // (the loop copies both halves, and V8 counts the pair as one break).
+      // U+2028/U+2029 are not JSON whitespace, so they are consumed and replaced
+      // by a newline — the stand-in that preserves the break.
       if (i < src.length && !(src[i] === '\n' || src[i] === '\r')) {
-        out += ' '
+        out += '\n'
         i++
       }
       continue
@@ -137,9 +173,9 @@ export function stripComments(src: string): string {
     if (c === '/' && src[i + 1] === '*') {
       const end = src.indexOf('*/', i + 2)
       if (end === -1) throw new ConfigError('jsonc: unterminated block comment', '')
-      let newlines = ''
-      for (const ch of src.slice(i, end + 2)) if (ch === '\n') newlines += '\n'
-      out += newlines === '' ? ' ' : newlines
+      // Give back exactly the line breaks the span contained, or a space when it
+      // contained none (a comment must still separate the tokens around it).
+      out += lineBreaksOf(src.slice(i, end + 2)) || ' '
       i = end + 2
       continue
     }

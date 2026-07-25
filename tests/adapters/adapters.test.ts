@@ -223,14 +223,34 @@ describe('jsonc adapter', () => {
   it('keeps newlines inside a block comment for line positions (F3.2)', () => {
     // The dangling comma after the removed span is a syntax error whose
     // reported line must still be 3, not collapsed onto line 1.
-    let err: unknown
-    try {
-      parseJsonc('{"a": 1, /* spans\ntwo lines */\n,}')
-    } catch (e) {
-      err = e
-    }
-    expect(err).toBeDefined()
-    expect(String((err as Error).message)).toMatch(/line 3/)
+    expect(() => parseJsonc('{"a": 1, /* spans\ntwo lines */\n,}')).toThrow(/line 3/)
+  })
+
+  // The invariant is that the stripped text keeps the source's line structure,
+  // as JSON.parse counts it: LF, CR and CRLF (one break, not two) are all line
+  // breaks to V8, so a removed span must give each of them back. U+2028/U+2029
+  // are line breaks to an editor but are not JSON whitespace at all — V8 refuses
+  // them between tokens — so the only faithful stand-in is a newline.
+  //
+  // The trailing `,}` is the error: V8 reports a line number for that form, and
+  // it sits on the source's line 4 in each case below.
+  it('reports the source line after a comment delimited by CR, CRLF or U+2028 (F3.2)', () => {
+    expect(() => parseJsonc('{"a": 1,\r/* c\rc2 */\r,}')).toThrow(/line 4/)
+    expect(() => parseJsonc('{"a": 1,\r\n/* c\r\nc2 */\r\n,}')).toThrow(/line 4/)
+    expect(() => parseJsonc('{"a": 1,\n/* c\u2028c2 */\n,}')).toThrow(/line 4/)
+    // A line comment's own terminator counts the same way.
+    expect(() => parseJsonc('{"a": 1,//c\u2028,}')).toThrow(/line 2/)
+    expect(() => parseJsonc('{"a": 1,//c\r,}')).toThrow(/line 2/)
+  })
+
+  it('does not turn a CRLF inside a comment into two lines', () => {
+    // Copying both characters of each break separately would report line 5.
+    expect(() => parseJsonc('{"a": 1,/* x\r\ny\r\nz */,}')).toThrow(/line 3/)
+  })
+
+  it('still separates tokens when a comment has no line break at all', () => {
+    expect(parseJsonc('{"a": 1/* c */, "b": 2}').getNumber('b')).toBe(2)
+    expect(() => parseJsonc('{"a":1/* c */2}')).toThrow()
   })
 })
 
