@@ -270,6 +270,26 @@ describe('yaml adapter', () => {
     expect(cfg.toObject()).toEqual({ f: 1.5, n: 42, neg: -7, list: [1, 2] })
   })
 
+  // F5.5 — !!binary keeps its base64 text. The conversion used to spread the
+  // bytes into String.fromCharCode, which blows the argument limit somewhere
+  // around a megabyte: a config with an embedded certificate or image threw
+  // RangeError instead of parsing. The fixture is generated here rather than
+  // committed, a 1 MiB blob having no business in the repo.
+  it('converts a 1 MiB !!binary scalar without a RangeError (F5.5)', () => {
+    const bytes = new Uint8Array(1024 * 1024)
+    for (let i = 0; i < bytes.length; i++) bytes[i] = i % 256
+    const base64 = Buffer.from(bytes).toString('base64')
+    // yaml wraps long !!binary scalars; a folded block scalar is how the
+    // library itself emits them.
+    const wrapped = (base64.match(/.{1,76}/g) ?? []).join('\n  ')
+    const cfg = parseYaml(`blob: !!binary |\n  ${wrapped}\n`)
+    expect(cfg.getString('blob')).toBe(base64)
+  })
+
+  it('converts a small !!binary scalar to its base64 text (F5.5)', () => {
+    expect(parseYaml('blob: !!binary aGk=').getString('blob')).toBe('aGk=')
+  })
+
   it('normalizes a bigint in an injected tree too (F0.5)', async () => {
     const { fromYamlValue } = await import('../../src/adapters/yaml.js')
     expect(fromYamlValue({ big: 9007199254740993n }).getString('big')).toBe('9007199254740993')

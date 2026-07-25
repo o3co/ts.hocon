@@ -30,6 +30,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is always `Object.prototype`, and the global `Object.prototype` is never
   touched.
 
+### Fixed — a large YAML `!!binary` scalar threw `RangeError`
+
+- **A `!!binary` value around a megabyte or larger — an embedded certificate,
+  key or image — crashed `parseYaml` with `RangeError: Maximum call stack size
+  exceeded`** instead of parsing. The base64 conversion spread every byte into
+  `String.fromCharCode` as its own argument; it now converts in chunks, with no
+  size limit and no Node-only API.
+
 ### Fixed — env: a literal `.` in a variable name became a path boundary (F1.2)
 
 - **`APP_FOO.BAR=v` nested as `foo` → `bar`, and collided with

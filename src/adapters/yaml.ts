@@ -109,7 +109,7 @@ function convert(v: unknown, atPath: string): unknown {
   if (v instanceof Uint8Array) {
     // !!binary — HOCON has no binary type, so keep the base64 text the source
     // itself carried (spec F5.5).
-    return btoa(String.fromCharCode(...v))
+    return bytesToBase64(v)
   }
   if (v !== null && typeof v === 'object') {
     const out: Record<string, unknown> = {}
@@ -132,6 +132,24 @@ function convert(v: unknown, atPath: string): unknown {
     return isSafeIntegerBigInt(v) ? Number(v) : v
   }
   return v
+}
+
+/**
+ * Base64 of a byte array, in chunks.
+ *
+ * `String.fromCharCode(...bytes)` passes every byte as its own argument, which
+ * exhausts the call stack somewhere around a megabyte — an embedded
+ * certificate or image threw `RangeError` instead of parsing. A chunked loop
+ * has no such limit and needs no Node-only API, `parse` being documented as
+ * usable in browsers.
+ */
+function bytesToBase64(bytes: Uint8Array): string {
+  const CHUNK = 0x8000
+  let binary = ''
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK))
+  }
+  return btoa(binary)
 }
 
 function isSafeIntegerBigInt(v: bigint): boolean {
