@@ -92,27 +92,41 @@ function bigIntReviver(this: unknown, key: string, value: unknown, context?: Par
   return BigInt(source)
 }
 
-/** Every character that ends a line: LF, CR, and the Unicode separators. */
-function isLineTerminator(c: string | undefined): boolean {
-  return c === '\n' || c === '\r' || c === '\u2028' || c === '\u2029'
+/**
+ * A line break in the JSONC dialect: **LF or CR only**.
+ *
+ * U+2028/U+2029 deliberately do not end a comment (F3.2). They are line breaks
+ * to ECMAScript and to most editors, but `node-jsonc-parser` \u2014 the
+ * implementation that defines this dialect, and what VS Code reads its own
+ * config with \u2014 recognizes only LF and CR, so a `//` comment there runs *through*
+ * a U+2028 to the next real break. Ending early here would make
+ * `{"a":1, // note\u2028"b":2,\n "c":3}` mean one thing in the editor that owns
+ * the format and another in this library: same document, different data.
+ * go.hocon, py.hocon and rs.hocon all scan for LF/CR alone.
+ */
+function isLineBreak(c: string | undefined): boolean {
+  return c === '\n' || c === '\r'
 }
 
 /**
- * The line breaks contained in `span`, in order, spelled the way JSON accepts
- * them \u2014 the replacement text for a removed comment.
+ * The line breaks contained in `span`, in order \u2014 the replacement text for a
+ * removed comment.
  *
- * The invariant being kept is that the stripped document has the *same line
- * structure as the source*, so a position `JSON.parse` reports still points at
- * the line the author wrote. That means: CR counts (V8 treats a lone CR as a
- * break), CRLF is emitted as the pair so it stays **one** break rather than two,
- * and U+2028/U+2029 become `\n` \u2014 they are line breaks to an editor, but not
- * JSON whitespace, so emitting one verbatim would turn a comment into a syntax
- * error.
+ * The invariant is that the stripped document has the *same line structure as
+ * the source*, so a position `JSON.parse` reports still points at the line the
+ * author wrote. Measured against V8: LF, CR and CRLF are all line breaks for its
+ * reporting, and CRLF counts as **one**. So a CR is given back as a CR, and a
+ * CRLF is emitted as the pair rather than as two breaks.
  *
- * The one case this cannot reach is a U+2028 inside a *string literal*: it is
- * data, preserved verbatim, and `JSON.parse` does not count it as a break. Line
- * numbers can therefore trail an editor's for such a document \u2014 a property of
- * JSON itself, not of comment stripping.
+ * U+2028/U+2029 are not line breaks in this dialect (see {@link isLineBreak}),
+ * so inside a comment they are ordinary body text and contribute nothing here.
+ * They could not be emitted anyway: V8 refuses them between tokens \u2014 they are
+ * not JSON whitespace \u2014 so stripped output must never contain one.
+ *
+ * A U+2028 inside a *string literal* is data, preserved verbatim, and
+ * `JSON.parse` does not count it as a break, so line numbers can trail an
+ * editor's for such a document. That is a property of JSON itself, not of
+ * comment stripping.
  */
 function lineBreaksOf(span: string): string {
   let out = ''
@@ -125,7 +139,7 @@ function lineBreaksOf(span: string): string {
       } else {
         out += '\r'
       }
-    } else if (c === '\n' || c === '\u2028' || c === '\u2029') {
+    } else if (c === '\n') {
       out += '\n'
     }
   }
@@ -141,11 +155,13 @@ function lineBreaksOf(span: string): string {
  * Newlines inside a removed span are kept so JSON.parse still reports useful
  * positions; a span with no newline becomes a single space.
  *
- * A `//` comment ends at **any** line terminator, not just LF. Stopping only at
- * LF lets a CR-terminated comment eat the rest of the line, and the
- * trailing-comma pass then tidies the remains into valid JSON — so
+ * A `//` comment ends at **LF or CR** (F3.2), and at nothing else. Stopping only
+ * at LF let a CR-terminated comment eat the rest of the line, and the
+ * trailing-comma pass then tidied the remains into valid JSON — so
  * `{"a":1,//c\r"b":2,\n"c":3}` decoded as `{"a":1,"c":3}`, losing a key with no
- * error at all. That is the failure mode this project exists to avoid.
+ * error at all. Stopping at U+2028/U+2029 would be the mirror-image mistake:
+ * ending a comment the dialect's own parser is still inside, so the document
+ * would mean something different here than in VS Code. See {@link isLineBreak}.
  */
 export function stripComments(src: string): string {
   let out = ''
@@ -158,16 +174,11 @@ export function stripComments(src: string): string {
       continue
     }
     if (c === '/' && src[i + 1] === '/') {
-      while (i < src.length && !isLineTerminator(src[i])) i++
-      // LF and CR are JSON whitespace, so the terminator is left in the stream:
-      // it separates the tokens and keeps the line count right, CRLF included
-      // (the loop copies both halves, and V8 counts the pair as one break).
-      // U+2028/U+2029 are not JSON whitespace, so they are consumed and replaced
-      // by a newline — the stand-in that preserves the break.
-      if (i < src.length && !(src[i] === '\n' || src[i] === '\r')) {
-        out += '\n'
-        i++
-      }
+      while (i < src.length && !isLineBreak(src[i])) i++
+      // The terminator itself is left in the stream: LF and CR are JSON
+      // whitespace, so it both separates the tokens and keeps the line count
+      // right — CRLF included, since the loop copies both halves and V8 counts
+      // the pair as one break. At EOF there is nothing left to separate.
       continue
     }
     if (c === '/' && src[i + 1] === '*') {

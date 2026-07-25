@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { parseStringWithOptions } from '../../src/index.js'
 import { parsePropertiesConfig } from '../../src/adapters/properties.js'
 import { loadEnv, parseDotEnv } from '../../src/adapters/env.js'
-import { parseJsonc } from '../../src/adapters/jsonc.js'
+import { parseJsonc, stripComments } from '../../src/adapters/jsonc.js'
 import { parseTomlConfig } from '../../src/adapters/toml.js'
 import { parseYaml } from '../../src/adapters/yaml.js'
 
@@ -146,13 +146,27 @@ describe('jsonc adapter', () => {
   // disappear with no error at all. This is the same shape as the
   // gurkankaymak/hocon bug that motivated this project's library-preference
   // rule, and py.hocon was found with it too.
-  it('a // comment ends at CR, CRLF and U+2028/9, not only LF (F3.2)', () => {
+  it('a // comment ends at CR and CRLF, not only LF (F3.2)', () => {
     expect(parseJsonc('{"a":1,//c\r"b":2,\n"c":3}').toObject()).toEqual({ a: 1, b: 2, c: 3 })
     expect(parseJsonc('{"a":1,//c\r\n"b":2}').toObject()).toEqual({ a: 1, b: 2 })
-    expect(parseJsonc('{"a":1,//c\u2028"b":2}').toObject()).toEqual({ a: 1, b: 2 })
-    expect(parseJsonc('{"a":1,//c\u2029"b":2}').toObject()).toEqual({ a: 1, b: 2 })
     // A CR-only document whose comment runs to EOF is still just a comment.
     expect(parseJsonc('{"a":1}//trailing\r').toObject()).toEqual({ a: 1 })
+  })
+
+  // …and at nothing else. U+2028/U+2029 are line breaks to ECMAScript and to
+  // most editors, but not to node-jsonc-parser, which defines this dialect and
+  // is what VS Code reads its own config with: a `//` comment there runs THROUGH
+  // a U+2028 to the next real break. Ending early would make the same file mean
+  // different things in the editor that owns the format and in this library —
+  // a cross-implementation divergence in data, not diagnostics. go.hocon,
+  // py.hocon and rs.hocon all scan for LF/CR alone (F3.2).
+  it('a // comment runs through U+2028/U+2029 to the next real break (F3.2)', () => {
+    // "b":2 is comment body here, exactly as VS Code reads it.
+    expect(parseJsonc('{"a":1, // note\u2028"b":2,\n "c":3}').toObject()).toEqual({ a: 1, c: 3 })
+    expect(parseJsonc('{"a":1, // note\u2029"b":2,\n "c":3}').toObject()).toEqual({ a: 1, c: 3 })
+    // With no later break the comment reaches EOF, so the document is truncated
+    // and rejected — not silently reinterpreted.
+    expect(() => parseJsonc('{"a":1,//c\u2028"b":2}')).toThrow()
   })
 
   it('keeps a // marker inside a string with a CR nearby', () => {
@@ -228,19 +242,24 @@ describe('jsonc adapter', () => {
 
   // The invariant is that the stripped text keeps the source's line structure,
   // as JSON.parse counts it: LF, CR and CRLF (one break, not two) are all line
-  // breaks to V8, so a removed span must give each of them back. U+2028/U+2029
-  // are line breaks to an editor but are not JSON whitespace at all — V8 refuses
-  // them between tokens — so the only faithful stand-in is a newline.
+  // breaks to V8, so a removed span must give each of them back in its own
+  // spelling.
   //
   // The trailing `,}` is the error: V8 reports a line number for that form, and
-  // it sits on the source's line 4 in each case below.
-  it('reports the source line after a comment delimited by CR, CRLF or U+2028 (F3.2)', () => {
+  // it sits on the source's line 4 in the first two cases below.
+  it('reports the source line after a CR- or CRLF-delimited comment (F3.2)', () => {
     expect(() => parseJsonc('{"a": 1,\r/* c\rc2 */\r,}')).toThrow(/line 4/)
     expect(() => parseJsonc('{"a": 1,\r\n/* c\r\nc2 */\r\n,}')).toThrow(/line 4/)
-    expect(() => parseJsonc('{"a": 1,\n/* c\u2028c2 */\n,}')).toThrow(/line 4/)
     // A line comment's own terminator counts the same way.
-    expect(() => parseJsonc('{"a": 1,//c\u2028,}')).toThrow(/line 2/)
     expect(() => parseJsonc('{"a": 1,//c\r,}')).toThrow(/line 2/)
+  })
+
+  // A U+2028 inside a comment is body text, not a break, so it adds no line —
+  // and it must never be emitted into the stripped output either, V8 refusing it
+  // between tokens as a non-whitespace character.
+  it('counts no line for a U+2028 inside a block comment (F3.2)', () => {
+    expect(() => parseJsonc('{"a": 1,\n/* c\u2028c2 */\n,}')).toThrow(/line 3/)
+    expect(stripComments('{"a": 1,/* c\u2028c2 */}')).not.toContain('\u2028')
   })
 
   it('does not turn a CRLF inside a comment into two lines', () => {

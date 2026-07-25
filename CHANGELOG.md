@@ -128,10 +128,17 @@ output). Use spread or `structuredClone`, or the new
 - **`{"a":1,//c\r"b":2,\n"c":3}` parsed as `{"a":1,"c":3}`.** The line-comment
   scanner stopped only at LF, so a CR-terminated comment swallowed the rest of
   the line and the trailing-comma pass then tidied the remains into valid JSON —
-  a key vanished and nothing complained. A `//` comment now ends at any line
-  terminator (LF, CR, U+2028, U+2029). Same shape as the bug in another HOCON
-  library that motivated this project's implementation-preference rule, and
-  py.hocon was found with it too.
+  a key vanished and nothing complained. A `//` comment now ends at **LF or CR**
+  (F3.2). Same shape as the bug in another HOCON library that motivated this
+  project's implementation-preference rule, and py.hocon was found with it too.
+- **U+2028/U+2029 deliberately do not end a comment.** They are line breaks to
+  ECMAScript and to most editors, but `node-jsonc-parser` — which defines this
+  dialect, and is what VS Code reads its own config with — recognizes only LF and
+  CR, so a `//` comment runs through one to the next real break. Ending early
+  would make the same file mean different things in the editor that owns the
+  format and here. Line positions in `JSON.parse` errors also survive comment
+  removal now: a removed span gives back the line breaks it contained, with CRLF
+  emitted as the pair so it stays one break rather than two.
 
 ### Fixed — YAML and TOML dropped `__proto__` keys (F2.9's principle)
 
