@@ -13,39 +13,74 @@
   "type": "module",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "require": "./dist/index.cjs"
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
     },
     "./zod": {
-      "types": "./dist/zod.d.ts",
-      "import": "./dist/zod.js",
-      "require": "./dist/zod.cjs"
+      "import": {
+        "types": "./dist/zod.d.ts",
+        "default": "./dist/zod.js"
+      },
+      "require": {
+        "types": "./dist/zod.d.cts",
+        "default": "./dist/zod.cjs"
+      }
     },
     "./adapters/properties": {
-      "types": "./dist/adapters/properties.d.ts",
-      "import": "./dist/adapters/properties.js",
-      "require": "./dist/adapters/properties.cjs"
+      "import": {
+        "types": "./dist/adapters/properties.d.ts",
+        "default": "./dist/adapters/properties.js"
+      },
+      "require": {
+        "types": "./dist/adapters/properties.d.cts",
+        "default": "./dist/adapters/properties.cjs"
+      }
     },
     "./adapters/env": {
-      "types": "./dist/adapters/env.d.ts",
-      "import": "./dist/adapters/env.js",
-      "require": "./dist/adapters/env.cjs"
+      "import": {
+        "types": "./dist/adapters/env.d.ts",
+        "default": "./dist/adapters/env.js"
+      },
+      "require": {
+        "types": "./dist/adapters/env.d.cts",
+        "default": "./dist/adapters/env.cjs"
+      }
     },
     "./adapters/jsonc": {
-      "types": "./dist/adapters/jsonc.d.ts",
-      "import": "./dist/adapters/jsonc.js",
-      "require": "./dist/adapters/jsonc.cjs"
+      "import": {
+        "types": "./dist/adapters/jsonc.d.ts",
+        "default": "./dist/adapters/jsonc.js"
+      },
+      "require": {
+        "types": "./dist/adapters/jsonc.d.cts",
+        "default": "./dist/adapters/jsonc.cjs"
+      }
     },
     "./adapters/toml": {
-      "types": "./dist/adapters/toml.d.ts",
-      "import": "./dist/adapters/toml.js",
-      "require": "./dist/adapters/toml.cjs"
+      "import": {
+        "types": "./dist/adapters/toml.d.ts",
+        "default": "./dist/adapters/toml.js"
+      },
+      "require": {
+        "types": "./dist/adapters/toml.d.cts",
+        "default": "./dist/adapters/toml.cjs"
+      }
     },
     "./adapters/yaml": {
-      "types": "./dist/adapters/yaml.d.ts",
-      "import": "./dist/adapters/yaml.js",
-      "require": "./dist/adapters/yaml.cjs"
+      "import": {
+        "types": "./dist/adapters/yaml.d.ts",
+        "default": "./dist/adapters/yaml.js"
+      },
+      "require": {
+        "types": "./dist/adapters/yaml.d.cts",
+        "default": "./dist/adapters/yaml.cjs"
+      }
     }
   },
   "main": "./dist/index.cjs",
