@@ -203,10 +203,10 @@ export class Config {
     // Empty objects and objects with no eligible integer keys return null → fall through to error.
     if (v.kind === 'object') {
       const converted = numericObjectToArray(v)
-      if (converted !== null) return converted.map(hoconToJs)
+      if (converted !== null) return converted.map(item => hoconToJs(item))
     }
     if (v.kind !== 'array') throw new ConfigError(`expected array at ${path}`, path)
-    return v.items.map(hoconToJs)
+    return v.items.map(item => hoconToJs(item))
   }
 
   has(path: string): boolean {
@@ -371,16 +371,45 @@ export class Config {
    * Keys are reproduced exactly as the config carries them, `__proto__`,
    * `constructor` and `prototype` included: each is defined as an **own data
    * property**, so the returned object's prototype is always
-   * `Object.prototype` and nothing is written to the global one. Iterate the
-   * result with `Object.entries()` / `Object.keys()` rather than assuming
-   * those names cannot appear.
+   * `Object.prototype`, and this call writes nothing to the global one.
+   *
+   * ### Passing the result to other code
+   *
+   * A config file — especially a `.properties` file or an env namespace you
+   * merged in — can therefore hand you an own `__proto__` key, and what happens
+   * next depends entirely on how the consumer copies it:
+   *
+   * ```ts
+   * const data = cfg.toObject()
+   * { ...data }                  // safe — own properties are copied as data
+   * structuredClone(data)        // safe
+   * Object.assign({}, data)      // NOT safe — [[Set]] on the {} target hits
+   *                              // Object.prototype's __proto__ setter: the key
+   *                              // vanishes and config data becomes the result's
+   *                              // prototype
+   * deepMerge({}, data)          // NOT safe — a naive recursive merge reads
+   *                              // target['__proto__'], gets Object.prototype,
+   *                              // and writes to it: global pollution
+   * for (const k in data) …      // prefer Object.entries / Object.keys
+   * ```
+   *
+   * Those two hazards come from the **destination** object's prototype, so no
+   * option here can disarm them — copy with spread or `structuredClone` instead.
+   *
+   * What `{ nullPrototype: true }` does give you is a result that inherits
+   * nothing: every object comes back with a `null` prototype, so reading
+   * `x.__proto__`, `x.constructor` or `x.toString` yields config data or
+   * `undefined` rather than something from `Object.prototype`, and code that
+   * merges *into* this object cannot climb out of it. Keys are all still
+   * present. The trade-off is the usual one for prototype-less objects: not
+   * `instanceof Object`, and no `hasOwnProperty` of their own.
    *
    * Numbers follow the JS number model, so an integer wider than 2^53 rounds
    * here even when the config holds it exactly — read those with
    * {@link Config.getString} instead.
    */
-  toObject(): unknown {
-    return hoconToJs(this.root)
+  toObject(opts?: { nullPrototype?: boolean }): unknown {
+    return hoconToJs(this.root, opts?.nullPrototype === true)
   }
 
   /**
@@ -501,10 +530,10 @@ function scalarToJs(raw: string, valueType: ScalarValueType): unknown {
   }
 }
 
-function hoconToJs(v: HoconValue): unknown {
+function hoconToJs(v: HoconValue, nullPrototype = false): unknown {
   switch (v.kind) {
     case 'scalar': return scalarToJs(v.raw, v.valueType)
-    case 'array': return v.items.map(hoconToJs)
+    case 'array': return v.items.map(item => hoconToJs(item, nullPrototype))
     case 'object': {
       // Copy with CreateDataProperty semantics (Object.fromEntries), never
       // [[Set]]: Object.assign / plain assignment on a {} target would route a
@@ -512,9 +541,19 @@ function hoconToJs(v: HoconValue): unknown {
       // setter — the key would vanish from the result and config data would
       // choose the result's prototype. fromEntries defines every key as an own
       // data property on a normal Object.prototype-backed object.
-      return Object.fromEntries(
-        Array.from(v.fields, ([k, val]) => [k, hoconToJs(val)] as const),
-      )
+      const entries = Array.from(v.fields, ([k, val]) => [k, hoconToJs(val, nullPrototype)] as const)
+      if (nullPrototype) {
+        // Opt-in hardening for handing the result to code that might copy it
+        // with Object.assign or a naive deep merge: with no prototype there is
+        // no __proto__ setter for those to trigger, so an own __proto__ key
+        // stays inert data.
+        const obj = Object.create(null) as Record<string, unknown>
+        for (const [k, val] of entries) Object.defineProperty(obj, k, {
+          value: val, writable: true, enumerable: true, configurable: true,
+        })
+        return obj
+      }
+      return Object.fromEntries(entries)
     }
   }
 }

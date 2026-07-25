@@ -497,14 +497,31 @@ When parsing untrusted HOCON input, be aware of:
 - **Prototype pollution:** keys named `__proto__`, `constructor` or `prototype`
   are **kept as ordinary keys** — a `.properties` file or environment variable
   may legitimately use them, and dropping them would be silent data loss.
-  Safety is structural rather than a denylist: the nesting step builds
-  null-prototype objects, which inherit no `__proto__` setter, and `toObject()`
-  defines every key as an own data property. So `__proto__` from config data
-  lands as a plain key, the returned object's prototype is always
-  `Object.prototype`, and nothing reaches the global `Object.prototype`. Note
-  that the key does exist on the result, so code that iterates config objects
-  should use `Object.entries()` / `Object.keys()` rather than assuming those
-  names are absent.
+  Safety inside this library is structural rather than a denylist: the nesting
+  step builds null-prototype objects, which inherit no `__proto__` setter, every
+  adapter materializes objects by defining own data properties, and `toObject()`
+  does the same. Parsing pollutes nothing, and the returned object's prototype is
+  always `Object.prototype`.
+
+  **What you do with the result matters**, because config data can now hand you
+  an own `__proto__` key:
+
+  ```ts
+  const data = cfg.toObject()
+  { ...data }             // safe
+  structuredClone(data)   // safe
+  Object.assign({}, data) // NOT safe — the key vanishes and config data becomes
+                          //            the copy's prototype
+  deepMerge({}, data)     // NOT safe — a naive recursive merge can write onto
+                          //            the global Object.prototype
+  ```
+
+  Both hazards come from the *destination* object's prototype, so they are the
+  consumer's to avoid: copy with spread or `structuredClone`, iterate with
+  `Object.entries()` / `Object.keys()`, and treat `__proto__` as an ordinary
+  key name. `cfg.toObject({ nullPrototype: true })` returns a tree that inherits
+  nothing — useful when the data is going somewhere you do not control, though it
+  cannot fix a consumer that copies into a plain `{}`.
 
 ## License
 

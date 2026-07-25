@@ -188,6 +188,36 @@ describe('Config', () => {
     expect(({} as { polluted?: unknown }).polluted).toBeUndefined()
   })
 
+  // The documented escape hatch for handing config data to code you do not
+  // control: no prototype means no __proto__ setter for Object.assign or a
+  // naive deep merge to trigger, while every key is still present.
+  it('toObject({ nullPrototype: true }) returns prototype-less objects, keys intact', () => {
+    const cfg = parse('{"__proto__": {"isAdmin": true}, "safe": 1, "list": [{"__proto__": 2}]}')
+    const obj = cfg.toObject({ nullPrototype: true }) as Record<string, unknown>
+
+    expect(Object.getPrototypeOf(obj)).toBe(null)
+    expect(Object.getOwnPropertyDescriptor(obj, '__proto__')?.value).toEqual({ isAdmin: true })
+    expect(obj['safe']).toBe(1)
+    expect(Object.getPrototypeOf((obj['list'] as unknown[])[0] as object)).toBe(null)
+
+    // Nothing is inherited: a consumer reading these names gets config data or
+    // undefined, never something off Object.prototype.
+    expect((obj as { constructor?: unknown }).constructor).toBeUndefined()
+    expect('hasOwnProperty' in obj).toBe(false)
+
+    // A merge that walks INTO this object cannot climb out of it: the direction
+    // the flag actually helps with.
+    const walkTarget = obj['__proto__'] as Record<string, unknown>
+    expect(walkTarget).toEqual({ isAdmin: true })
+    expect(walkTarget).not.toBe(Object.prototype)
+    // …whereas the same read on a plain {} yields the global prototype, which is
+    // how a naive deep merge pollutes. That hazard belongs to the destination
+    // object, so this option cannot disarm it — documented, not claimed fixed.
+    expect(({} as Record<string, unknown>)['__proto__']).toBe(Object.prototype)
+
+    expect(({} as { isAdmin?: unknown }).isAdmin).toBeUndefined()
+  })
+
   it('get() and getList() keep __proto__ keys in nested objects too', () => {
     const cfg = parse('{"outer": {"__proto__": "x"}, "list": [{"__proto__": 1}]}')
     const outer = cfg.get('outer') as Record<string, unknown>
