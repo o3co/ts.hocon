@@ -48,16 +48,46 @@ function isIntegerLiteral(source: string): boolean {
 }
 
 /**
+ * Whether this runtime hands the reviver the literal's source text (the
+ * JSON.parse source-access proposal). True on Node ≥ 22, this package's
+ * minimum; a browser without it exists, and `parse()` is documented as usable
+ * in one, so the capability is measured rather than assumed.
+ */
+const HAS_SOURCE_TEXT_ACCESS: boolean = (() => {
+  let seen: string | undefined
+  JSON.parse('1', function (_k, v, context?: ParseContext) {
+    seen = context?.source
+    return v as unknown
+  } as (this: unknown, key: string, value: unknown) => unknown)
+  return seen !== undefined
+})()
+
+/**
  * Route an integer literal that a JS `number` cannot hold exactly into a
  * BigInt, so `fromMap` receives its digits rather than a rounded double
  * (spec F0.5: `Number`-only decoding is exactly the forbidden case). Values
- * past int64 are refused there, floats and safe integers pass through
+ * past int64 are refused there; floats and safe integers pass through
  * untouched.
+ *
+ * Without source text there is no lossless path, and quietly returning the
+ * rounded double would be the very thing F0.5 forbids — a snowflake ID silently
+ * off by one. So the document is refused instead, and only when it actually
+ * contains such a literal: a config with no oversized integer keeps working on
+ * a runtime that lacks the proposal.
  */
-function bigIntReviver(this: unknown, _key: string, value: unknown, context?: ParseContext): unknown {
+function bigIntReviver(this: unknown, key: string, value: unknown, context?: ParseContext): unknown {
   if (typeof value !== 'number' || Number.isSafeInteger(value)) return value
   const source = context?.source
-  if (source === undefined || !isIntegerLiteral(source)) return value
+  if (source === undefined) {
+    if (!Number.isInteger(value)) return value  // a float too large to be safe is still a float
+    throw new ConfigError(
+      `jsonc: the integer at "${key || '<root>'}" needs more precision than a JS number holds, and this runtime ` +
+      `does not expose JSON.parse source text (${HAS_SOURCE_TEXT_ACCESS ? 'unexpected — the capability probe said otherwise' : 'requires Node >= 22 or an engine with JSON.parse source access'}), ` +
+      `so it cannot be read losslessly (spec F0.5)`,
+      key,
+    )
+  }
+  if (!isIntegerLiteral(source)) return value
   return BigInt(source)
 }
 

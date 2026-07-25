@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { parseStringWithOptions } from '../../src/index.js'
 import { parsePropertiesConfig } from '../../src/adapters/properties.js'
 import { loadEnv, parseDotEnv } from '../../src/adapters/env.js'
@@ -158,6 +158,31 @@ describe('jsonc adapter', () => {
 
   it('refuses an integer beyond int64 (F0.5 overflow = error)', () => {
     expect(() => parseJsonc('{"huge": 9223372036854775808}')).toThrow(/int64/)
+  })
+
+  // F0.5 again: a silent fall back to the rounded double IS the forbidden case,
+  // so on a runtime without source-text access the document is refused rather
+  // than mangled. Simulated by dropping the reviver's third argument.
+  it('refuses, rather than rounds, when the runtime hides JSON.parse source text (F0.5)', () => {
+    const real = JSON.parse.bind(JSON)
+    const spy = vi.spyOn(JSON, 'parse').mockImplementation(((text: string, reviver?: unknown) =>
+      real(text, reviver === undefined
+        ? undefined
+        : function (this: unknown, k: string, v: unknown) {
+            return (reviver as (this: unknown, k: string, v: unknown) => unknown).call(this, k, v)
+          })) as typeof JSON.parse)
+    try {
+      expect(() => parseJsonc('{"id": 9007199254740993}')).toThrow(/losslessly|source text/)
+      // A document without an oversized integer still parses on such a runtime.
+      expect(parseJsonc('{"id": 42, "f": 1.5}').getNumber('id')).toBe(42)
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
+  it('keeps the sign of -0, as the core parser does', () => {
+    expect(parseJsonc('{"z": -0}').getString('z')).toBe('-0')
+    expect(parseStringWithOptions('z = -0', {}).getString('z')).toBe('-0')
   })
 
   it('leaves floats and safe integers alone', () => {

@@ -85,7 +85,10 @@ function coerceValue(v: unknown, atPath: string): HoconValue {
           atPath,
         )
       }
-      return { kind: 'scalar', raw: String(v), valueType: 'number' }
+      // `String(-0)` is "0", which loses a sign the source carried and the core
+      // parser keeps (`z = -0` reads back as "-0"). Negative zero is a real
+      // IEEE-754 value; adapters should not quietly normalize it away.
+      return { kind: 'scalar', raw: Object.is(v, -0) ? '-0' : String(v), valueType: 'number' }
     }
     case 'boolean':
       return { kind: 'scalar', raw: v ? 'true' : 'false', valueType: 'boolean' }
