@@ -127,6 +127,25 @@ describe('jsonc adapter', () => {
     expect(() => parseJsonc('{"a":tr/*x*/ue}')).toThrow()
   })
 
+  // A `//` comment must end at ANY line terminator, not just LF. Ending only at
+  // LF makes a CR-terminated comment swallow the rest of the line — and the
+  // trailing-comma stripper then tidies the wreckage into valid JSON, so keys
+  // disappear with no error at all. This is the same shape as the
+  // gurkankaymak/hocon bug that motivated this project's library-preference
+  // rule, and py.hocon was found with it too.
+  it('a // comment ends at CR, CRLF and U+2028/9, not only LF (F3.2)', () => {
+    expect(parseJsonc('{"a":1,//c\r"b":2,\n"c":3}').toObject()).toEqual({ a: 1, b: 2, c: 3 })
+    expect(parseJsonc('{"a":1,//c\r\n"b":2}').toObject()).toEqual({ a: 1, b: 2 })
+    expect(parseJsonc('{"a":1,//c\u2028"b":2}').toObject()).toEqual({ a: 1, b: 2 })
+    expect(parseJsonc('{"a":1,//c\u2029"b":2}').toObject()).toEqual({ a: 1, b: 2 })
+    // A CR-only document whose comment runs to EOF is still just a comment.
+    expect(parseJsonc('{"a":1}//trailing\r').toObject()).toEqual({ a: 1 })
+  })
+
+  it('keeps a // marker inside a string with a CR nearby', () => {
+    expect(parseJsonc('{"u":"http://x/y",\r"b":2}').toObject()).toEqual({ u: 'http://x/y', b: 2 })
+  })
+
   // F0.5: `Number`-only decoding is the forbidden case — an integer literal
   // past 2^53 must reach the value model through its source text.
   it('ingests an integer past the safe range losslessly (F0.5)', () => {

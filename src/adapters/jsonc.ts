@@ -61,15 +61,25 @@ function bigIntReviver(this: unknown, _key: string, value: unknown, context?: Pa
   return BigInt(source)
 }
 
+/** Every character that ends a line: LF, CR, and the Unicode separators. */
+function isLineTerminator(c: string | undefined): boolean {
+  return c === '\n' || c === '\r' || c === '\u2028' || c === '\u2029'
+}
+
 /**
  * Remove `//` line comments and block comments, leaving string literals alone.
  *
- * F3.2: a comment is replaced by *whitespace*, never the empty string — it
- * must keep separating the tokens around it, so a `1`, a block comment and a
- * `2` stay two tokens and fail the JSON decode instead of silently reading as
- * `12`. Newlines
- * inside a removed span are kept so JSON.parse still reports useful positions;
- * a span with no newline becomes a single space.
+ * F3.2: a comment is replaced by *whitespace*, never the empty string — it must
+ * keep separating the tokens around it, so a `1`, a block comment and a `2` stay
+ * two tokens and fail the JSON decode instead of silently reading as `12`.
+ * Newlines inside a removed span are kept so JSON.parse still reports useful
+ * positions; a span with no newline becomes a single space.
+ *
+ * A `//` comment ends at **any** line terminator, not just LF. Stopping only at
+ * LF lets a CR-terminated comment eat the rest of the line, and the
+ * trailing-comma pass then tidies the remains into valid JSON — so
+ * `{"a":1,//c\r"b":2,\n"c":3}` decoded as `{"a":1,"c":3}`, losing a key with no
+ * error at all. That is the failure mode this project exists to avoid.
  */
 export function stripComments(src: string): string {
   let out = ''
@@ -82,9 +92,15 @@ export function stripComments(src: string): string {
       continue
     }
     if (c === '/' && src[i + 1] === '/') {
-      while (i < src.length && src[i] !== '\n') i++
-      // The terminating newline (still in src) is the replacement whitespace;
-      // at EOF there is nothing left to separate.
+      while (i < src.length && !isLineTerminator(src[i])) i++
+      // LF and CR are JSON whitespace, so leaving the terminator in the stream
+      // both separates the tokens and keeps line numbers honest. U+2028/U+2029
+      // are *not* JSON whitespace — emitting one would be a syntax error — so
+      // they are consumed and replaced by a space.
+      if (i < src.length && !(src[i] === '\n' || src[i] === '\r')) {
+        out += ' '
+        i++
+      }
       continue
     }
     if (c === '/' && src[i + 1] === '*') {
