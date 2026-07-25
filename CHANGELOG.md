@@ -19,6 +19,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `tools/smoke-entrypoints.mjs`) now runs in CI after the build and fails if
   any export stops loading under `require()` or `import()`.
 
+### Fixed — `toObject()` lost `__proto__` keys and let config data choose the result's prototype
+
+- **A key literally named `__proto__` vanished from `toObject()` / `get()` /
+  `getList()` output, and its value became the returned object's prototype.**
+  The object conversion ended with `Object.assign({}, obj)`, which copies via
+  `[[Set]]` and therefore triggers the `Object.prototype.__proto__` setter.
+  Conversion now copies with `Object.fromEntries` (CreateDataProperty
+  semantics): the key survives as an own data property, the result's prototype
+  is always `Object.prototype`, and the global `Object.prototype` is never
+  touched.
+
 ## [1.10.0] - 2026-07-25
 
 ### Added — format adapters for config owned by other programs

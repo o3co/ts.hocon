@@ -491,13 +491,15 @@ function hoconToJs(v: HoconValue): unknown {
     case 'scalar': return scalarToJs(v.raw, v.valueType)
     case 'array': return v.items.map(hoconToJs)
     case 'object': {
-      // Use Object.create(null) to prevent __proto__ prototype pollution when
-      // a key named "__proto__" exists (e.g. from fromMap({ __proto__: ... })).
-      // The result is then converted to a plain {} by Object.assign for a
-      // standard JS object that passes instanceof/typeof checks normally.
-      const obj = Object.create(null) as Record<string, unknown>
-      for (const [k, val] of v.fields) obj[k] = hoconToJs(val)
-      return Object.assign({}, obj)
+      // Copy with CreateDataProperty semantics (Object.fromEntries), never
+      // [[Set]]: Object.assign / plain assignment on a {} target would route a
+      // key literally named "__proto__" through the Object.prototype.__proto__
+      // setter — the key would vanish from the result and config data would
+      // choose the result's prototype. fromEntries defines every key as an own
+      // data property on a normal Object.prototype-backed object.
+      return Object.fromEntries(
+        Array.from(v.fields, ([k, val]) => [k, hoconToJs(val)] as const),
+      )
     }
   }
 }

@@ -167,6 +167,35 @@ describe('Config', () => {
     const c = new Config({ kind: 'object', fields: new Map([['server', { kind: 'object', fields: inner }]]) })
     expect(c.toObject()).toEqual({ server: { host: 'localhost' } })
   })
+
+  // Object.assign uses [[Set]], so an own "__proto__" key from config data hit
+  // the Object.prototype.__proto__ setter: the key vanished from the result and
+  // the input-controlled object became the result's prototype. hoconToJs must
+  // copy with CreateDataProperty semantics instead.
+  it('toObject() keeps a key literally named __proto__ as an own data property', () => {
+    const cfg = parse('{"__proto__": {"polluted": true}, "safe": 1}')
+    const obj = cfg.toObject() as Record<string, unknown>
+
+    const desc = Object.getOwnPropertyDescriptor(obj, '__proto__')
+    expect(desc).toBeDefined()
+    expect(desc?.value).toEqual({ polluted: true })
+    expect(obj['safe']).toBe(1)
+
+    // The result's prototype is NOT chosen by the input …
+    expect(Object.getPrototypeOf(obj)).toBe(Object.prototype)
+    expect((obj as { polluted?: unknown }).polluted).toBeUndefined()
+    // … and the global Object.prototype is untouched.
+    expect(({} as { polluted?: unknown }).polluted).toBeUndefined()
+  })
+
+  it('get() and getList() keep __proto__ keys in nested objects too', () => {
+    const cfg = parse('{"outer": {"__proto__": "x"}, "list": [{"__proto__": 1}]}')
+    const outer = cfg.get('outer') as Record<string, unknown>
+    expect(Object.getOwnPropertyDescriptor(outer, '__proto__')?.value).toBe('x')
+    expect(Object.getPrototypeOf(outer)).toBe(Object.prototype)
+    const first = cfg.getList('list')[0] as Record<string, unknown>
+    expect(Object.getOwnPropertyDescriptor(first, '__proto__')?.value).toBe(1)
+  })
 })
 
 describe('Config - scalar type preservation (Lightbend compatible)', () => {
