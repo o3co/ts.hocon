@@ -2,6 +2,7 @@ import { parse as parseToml } from 'smol-toml'
 import { fromMap } from '../value-factory.js'
 import type { Config } from '../config.js'
 import { ConfigError } from '../errors.js'
+import { stripBom } from '../internal/strip-bom.js'
 
 /**
  * Read a TOML document as HOCON config, via `smol-toml`.
@@ -17,7 +18,7 @@ import { ConfigError } from '../errors.js'
  * See docs/specs/format-ingestion-mapping.md items F4.x in the hocon scope.
  */
 export function parseTomlConfig(input: string, originDescription?: string): Config {
-  const doc = parseToml(input) as Record<string, unknown>
+  const doc = parseToml(stripBom(input)) as Record<string, unknown>
   return fromMap(convert(doc, '') as Record<string, unknown>, originDescription)
 }
 

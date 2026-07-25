@@ -1,5 +1,6 @@
 import type { HoconValue } from '../../value.js'
 import { ParseError } from '../../errors.js'
+import { stripBom } from '../strip-bom.js'
 
 /**
  * Parse a `.properties` file the way `java.util.Properties` does, which is what
@@ -18,7 +19,7 @@ export function parseProperties(input: string): Record<string, unknown> {
   // Sorting keys gives a single deterministic processing order regardless of input
   // line order (mirrors go.hocon's sort.Strings(keys) and spec L1476-1479 intent).
   const pairs: PathPair[] = []
-  for (const { text, line } of logicalLines(input)) {
+  for (const { text, line } of logicalLines(stripBom(input))) {
     const [rawKey, rawValue] = splitKeyValue(text)
     const key = unescapeProps(rawKey, line)
     if (key === '') continue

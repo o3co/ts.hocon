@@ -2,6 +2,7 @@ import { fromMap } from '../value-factory.js'
 import type { Config } from '../config.js'
 import { type PathPair, joinKey, nestPairs } from '../internal/properties/properties.js'
 import { ConfigError } from '../errors.js'
+import { stripBom } from '../internal/strip-bom.js'
 
 /** The double underscore that marks a path boundary; a single one stays part of
  *  the segment, so `APP_DB__MAX_CONN` is `db.max_conn` (spec F1.2). Fixed rather
@@ -100,7 +101,7 @@ export function parseDotEnv(input: string, opts: EnvOptions = {}): Config {
   const prefix = opts.prefix ?? ''
   const pairs: PathPair[] = []
 
-  const lines = input.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n')
+  const lines = stripBom(input).replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n')
   for (let i = 0; i < lines.length; i++) {
     const raw = (lines[i] ?? '').trim()
     if (raw === '' || raw.startsWith('#')) continue

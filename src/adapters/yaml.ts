@@ -2,6 +2,7 @@ import YAML from 'yaml'
 import { fromMap } from '../value-factory.js'
 import type { Config } from '../config.js'
 import { ConfigError } from '../errors.js'
+import { stripBom } from '../internal/strip-bom.js'
 
 /**
  * Read a YAML document as HOCON config.
@@ -49,7 +50,7 @@ export function parseYaml(input: string, originDescription?: string): Config {
   // ...992 — the precision loss the spec forbids. Every integer therefore
   // arrives as a bigint and `convert` narrows the ones a number holds exactly
   // back to number, leaving the rest for the value factory's int64 check.
-  const docs = YAML.parseAllDocuments(input, { version: '1.2', merge: true, intAsBigInt: true })
+  const docs = YAML.parseAllDocuments(stripBom(input), { version: '1.2', merge: true, intAsBigInt: true })
   if (docs.length > 1) {
     throw new ConfigError(
       'yaml: multi-document streams are not supported (spec F5.7); a config is one document',

@@ -1,6 +1,7 @@
 import { fromMap } from '../value-factory.js'
 import type { Config } from '../config.js'
 import { ConfigError } from '../errors.js'
+import { stripBom } from '../internal/strip-bom.js'
 
 /**
  * Read JSON with comments and trailing commas — the dialect VS Code and
@@ -25,7 +26,7 @@ import { ConfigError } from '../errors.js'
  * See docs/specs/format-ingestion-mapping.md items F3.x in the hocon scope.
  */
 export function parseJsonc(input: string, originDescription?: string): Config {
-  const doc: unknown = JSON.parse(stripTrailingCommas(stripComments(input)), bigIntReviver)
+  const doc: unknown = JSON.parse(stripTrailingCommas(stripComments(stripBom(input))), bigIntReviver)
   if (doc === null || typeof doc !== 'object' || Array.isArray(doc)) {
     throw new ConfigError(
       `jsonc: document root is ${Array.isArray(doc) ? 'an array' : typeof doc}, but a config root must be an object (spec F0.3)`,
