@@ -91,7 +91,7 @@
   ],
   "scripts": {
     "build": "tsup",
-    "smoke": "node tools/smoke-entrypoints.mjs",
+    "smoke": "tsup && node tools/smoke-entrypoints.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
