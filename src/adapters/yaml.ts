@@ -26,6 +26,12 @@ import { ConfigError } from '../errors.js'
  * const cfg = fromYamlValue(jsy.load(src), 'their-file.yml')
  * ```
  *
+ * Integers are ingested losslessly (F0.5): the document is decoded with
+ * `intAsBigInt`, so a literal too wide for a JS `number` keeps its digits —
+ * `getString` returns them exactly — and one outside int64 is refused rather
+ * than rounded. `getNumber` and `toObject` still apply the JS number model, so
+ * read large identifiers with `getString`.
+ *
  * See docs/specs/format-ingestion-mapping.md items F5.x in the hocon scope.
  */
 export function parseYaml(input: string, originDescription?: string): Config {
@@ -69,7 +75,9 @@ export function parseYaml(input: string, originDescription?: string): Config {
  * only the default one: a `Map` (eemeli with `mapAsMap`) has its scalar keys
  * stringified per F5.3, a `Date` (js-yaml 4 timestamps) becomes its ISO string
  * — the same reasoning as F4.2 for TOML dates — and a `Uint8Array` becomes
- * base64 (F5.5).
+ * base64 (F5.5), at any size. A `bigint` (a library decoding integers widely)
+ * narrows to a number where a double is exact and otherwise keeps its digits,
+ * bounded by int64 (F0.5).
  */
 export function fromYamlValue(value: unknown, originDescription?: string): Config {
   // An empty document is the empty object, as an empty HOCON document is

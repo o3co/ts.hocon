@@ -28,6 +28,17 @@ npm install @o3co/ts.hocon
 
 Requires Node.js 22+.
 
+Both module systems are supported — `import` and `require` reach the same
+entrypoints, including every `adapters/*` subpath:
+
+```ts
+import { parse } from '@o3co/ts.hocon'          // ESM
+const { parse } = require('@o3co/ts.hocon')     // CJS
+```
+
+CI loads all seven exports both ways after each build, so a package that cannot
+be `require`d (as 1.10.0's could not) fails the pipeline instead of shipping.
+
 ### 2. Use
 
 ```ts
@@ -72,7 +83,7 @@ On top of that, HOCON combines the readability of YAML with the structure of JSO
 - Triple-quoted strings (`"""..."""`)
 - Duration and byte size parsing (`getDuration()`, `getBytes()`)
 - Sync and async API (`parse` / `parseAsync` / `parseFile` / `parseFileAsync`)
-- ESM + CJS dual package
+- ESM + CJS dual package (every entrypoint smoke-tested in both formats on each CI run)
 - Optional [Zod](https://zod.dev/) integration for schema validation
 - Browser compatible (`parse`/`parseAsync` — no Node.js required)
 
@@ -354,6 +365,17 @@ const cfg = await parseAsync(hoconString, {
 - **Minimize `${ENV}` usage**: Prefer `${?ENV}` (optional) with sensible defaults defined in the config itself
 - **Never require env vars for local development**: Defaults should work out of the box
 - **Document required env vars**: List them in your project's README or a `.env.example`
+- **Name variables with `__`, never `.`**: when bulk-mounting with `loadEnv` (or
+  `parseDotEnv`), `__` is the *only* thing that creates hierarchy. A dot is
+  ordinary key text, so the two spellings below are different keys and both
+  survive:
+
+  ```text
+  APP_FOO__BAR=nested   # -> foo.bar      : cfg.getString('foo.bar')
+  APP_FOO.BAR=dotted    # -> "foo.bar"    : cfg.getString('"foo.bar"')
+  ```
+
+  A single `_` also stays part of its segment (`APP_DB__MAX_CONN` → `db.max_conn`).
 
 ### Dev / Prod Separation
 
@@ -414,7 +436,7 @@ Deferring resolution matters: the plain `parse` resolves as it goes, so a
 | `@o3co/ts.hocon/adapters/env` | — | Bulk-mounts a prefixed namespace; also reads `.env` |
 | `@o3co/ts.hocon/adapters/jsonc` | — | JSON with comments and trailing commas |
 | `@o3co/ts.hocon/adapters/toml` | `smol-toml` | Optional peer dependency |
-| `@o3co/ts.hocon/adapters/yaml` | `yaml` | Optional peer dependency; YAML 1.2 core schema |
+| `@o3co/ts.hocon/adapters/yaml` | `yaml` | Optional peer dependency; scalar resolution is the library's, pinned to `version: '1.2'` |
 
 The TOML and YAML libraries are **optional peer dependencies**, so installing
 this package still pulls in nothing — you add the one you actually use. Plain
@@ -423,6 +445,40 @@ JSON needs no adapter at all, HOCON being a JSON superset.
 Foreign data stays data: a `${a.b}` in a mounted value is literal text, never a
 reference, because the file belongs to a program that never agreed to HOCON's
 syntax.
+
+### Environment variable names
+
+`__` is the only path separator, so a literal `.` in a variable name is key
+text rather than a boundary — `APP_FOO.BAR` and `APP_FOO__BAR` are two
+different keys and can be set at the same time:
+
+```ts
+const cfg = loadEnv({ prefix: 'APP_', env: { 'APP_FOO.BAR': 'dotted', APP_FOO__BAR: 'nested' } })
+cfg.getString('"foo.bar"')   // "dotted"  — one key whose name contains a dot
+cfg.getString('foo.bar')     // "nested"  — foo -> bar
+```
+
+### Numbers from JSONC and YAML
+
+Integers are ingested losslessly: an integer literal too wide for a JS `number`
+keeps its digits instead of being rounded, and one outside the int64 range is
+refused rather than silently mangled. What you get back depends on the getter:
+
+```ts
+const cfg = parseJsonc('{"id": 9007199254740993}')
+cfg.getString('id')   // "9007199254740993"  — exact, the source's own text
+cfg.getNumber('id')   // 9007199254740992    — the JS number model rounds
+cfg.toObject()        // { id: 9007199254740992 }
+```
+
+So read large identifiers (snowflake IDs, ledger sequence numbers) with
+`getString`. `getNumber` and `toObject` apply JavaScript's own number
+semantics, exactly as they do for the same literal written in HOCON text — the
+guarantee is that nothing is lost *on the way in*.
+
+YAML scalar resolution otherwise belongs to the `yaml` library; the adapter
+declares `version: '1.2'` rather than trusting a default, and `fromYamlValue`
+takes an already-decoded tree so you can use a different library or schema.
 
 ## Known Limitations
 
@@ -438,6 +494,17 @@ When parsing untrusted HOCON input, be aware of:
 - **Path traversal in includes:** a relative `include` path resolves against `baseDir` and can climb out of it with `..` segments to reach sensitive files such as `/etc/passwd`. Use a custom `readFileSync`/`readFile` that validates paths if parsing untrusted input.
 - **Input size:** The parser has no built-in input size limit. For untrusted input, validate size before calling `parse()`.
 - **Include depth:** Limited to 50 levels to prevent stack overflow from deep include chains.
+- **Prototype pollution:** keys named `__proto__`, `constructor` or `prototype`
+  are **kept as ordinary keys** — a `.properties` file or environment variable
+  may legitimately use them, and dropping them would be silent data loss.
+  Safety is structural rather than a denylist: the nesting step builds
+  null-prototype objects, which inherit no `__proto__` setter, and `toObject()`
+  defines every key as an own data property. So `__proto__` from config data
+  lands as a plain key, the returned object's prototype is always
+  `Object.prototype`, and nothing reaches the global `Object.prototype`. Note
+  that the key does exist on the result, so code that iterates config objects
+  should use `Object.entries()` / `Object.keys()` rather than assuming those
+  names are absent.
 
 ## License
 

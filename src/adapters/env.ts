@@ -31,6 +31,16 @@ export type EnvOptions = {
  * Reading a single variable needs nothing from here — HOCON's own `${?VAR}`
  * already does that. This is for mounting a whole namespace as a subtree.
  *
+ * `__` is the only path separator: a single `_` stays part of its segment
+ * (`APP_DB__MAX_CONN` → `db.max_conn`), and a literal `.` in a variable name is
+ * key text rather than a boundary, so `APP_FOO.BAR` becomes the single
+ * top-level key `foo.bar` — addressable as the quoted path `"foo.bar"` — and
+ * coexists with `APP_FOO__BAR` instead of colliding with it (F1.2).
+ *
+ * Two names that do map to one path are an error, the environment having no
+ * order to break the tie with (F1.6). Keys named `__proto__`, `constructor` or
+ * `prototype` are kept like any other (F2.9).
+ *
  * Values are always strings, and a `${...}` inside one stays literal (F0.2, F1.4).
  */
 export function loadEnv(opts: EnvOptions & { env?: Record<string, string | undefined> } = {}): Config {
@@ -79,6 +89,11 @@ export function loadEnv(opts: EnvOptions & { env?: Record<string, string | undef
  * double quotes with `\n \r \t \\ \"`. Multi-line values and trailing comments
  * are not supported — an unquoted value containing ` #` is an error rather than
  * a guess about whether a comment was meant. No `${...}` expansion.
+ *
+ * Names map to paths exactly as in {@link loadEnv}: `__` is the only separator,
+ * so a literal `.` stays key text (`FOO.BAR` → the single key `foo.bar`). A
+ * file has a definite line order, so a repeated name is last-wins (F0.7)
+ * rather than the collision error the process environment gets.
  */
 export function parseDotEnv(input: string, opts: EnvOptions = {}): Config {
   const origin = opts.originDescription ?? '.env'

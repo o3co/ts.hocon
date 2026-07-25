@@ -25,6 +25,12 @@ import type { HoconValue } from './value.js'
  *   bigint          → scalar/number, digits kept verbatim (out of int64 = error)
  *   undefined / function / symbol → ConfigError
  *
+ * A `bigint` is how a caller (or a format adapter) hands over an integer that a
+ * JS `number` cannot hold exactly: its digits are kept verbatim in the value's
+ * raw text, so `getString` returns them intact, while `getNumber` / `toObject`
+ * apply the JS number model as they do for any other value. Integers outside
+ * the int64 range are rejected (spec F0.5).
+ *
  * originDescription (optional) provides a source name for error messages.
  * E12 decision 13.
  */

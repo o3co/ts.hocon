@@ -364,6 +364,21 @@ export class Config {
     })
   }
 
+  /**
+   * The whole config as plain JS data: objects, arrays, strings, numbers,
+   * booleans and `null`.
+   *
+   * Keys are reproduced exactly as the config carries them, `__proto__`,
+   * `constructor` and `prototype` included: each is defined as an **own data
+   * property**, so the returned object's prototype is always
+   * `Object.prototype` and nothing is written to the global one. Iterate the
+   * result with `Object.entries()` / `Object.keys()` rather than assuming
+   * those names cannot appear.
+   *
+   * Numbers follow the JS number model, so an integer wider than 2^53 rounds
+   * here even when the config holds it exactly — read those with
+   * {@link Config.getString} instead.
+   */
   toObject(): unknown {
     return hoconToJs(this.root)
   }

@@ -12,7 +12,15 @@ import { ConfigError } from '../errors.js'
  * of its own.)
  *
  * Comments and trailing commas are removed and `JSON.parse` does the rest, so
- * the accepted grammar is otherwise exactly the platform's JSON.
+ * the accepted grammar is otherwise exactly the platform's JSON. A comment is
+ * replaced by whitespace rather than deleted, so it separates the tokens around
+ * it and `{"a":1/*x*\/2}` is a syntax error rather than `{"a":12}` (F3.2).
+ *
+ * Integers are ingested losslessly (F0.5): a literal too wide for a JS `number`
+ * keeps its digits — `getString` returns them exactly — and one outside int64
+ * is refused instead of being rounded. `getNumber` and `toObject` still apply
+ * the JS number model, as they do for HOCON's own literals, so read large
+ * identifiers with `getString`.
  *
  * See docs/specs/format-ingestion-mapping.md items F3.x in the hocon scope.
  */

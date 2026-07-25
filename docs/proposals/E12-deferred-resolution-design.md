@@ -232,7 +232,11 @@ Type coercion edge cases:
 
 - **Go `uint64` exceeding `int64` range**: error (HOCON numbers map to int64-equivalent precision). Document as known limitation.
 - **TS `undefined`**: error (use explicit `null`). Lightbend equivalent is "throw"; we mirror.
-- **TS `bigint`**: error in v1. Future enhancement under separate spec.
+- **TS `bigint`**: error in v1. Future enhancement under separate spec. — **Superseded**
+  (2026-07-25) by the format-ingestion spec item F0.5: a `bigint` is accepted up to the
+  int64 bound, its digits kept verbatim in the value's raw text, because that is how an
+  adapter carries an integer literal a JS `number` cannot hold exactly. Out of int64 is
+  still an error. The canonical xx.hocon § E12 text still says "error in v1".
 - **TS non-integer `number` requested as int via getter**: existing impl behaviour. Out of scope for this spec.
 - **Rust `Option::None` field**: skip the key (omit from object). `Option::Some(v)` → emit `v`. This differs from Lightbend (no `Option`), but is the idiomatic Rust mapping.
 - **Map key ordering**: HOCON object key ordering follows insertion order. Go `map` is unordered; impls must use a stable iteration order — recommend sorted keys when origin is `FromMap` (no source-file order to preserve). TS uses object key order. Rust uses `BTreeMap` for sorted, `IndexMap` for insertion-preserving. v1: each impl documents its choice; cross-impl tests assert resolved values, not iteration order.
