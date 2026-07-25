@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.10.0] - 2026-07-25
+
+### Added — format adapters for config owned by other programs
+
+- **Properties, env, JSONC, TOML and YAML can now be mounted under a HOCON
+  document**, so a `${...}` can reach into a file another program maintains.
+  Five subpath exports — `@o3co/ts.hocon/adapters/{properties,env,jsonc,toml,yaml}` —
+  following the shape `./zod` already established here. `dependencies` stays
+  empty: `smol-toml` and `yaml` are declared as **optional peer dependencies**,
+  and the other three adapters need none. Plain JSON needs no adapter, HOCON
+  being a JSON superset.
+- Ingestion is AST-level — a document is decoded and built into a value tree via
+  `fromMap`, never rendered to HOCON text. A `${a.b}` in a mounted value stays
+  literal, the foreign file never having agreed to HOCON's syntax. Parse the host
+  document with `resolveSubstitutions: false` before attaching the fallback.
+- **YAML scalar resolution is the library's answer, not a guarantee here.** The
+  adapter declares `version: '1.2'` rather than trusting a default (the same
+  library returns `8` for `010` under 1.1 and `10` under 1.2), and `fromYamlValue`
+  takes an already-decoded tree so a caller can supply a different library or
+  schema. `yaml` (eemeli) is the packaged default; `js-yaml` was measured and set
+  aside, its v5 throwing on `!!binary` and not merging `<<`.
+
+### Fixed — `.properties` now accepts the whole java.util.Properties syntax (S23.5, S23.6)
+
+- **Backslash continuations, escapes, and whitespace separators in a
+  `.properties` file were mishandled**, and a continued line was dropped silently.
+  `parseProperties` had implemented roughly the `key=value`-with-comments subset;
+  `b\:c = 2` produced the key `b\` with value `c = 2`, `d = x\ty` stayed literal,
+  and `a = one\` continued by `two` lost the second line. S23.5/S23.6 were
+  out-of-scope until [xx.hocon#73](https://github.com/o3co/xx.hocon/pull/73)
+  brought them in.
+- **Behavior change**: a value keeps its trailing whitespace, because Java skips
+  whitespace before a value and never after it (`key = value  ` → `"value  "`).
+- A `\uXXXX` becomes one UTF-16 code unit, so a surrogate pair forms its astral
+  character and a lone surrogate survives — matching Java. A malformed escape
+  throws `ParseError`. The syntax layer is shared with `adapters/properties`, so
+  the include path and the adapter cannot drift.
+
 ### Fixed — empty path segments rejected in key position (S11.7, [xx.hocon#68](https://github.com/o3co/xx.hocon/issues/68))
 
 - **`a..b: 3`, `.a: 3`, `a...c: 4`, `o { a..b: 3 }` and `a...c."": 4` now throw
