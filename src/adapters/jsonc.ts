@@ -29,8 +29,13 @@ export function parseJsonc(input: string, originDescription?: string): Config {
 
 /**
  * Remove `//` line comments and block comments, leaving string literals alone.
- * Newlines inside removed spans are kept so JSON.parse still reports useful
- * positions.
+ *
+ * F3.2: a comment is replaced by *whitespace*, never the empty string — it
+ * must keep separating the tokens around it, so a `1`, a block comment and a
+ * `2` stay two tokens and fail the JSON decode instead of silently reading as
+ * `12`. Newlines
+ * inside a removed span are kept so JSON.parse still reports useful positions;
+ * a span with no newline becomes a single space.
  */
 export function stripComments(src: string): string {
   let out = ''
@@ -44,12 +49,16 @@ export function stripComments(src: string): string {
     }
     if (c === '/' && src[i + 1] === '/') {
       while (i < src.length && src[i] !== '\n') i++
+      // The terminating newline (still in src) is the replacement whitespace;
+      // at EOF there is nothing left to separate.
       continue
     }
     if (c === '/' && src[i + 1] === '*') {
       const end = src.indexOf('*/', i + 2)
       if (end === -1) throw new ConfigError('jsonc: unterminated block comment', '')
-      for (const ch of src.slice(i, end + 2)) if (ch === '\n') out += '\n'
+      let newlines = ''
+      for (const ch of src.slice(i, end + 2)) if (ch === '\n') newlines += '\n'
+      out += newlines === '' ? ' ' : newlines
       i = end + 2
       continue
     }

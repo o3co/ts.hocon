@@ -84,6 +84,26 @@ describe('jsonc adapter', () => {
   it('refuses a non-object root (F0.3)', () => {
     expect(() => parseJsonc('[1, 2]')).toThrow(/F0\.3/)
   })
+
+  // F3.2: a comment is replaced by whitespace, never the empty string — a
+  // comment between two token halves must not weld them into one token.
+  it('a block comment separates tokens rather than joining them (F3.2)', () => {
+    expect(() => parseJsonc('{"a":1/*x*/2}')).toThrow()
+    expect(() => parseJsonc('{"a":tr/*x*/ue}')).toThrow()
+  })
+
+  it('keeps newlines inside a block comment for line positions (F3.2)', () => {
+    // The dangling comma after the removed span is a syntax error whose
+    // reported line must still be 3, not collapsed onto line 1.
+    let err: unknown
+    try {
+      parseJsonc('{"a": 1, /* spans\ntwo lines */\n,}')
+    } catch (e) {
+      err = e
+    }
+    expect(err).toBeDefined()
+    expect(String((err as Error).message)).toMatch(/line 3/)
+  })
 })
 
 describe('toml adapter', () => {

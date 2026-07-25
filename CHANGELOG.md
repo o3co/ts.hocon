@@ -30,6 +30,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is always `Object.prototype`, and the global `Object.prototype` is never
   touched.
 
+### Fixed — a JSONC block comment could weld two tokens into one
+
+- **`parseJsonc('{"a":1/*x*/2}')` silently parsed as `{"a":12}`.** The comment
+  stripper replaced a block comment with only the newlines it contained, so a
+  comment with none was replaced by the empty string and the tokens around it
+  fused. Per spec F3.2 a comment is now replaced by whitespace — its contained
+  newlines (preserving line positions in errors), or a single space when it
+  has none — so the halves stay separate tokens and the JSON decode rejects
+  them.
+
 ## [1.10.0] - 2026-07-25
 
 ### Added — format adapters for config owned by other programs
