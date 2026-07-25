@@ -256,6 +256,18 @@ id = 2
   it('refuses infinity (F0.6)', () => {
     expect(() => parseTomlConfig('a = inf')).toThrow(/F0\.6/)
   })
+  // F2.9's principle — safety by construction, never by dropping keys —
+  // applies to every adapter, not only the two the item names. smol-toml hands
+  // over an own `__proto__` property; the loss was ours, in a `{}` carrier
+  // written through [[Set]].
+  it('preserves a __proto__ table (F2.9 principle)', () => {
+    const cfg = parseTomlConfig('normal = 1\n[a.__proto__]\nx = 1\n')
+    expect(cfg.getNumber('normal')).toBe(1)
+    expect(cfg.getNumber('a.__proto__.x')).toBe(1)
+    const obj = cfg.toObject() as { a: Record<string, unknown> }
+    expect(Object.getOwnPropertyDescriptor(obj.a, '__proto__')?.value).toEqual({ x: 1 })
+    expect(({} as { x?: unknown }).x).toBeUndefined()
+  })
 })
 
 describe('yaml adapter', () => {
@@ -332,6 +344,26 @@ describe('yaml adapter', () => {
 
   it('converts a small !!binary scalar to its base64 text (F5.5)', () => {
     expect(parseYaml('blob: !!binary aGk=').getString('blob')).toBe('aGk=')
+  })
+
+  // The yaml library's toJS gives us an own `__proto__` property; dropping it
+  // was our doing. Covers both input shapes of the public injection point.
+  it('preserves a __proto__ key, including via fromYamlValue (F2.9 principle)', async () => {
+    const { fromYamlValue } = await import('../../src/adapters/yaml.js')
+    const cfg = parseYaml('__proto__:\n  polluted: true\nsafe: 1\n')
+    expect(cfg.keys().sort()).toEqual(['__proto__', 'safe'])
+    expect(cfg.getBoolean('__proto__.polluted')).toBe(true)
+    const obj = cfg.toObject() as Record<string, unknown>
+    expect(Object.getOwnPropertyDescriptor(obj, '__proto__')?.value).toEqual({ polluted: true })
+
+    // injected plain-object tree
+    const injected = fromYamlValue(JSON.parse('{"__proto__": {"x": 1}, "safe": 2}'))
+    expect(injected.keys().sort()).toEqual(['__proto__', 'safe'])
+    // injected Map tree (eemeli's mapAsMap shape)
+    const viaMap = fromYamlValue(new Map<unknown, unknown>([['__proto__', 'v'], ['safe', 2]]))
+    expect(viaMap.getString('__proto__')).toBe('v')
+
+    expect(({} as { polluted?: unknown }).polluted).toBeUndefined()
   })
 
   it('normalizes a bigint in an injected tree too (F0.5)', async () => {

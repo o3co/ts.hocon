@@ -102,7 +102,7 @@ function convert(v: unknown, atPath: string): unknown {
   }
   if (v instanceof Map) {
     // eemeli's mapAsMap shape; scalar keys stringify per F5.3.
-    const out: Record<string, unknown> = {}
+    const entries: [string, unknown][] = []
     for (const [k, e] of v) {
       if (k !== null && typeof k === 'object') {
         throw new ConfigError(
@@ -110,9 +110,10 @@ function convert(v: unknown, atPath: string): unknown {
           atPath,
         )
       }
-      out[String(k)] = convert(e, atPath === '' ? String(k) : `${atPath}.${String(k)}`)
+      const key = String(k)
+      entries.push([key, convert(e, atPath === '' ? key : `${atPath}.${key}`)])
     }
-    return out
+    return Object.fromEntries(entries)
   }
   if (v instanceof Uint8Array) {
     // !!binary — HOCON has no binary type, so keep the base64 text the source
@@ -120,11 +121,17 @@ function convert(v: unknown, atPath: string): unknown {
     return bytesToBase64(v)
   }
   if (v !== null && typeof v === 'object') {
-    const out: Record<string, unknown> = {}
-    for (const [k, e] of Object.entries(v as Record<string, unknown>)) {
-      out[k] = convert(e, atPath === '' ? k : `${atPath}.${k}`)
-    }
-    return out
+    // Object.fromEntries defines own data properties (CreateDataProperty). A
+    // `{}` carrier written with `out[k] = …` goes through [[Set]] instead, so a
+    // key named `__proto__` hit Object.prototype's setter and vanished — the
+    // library had handed it over correctly, and this adapter lost it. Same bug
+    // as config.ts's old Object.assign, same fix (F2.9's principle: safety by
+    // construction, never by dropping keys).
+    return Object.fromEntries(
+      Object.entries(v as Record<string, unknown>).map(
+        ([k, e]) => [k, convert(e, atPath === '' ? k : `${atPath}.${k}`)] as const,
+      ),
+    )
   }
   if (typeof v === 'number' && !Number.isFinite(v)) {
     throw new ConfigError(

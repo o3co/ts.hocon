@@ -32,11 +32,16 @@ function convert(v: unknown, atPath: string): unknown {
     return v.toISOString().replace(/\.(\d*?)0+(?=Z?$)/, (_m, keep: string) => (keep ? `.${keep}` : ''))
   }
   if (v !== null && typeof v === 'object') {
-    const out: Record<string, unknown> = {}
-    for (const [k, e] of Object.entries(v as Record<string, unknown>)) {
-      out[k] = convert(e, atPath === '' ? k : `${atPath}.${k}`)
-    }
-    return out
+    // Object.fromEntries defines own data properties; the `{}` carrier this
+    // replaced assigned through [[Set]], so a table named `__proto__` hit
+    // Object.prototype's setter and disappeared (`[a.__proto__]` yielded
+    // `{"a":{}}`). smol-toml hands it over correctly — the loss was here.
+    // F2.9's principle: preserve every key, be safe by construction.
+    return Object.fromEntries(
+      Object.entries(v as Record<string, unknown>).map(
+        ([k, e]) => [k, convert(e, atPath === '' ? k : `${atPath}.${k}`)] as const,
+      ),
+    )
   }
   if (typeof v === 'number' && !Number.isFinite(v)) {
     throw new ConfigError(
