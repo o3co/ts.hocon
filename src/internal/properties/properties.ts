@@ -17,31 +17,58 @@ export function parseProperties(input: string): Record<string, unknown> {
   // and an object expansion ("a.b=world"), the object must always win.
   // Sorting keys gives a single deterministic processing order regardless of input
   // line order (mirrors go.hocon's sort.Strings(keys) and spec L1476-1479 intent).
-  const pairs: [string, string][] = []
+  const pairs: PathPair[] = []
   for (const { text, line } of logicalLines(input)) {
     const [rawKey, rawValue] = splitKeyValue(text)
     const key = unescapeProps(rawKey, line)
     if (key === '') continue
-    pairs.push([key, unescapeProps(rawValue, line)])
+    // F2.1: a `.properties` key is a path expression, so the split happens
+    // here, in the caller that owns that rule — nestPairs never re-splits.
+    pairs.push([key.split('.'), unescapeProps(rawValue, line)])
   }
 
   return nestPairs(pairs)
 }
 
 /**
- * Turn dotted-key pairs into a nested object, applying the S23.4 object-wins
- * rule. Keys are sorted first so the outcome does not depend on input order.
+ * One flat entry: the path **already split into segments**, and its value.
+ *
+ * Segments rather than a joined string because what counts as a boundary is the
+ * caller's rule, not this module's: `.properties` splits keys on `.` (F2.1)
+ * while env splits only on `__`, so a literal `.` in a variable name is key text
+ * (F1.2). Joining and re-splitting here would manufacture a boundary the source
+ * never had.
+ */
+export type PathPair = [segments: string[], value: string]
+
+/**
+ * Turn pre-split path pairs into a nested object, applying the S23.4/F2.5
+ * object-wins rule. Entries are sorted first so the outcome does not depend on
+ * input order.
  *
  * Exported because the `env` adapter mounts variables the same way and must not
  * carry a second copy of this rule.
  */
-export function nestPairs(pairs: [string, string][]): Record<string, unknown> {
+export function nestPairs(pairs: PathPair[]): Record<string, unknown> {
   const root: Record<string, unknown> = Object.create(null)
-  const sorted = [...pairs].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-  for (const [key, value] of sorted) {
-    setNested(root, key.split('.'), value)
+  // Sort on the NUL-joined form: NUL cannot occur in a segment, so ordering
+  // follows segment boundaries and never confuses `a.b` (one segment) with
+  // `a` → `b` (two). Array.sort is stable, so equal paths keep input order and
+  // the last one wins (F0.7).
+  const sorted = [...pairs].sort(([a], [b]) => {
+    const ka = joinKey(a)
+    const kb = joinKey(b)
+    return ka < kb ? -1 : ka > kb ? 1 : 0
+  })
+  for (const [segments, value] of sorted) {
+    setNested(root, segments, value)
   }
   return root
+}
+
+/** NUL cannot appear in a segment, so distinct paths cannot collide as keys. */
+export function joinKey(segments: readonly string[]): string {
+  return segments.join('\x00')
 }
 
 interface LogicalLine {

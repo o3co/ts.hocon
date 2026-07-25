@@ -61,6 +61,29 @@ describe('env adapter', () => {
   it('refuses an ambiguous trailing # rather than guessing (F1.7)', () => {
     expect(() => parseDotEnv('FOO=bar # comment')).toThrow(/quote the value/)
   })
+
+  // F1.2: only `__` creates hierarchy. A literal dot in a variable name is key
+  // text, so the path has to travel as a segment list — joining on "." and
+  // re-splitting manufactures a boundary the environment never had.
+  it('keeps a literal dot in a name as key text, not a path boundary (F1.2)', () => {
+    const cfg = loadEnv({ prefix: 'APP_', env: { 'APP_FOO.BAR': 'v' } })
+    expect(cfg.keys()).toEqual(['foo.bar'])
+    expect(cfg.getString('"foo.bar"')).toBe('v')
+    expect(cfg.has('foo')).toBe(false)
+  })
+
+  it('lets the literal-dot and __ spellings coexist (F1.2/F1.6)', () => {
+    const cfg = loadEnv({ prefix: 'APP_', env: { 'APP_FOO.BAR': 'dotted', APP_FOO__BAR: 'nested' } })
+    expect(cfg.getString('"foo.bar"')).toBe('dotted')
+    expect(cfg.getString('foo.bar')).toBe('nested')
+  })
+
+  it('a .env file gets the same treatment (F1.2)', () => {
+    const cfg = parseDotEnv('FOO.BAR=dotted\nFOO__BAR=nested\n')
+    expect(cfg.getString('"foo.bar"')).toBe('dotted')
+    expect(cfg.getString('foo.bar')).toBe('nested')
+  })
+
 })
 
 describe('jsonc adapter', () => {

@@ -30,6 +30,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is always `Object.prototype`, and the global `Object.prototype` is never
   touched.
 
+### Fixed — env: a literal `.` in a variable name became a path boundary (F1.2)
+
+- **`APP_FOO.BAR=v` nested as `foo` → `bar`, and collided with
+  `APP_FOO__BAR`.** `__` is the only hierarchy boundary the env adapter has, so
+  a dot in the name is key text: the variable now yields the single top-level
+  key `foo.bar`, reachable as the quoted path `"foo.bar"`, and both spellings
+  coexist rather than one of them being refused as an F1.6 collision. Paths
+  travel as segment lists from the adapter into the nesting step, so nothing
+  joins on `.` and re-splits along the way; `parseDotEnv` gets the same
+  treatment, and `.properties` keys still split on `.` per F2.1.
+
 ### Fixed — JSONC and YAML silently rounded large integers (F0.5)
 
 - **`9007199254740993` arrived as `9007199254740992`** from both adapters, even
