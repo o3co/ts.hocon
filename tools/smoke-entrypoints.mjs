@@ -40,6 +40,10 @@ if (!existsSync(join(root, 'dist'))) {
 // A real node_modules layout in a temp dir, so the include exercises
 // require.resolve exactly as a consumer's would.
 const fixtureDir = mkdtempSync(join(tmpdir(), 'ts-hocon-smoke-'))
+// Registered the moment the directory exists, so *every* exit path removes it —
+// the `process.exit(1)` calls below and anything that throws, not just the
+// happy path. `rmSync` is synchronous, which is what an exit handler needs.
+process.on('exit', () => rmSync(fixtureDir, { recursive: true, force: true }))
 mkdirSync(join(fixtureDir, 'node_modules', 'smoke-fixture-pkg'), { recursive: true })
 writeFileSync(
   join(fixtureDir, 'node_modules', 'smoke-fixture-pkg', 'package.json'),
@@ -169,8 +173,6 @@ for (const [subpath, cond] of Object.entries(pkg.exports)) {
     console.log(`ok   ${label} "${condName}".types -> ${types}`)
   }
 }
-
-rmSync(fixtureDir, { recursive: true, force: true })
 
 if (failures > 0) {
   console.error(`\nsmoke-entrypoints: ${failures} check(s) FAILED — the artifact is broken, do not ship`)
