@@ -15,6 +15,7 @@ import { fileURLToPath } from 'node:url'
 import type { Config } from '../../src/config.js'
 import { loadEnv, parseDotEnv } from '../../src/adapters/env.js'
 import { parseJsonc } from '../../src/adapters/jsonc.js'
+import { parsePropertiesConfig } from '../../src/adapters/properties.js'
 import { parseTomlConfig } from '../../src/adapters/toml.js'
 import { parseYaml } from '../../src/adapters/yaml.js'
 
@@ -47,6 +48,8 @@ describe('format-ingestion fixtures (xx.hocon)', () => {
     switch (c.format) {
       case 'jsonc':
         return parseJsonc(text, c.id)
+      case 'properties':
+        return parsePropertiesConfig(text, c.id)
       case 'toml':
         return parseTomlConfig(text, c.id)
       case 'yaml':
