@@ -78,15 +78,28 @@ const rate = (c: ComplianceCounts, denominator: number): string =>
 
 /**
  * Returns the single capture group of `re`, throwing when the pattern no longer
- * matches — a README rewrite that drops the claim must fail loudly rather than
- * silently stop checking it.
+ * matches — a rewrite that drops the claim must fail loudly rather than silently
+ * stop checking it. `source` names the file the text came from, since this reads
+ * package.json as well as the README.
+ *
+ * More than one match is also a failure: it would mean the doc states the claim
+ * twice and only the first is pinned, so the pair can drift apart while this
+ * stays green.
  */
-function findOne(text: string, re: RegExp, what: string): string {
-  const m = re.exec(text)
-  if (m === null) {
-    throw new Error(`${what} not found (pattern ${re}); update the pattern if the doc was restructured`)
+function findOne(source: string, text: string, re: RegExp, what: string): string {
+  const found = [...text.matchAll(new RegExp(re, re.flags.includes('g') ? re.flags : re.flags + 'g'))]
+  if (found.length === 0) {
+    throw new Error(
+      `${what} not found in ${source} (pattern ${re}); update the pattern if ${source} was restructured`,
+    )
   }
-  return m[1]!
+  if (found.length > 1) {
+    throw new Error(
+      `${what} matched ${found.length} times in ${source} (pattern ${re}); ` +
+        `the claim must appear once so there is one thing to pin: ${found.map((m) => m[1]).join(', ')}`,
+    )
+  }
+  return found[0]![1]!
 }
 
 describe('docs consistency', () => {
@@ -104,11 +117,13 @@ describe('docs consistency', () => {
     const readme = read('README.md')
 
     const specTotal = findOne(
+      'README.md',
       readme,
       /\| Spec total \(incl\. out-of-scope\) +\| \*\*([0-9.]+)%\*\* +\|/,
       'spec-total compliance rate',
     )
     const inScope = findOne(
+      'README.md',
       readme,
       /\| In-scope only +\| \*\*([0-9.]+)%\*\* +\|/,
       'in-scope compliance rate',
@@ -120,16 +135,21 @@ describe('docs consistency', () => {
 
   it('README minimum Node version matches package.json engines', () => {
     const engines = findOne(
+      'package.json',
       read('package.json'),
       /"node": ">=(\d+)"/,
       'engines.node',
     )
     const claimed = findOne(
+      'README.md',
       read('README.md'),
       /Requires Node\.js (\d+)\+/,
       'minimum Node version',
     )
-    expect(claimed, 'a user on the version the README names cannot install this package').toBe(engines)
+    expect(
+      claimed,
+      'one of the two is wrong, and which way it hurts depends on the direction: a README claiming a lower minimum sends users to a version npm will refuse, and a README claiming a higher one turns away users who could install fine',
+    ).toBe(engines)
   })
 
   it('README does not mark shipped behavior as unreleased', () => {
