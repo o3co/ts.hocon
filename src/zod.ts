@@ -81,7 +81,13 @@ function coerceValue(value: unknown, schema: ZodType): unknown {
       const obj = value as Record<string, unknown>
       const result: Record<string, unknown> = { ...obj }
       for (const key of Object.keys(shape)) {
-        if (key in obj) {
+        // Own properties only, not `in`: toObject() returns
+        // Object.prototype-backed objects, so a schema field named
+        // `constructor` or `toString` would otherwise match an inherited
+        // property and copy a function into the value handed to zod.
+        // (hasOwnProperty.call rather than Object.hasOwn — the tsconfig lib is
+        // ES2020.)
+        if (Object.prototype.hasOwnProperty.call(obj, key)) {
           result[key] = coerceValue(obj[key], shape[key])
         }
       }

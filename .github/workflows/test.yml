@@ -52,6 +52,17 @@ jobs:
       - name: Test
         run: pnpm test
 
+      - name: Build
+        run: pnpm build
+
+      # Regression gate for the two bundler-shape blockers this package has
+      # shipped: every subpath in package.json "exports" must load, work
+      # (including `include package(...)`, which behaves differently per bundle
+      # format) and declare per-condition types, under require() AND import().
+      # `pnpm smoke` rebuilds, so it can never pass on a stale dist/.
+      - name: Smoke-test published entrypoints
+        run: pnpm smoke
+
       - name: Test with coverage
         if: matrix.node == '24' && matrix.os == 'ubuntu-latest'
         run: pnpm coverage

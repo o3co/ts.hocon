@@ -2,6 +2,7 @@ import YAML from 'yaml'
 import { fromMap } from '../value-factory.js'
 import type { Config } from '../config.js'
 import { ConfigError } from '../errors.js'
+import { stripBom } from '../internal/strip-bom.js'
 
 /**
  * Read a YAML document as HOCON config.
@@ -26,18 +27,31 @@ import { ConfigError } from '../errors.js'
  * const cfg = fromYamlValue(jsy.load(src), 'their-file.yml')
  * ```
  *
+ * Integers are ingested losslessly (F0.5): the document is decoded with
+ * `intAsBigInt`, so a literal too wide for a JS `number` keeps its digits —
+ * `getString` returns them exactly — and one outside int64 is refused rather
+ * than rounded. `getNumber` and `toObject` still apply the JS number model, so
+ * read large identifiers with `getString`.
+ *
  * See docs/specs/format-ingestion-mapping.md items F5.x in the hocon scope.
  */
 export function parseYaml(input: string, originDescription?: string): Config {
   // version is declared rather than defaulted. The same library returns 8 for
   // `010` under 1.1 and 10 under 1.2, and resolves `no` to false under 1.1 —
-  // the Norway problem is a schema choice, not a library defect. F5.1 pins the
-  // 1.2 core schema, so say so instead of trusting a default that a major
-  // release could move.
+  // the Norway problem is a schema choice, not a library defect. F5.1 states no
+  // baseline schema — scalar resolution is the library's answer — so the point
+  // of declaring the version is that the answer cannot drift under us when a
+  // major release moves its default. The library is `yaml` (eemeli) 2.9.x.
   //
   // merge: true is required alongside it — `<<` is a 1.1 feature, so under 1.2
   // it would otherwise stay a literal key and leak into the config (spec F5.2).
-  const docs = YAML.parseAllDocuments(input, { version: '1.2', merge: true })
+  //
+  // intAsBigInt: true is the F0.5 half of it. The library decodes an integer
+  // into a JS number otherwise, so 9007199254740993 would silently arrive as
+  // ...992 — the precision loss the spec forbids. Every integer therefore
+  // arrives as a bigint and `convert` narrows the ones a number holds exactly
+  // back to number, leaving the rest for the value factory's int64 check.
+  const docs = YAML.parseAllDocuments(stripBom(input), { version: '1.2', merge: true, intAsBigInt: true })
   if (docs.length > 1) {
     throw new ConfigError(
       'yaml: multi-document streams are not supported (spec F5.7); a config is one document',
@@ -63,7 +77,9 @@ export function parseYaml(input: string, originDescription?: string): Config {
  * only the default one: a `Map` (eemeli with `mapAsMap`) has its scalar keys
  * stringified per F5.3, a `Date` (js-yaml 4 timestamps) becomes its ISO string
  * — the same reasoning as F4.2 for TOML dates — and a `Uint8Array` becomes
- * base64 (F5.5).
+ * base64 (F5.5), at any size. A `bigint` (a library decoding integers widely)
+ * narrows to a number where a double is exact and otherwise keeps its digits,
+ * bounded by int64 (F0.5).
  */
 export function fromYamlValue(value: unknown, originDescription?: string): Config {
   // An empty document is the empty object, as an empty HOCON document is
@@ -88,7 +104,7 @@ function convert(v: unknown, atPath: string): unknown {
   }
   if (v instanceof Map) {
     // eemeli's mapAsMap shape; scalar keys stringify per F5.3.
-    const out: Record<string, unknown> = {}
+    const entries: [string, unknown][] = []
     for (const [k, e] of v) {
       if (k !== null && typeof k === 'object') {
         throw new ConfigError(
@@ -96,21 +112,31 @@ function convert(v: unknown, atPath: string): unknown {
           atPath,
         )
       }
-      out[String(k)] = convert(e, atPath === '' ? String(k) : `${atPath}.${String(k)}`)
+      const key = String(k)
+      entries.push([key, convert(e, atPath === '' ? key : `${atPath}.${key}`)])
     }
-    return out
+    return Object.fromEntries(entries)
   }
   if (v instanceof Uint8Array) {
-    // !!binary — HOCON has no binary type, so keep the base64 text the source
-    // itself carried (spec F5.5).
-    return btoa(String.fromCharCode(...v))
+    // !!binary — HOCON has no binary type, so the bytes become base64 text
+    // (spec F5.5). This re-encodes what the library decoded rather than echoing
+    // the source's own characters, so the result is canonical base64: the
+    // library silently drops characters outside the alphabet while decoding, and
+    // whitespace/line breaks in the source do not survive.
+    return bytesToBase64(v)
   }
   if (v !== null && typeof v === 'object') {
-    const out: Record<string, unknown> = {}
-    for (const [k, e] of Object.entries(v as Record<string, unknown>)) {
-      out[k] = convert(e, atPath === '' ? k : `${atPath}.${k}`)
-    }
-    return out
+    // Object.fromEntries defines own data properties (CreateDataProperty). A
+    // `{}` carrier written with `out[k] = …` goes through [[Set]] instead, so a
+    // key named `__proto__` hit Object.prototype's setter and vanished — the
+    // library had handed it over correctly, and this adapter lost it. Same bug
+    // as config.ts's old Object.assign, same fix (F2.9's principle: safety by
+    // construction, never by dropping keys).
+    return Object.fromEntries(
+      Object.entries(v as Record<string, unknown>).map(
+        ([k, e]) => [k, convert(e, atPath === '' ? k : `${atPath}.${k}`)] as const,
+      ),
+    )
   }
   if (typeof v === 'number' && !Number.isFinite(v)) {
     throw new ConfigError(
@@ -118,5 +144,37 @@ function convert(v: unknown, atPath: string): unknown {
       atPath,
     )
   }
+  if (typeof v === 'bigint') {
+    // An integer a JS number holds exactly is a number here; a wider one stays
+    // a bigint so its digits reach the value model intact (F0.5), where the
+    // int64 bound is enforced. Injected trees get the same treatment — another
+    // library configured for big integers produces the same shape.
+    return isSafeIntegerBigInt(v) ? Number(v) : v
+  }
   return v
+}
+
+/**
+ * Base64 of a byte array, in chunks.
+ *
+ * `String.fromCharCode(...bytes)` passes every byte as its own argument, which
+ * exhausts the call stack somewhere around a megabyte — an embedded
+ * certificate or image threw `RangeError` instead of parsing. A chunked loop
+ * has no such limit and needs no Node-only API, `parse` being documented as
+ * usable in browsers.
+ */
+function bytesToBase64(bytes: Uint8Array): string {
+  const CHUNK = 0x8000
+  let binary = ''
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK))
+  }
+  return btoa(binary)
+}
+
+const MAX_SAFE = BigInt(Number.MAX_SAFE_INTEGER)
+const MIN_SAFE = BigInt(Number.MIN_SAFE_INTEGER)
+
+function isSafeIntegerBigInt(v: bigint): boolean {
+  return v <= MAX_SAFE && v >= MIN_SAFE
 }

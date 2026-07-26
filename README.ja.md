@@ -24,6 +24,20 @@ npm install @o3co/ts.hocon
 
 Node.js 22 以上が必要です。
 
+ESM / CJS の両方に対応しています。`import` でも `require` でも同じエントリポイント
+（`adapters/*` のサブパスを含む）に到達します:
+
+```ts
+import { parse } from '@o3co/ts.hocon'          // ESM
+const { parse } = require('@o3co/ts.hocon')     // CJS
+```
+
+CI では PR ごと・リリースごとに、ビルド成果物に対して 7 つの export すべてを両形式で
+ロードし、実際に呼び出し（バンドル形式で挙動が変わる package include を含む）、各条件が
+自前の型定義を宣言しているかまで検証します。1.10.0 で CJS の 7 エントリポイントすべてが
+ロード時に例外を投げた実績があるためのゲートであり、この種の欠陥を検出するものです
+（あらゆる欠陥が起こり得ないという保証ではありません）。
+
 ### 2. 使い方
 
 ```ts
@@ -67,7 +81,7 @@ HOCON は単なるシリアライズ形式ではなく、**プログラムに注
 - `include "file.conf"` および `include file("file.conf")` ディレクティブ
 - トリプルクォート文字列（`"""..."""`）
 - 同期・非同期 API（`parse` / `parseAsync` / `parseFile` / `parseFileAsync`）
-- ESM + CJS デュアルパッケージ
+- ESM + CJS デュアルパッケージ（全エントリポイントを CI で両形式ロード検証）
 - [Zod](https://zod.dev/) スキーマバリデーション統合（オプション）
 - ブラウザ対応（`parse`/`parseAsync` — Node.js 不要）
 
@@ -268,6 +282,16 @@ const cfg = await parseAsync(hoconString, {
 - **`${ENV}` の使用を最小限に**: 設定ファイル自体にデフォルト値を定義し、`${?ENV}`（オプショナル）を使いましょう
 - **ローカル開発で環境変数を必須にしない**: デフォルトだけで動くようにしましょう
 - **必須の環境変数を文書化**: プロジェクトの README や `.env.example` にリストしましょう
+- **変数名の階層は `.` ではなく `__` で**: `loadEnv`（および `parseDotEnv`）で一括マウント
+  するとき、階層を作るのは `__` **だけ** です。`.` は通常のキー文字なので、次の 2 つは
+  別々のキーであり、どちらも失われません:
+
+  ```text
+  APP_FOO__BAR=nested   # -> foo.bar      : cfg.getString('foo.bar')
+  APP_FOO.BAR=dotted    # -> "foo.bar"    : cfg.getString('"foo.bar"')
+  ```
+
+  単独の `_` もセグメントの一部のままです（`APP_DB__MAX_CONN` → `db.max_conn`）。
 
 ### 開発 / 本番の分離
 
@@ -303,6 +327,110 @@ const config = parseWithSchema(hoconInput, schema) // 起動時に即座に失�
 | [hocon2](https://github.com/o3co/hocon2) | Go | [pkg.go.dev](https://pkg.go.dev/github.com/o3co/hocon2) | HOCON → JSON/YAML/TOML/Properties 変換 CLI |
 
 3 つのパーサー実装（[ts.hocon](https://github.com/o3co/ts.hocon)、[rs.hocon](https://github.com/o3co/rs.hocon)、[go.hocon](https://github.com/o3co/go.hocon)）はすべて同じ Lightbend HOCON 仕様で追跡されています — 実装ごとの準拠率は [横断ロールアップ](https://github.com/o3co/xx.hocon/blob/main/docs/compliance-matrix.md) を参照してください。
+
+## フォーマットアダプタ
+
+*他のプログラム* が所有する設定ファイルを HOCON としてマウントできます。自分の
+ドキュメント内の `${...}` からその内容を参照できるようになります:
+
+```ts
+import { parseStringWithOptions } from '@o3co/ts.hocon'
+import { loadEnv } from '@o3co/ts.hocon/adapters/env'
+
+const base = loadEnv({ prefix: 'APP_' })            // APP_DB__HOST -> db.host
+const cfg = parseStringWithOptions(src, { resolveSubstitutions: false })
+const merged = cfg.withFallback(base).resolve()
+```
+
+解決を遅延させることが重要です。素の `parse` はパースしながら解決するため、
+フォールバックを付ける前に `${...}` の解決が失敗してしまいます。
+
+| サブパス | 必要な依存 | 備考 |
+| --- | --- | --- |
+| `@o3co/ts.hocon/adapters/properties` | — | `java.util.Properties`。`include` と構文レイヤーを共有 |
+| `@o3co/ts.hocon/adapters/env` | — | プレフィックス付き名前空間の一括マウント。`.env` の読み込みも可能 |
+| `@o3co/ts.hocon/adapters/jsonc` | — | コメントと末尾カンマを許す JSON |
+| `@o3co/ts.hocon/adapters/toml` | `smol-toml` | オプショナルなピア依存 |
+| `@o3co/ts.hocon/adapters/yaml` | `yaml` 2.9.x | オプショナルなピア依存。スカラー解決はそのライブラリの答えで、`version: '1.2'` を明示してドリフトを防止 |
+
+TOML と YAML のライブラリは **オプショナルなピア依存** なので、本パッケージを入れても
+何も追加でインストールされません — 実際に使うものだけを足してください。プレーンな JSON に
+アダプタは不要です（HOCON は JSON のスーパーセットです）。
+
+外部のデータはあくまでデータです。マウントされた値の中の `${a.b}` は参照ではなく
+リテラルなテキストとして扱われます。そのファイルは HOCON の構文に同意していない
+プログラムのものだからです。
+
+### 環境変数名の付け方
+
+パス区切りは `__` だけです。変数名の中の `.` は境界ではなくキー文字なので、
+`APP_FOO.BAR` と `APP_FOO__BAR` は別のキーであり、同時に設定できます:
+
+```ts
+const cfg = loadEnv({ prefix: 'APP_', env: { 'APP_FOO.BAR': 'dotted', APP_FOO__BAR: 'nested' } })
+cfg.getString('"foo.bar"')   // "dotted"  — 名前にドットを含む 1 つのキー
+cfg.getString('foo.bar')     // "nested"  — foo -> bar
+```
+
+### JSONC / YAML の数値
+
+整数は精度を落とさずに取り込まれます。JS の `number` で表せない幅の整数リテラルも
+桁がそのまま保持され、int64 の範囲を超える値は黙って壊れる代わりにエラーになります。
+取得結果はゲッターによって変わります:
+
+```ts
+const cfg = parseJsonc('{"id": 9007199254740993}')
+cfg.getString('id')   // "9007199254740993"  — ソースそのままの正確な値
+cfg.getNumber('id')   // 9007199254740992    — JS の数値モデルで丸められる
+cfg.toObject()        // { id: 9007199254740992 }
+```
+
+したがって大きな識別子（snowflake ID、台帳の連番など）は `getString` で読んでください。
+`getNumber` と `toObject` は JavaScript の数値セマンティクスをそのまま適用します
+（HOCON テキストに同じリテラルを書いた場合と同じ挙動です）。保証されるのは
+**取り込み時に情報が失われない** ことです。
+
+YAML のスカラー解決はそれ以外の点では `yaml` ライブラリのものです。アダプタは
+デフォルト任せにせず `version: '1.2'` を明示し、`fromYamlValue` はデコード済みの
+ツリーを受け取るため、別のライブラリやスキーマを使うこともできます。
+
+## 既知の制限
+
+- **`include url(...)`** は未対応です。リモート設定の取得はこのパーサーの範囲外です。アプリの HTTP クライアントで取得してから `parse()` に渡してください。
+- **`include classpath(...)`** は未対応です。JVM 固有の include 形式で、Java ランタイム以外に対応物がありません。
+- **watch / reload なし** — ライブラリはロード時にパースするだけです。ライブリロードが必要なら変更時に `parse()` / `parseFile()` を呼び直してください。
+- **ストリーミングパーサーなし** — 入力全体をメモリに載せます。非常に大きな設定はパース前にサイズを検証してください（セキュリティ上の考慮事項を参照）。
+
+## セキュリティ上の考慮事項
+
+信頼できない HOCON 入力をパースする際は次に注意してください:
+
+- **include のパストラバーサル:** 相対 `include` パスは `baseDir` から解決され、`..` セグメントで外に出て `/etc/passwd` のような機密ファイルに到達し得ます。信頼できない入力をパースするなら、パスを検証するカスタム `readFileSync`/`readFile` を渡してください。
+- **入力サイズ:** パーサーに入力サイズ上限はありません。信頼できない入力は `parse()` の前にサイズを検証してください。
+- **include の深さ:** 深い include 連鎖によるスタックオーバーフローを防ぐため 50 段に制限されています。
+- **プロトタイプ汚染:** `__proto__` / `constructor` / `prototype` という名前のキーは
+  **通常のキーとして保持されます**。`.properties` ファイルや環境変数がそれらを正当に
+  使っていることがあり、落とせば黙ったデータ欠落になるからです。ライブラリ内部の安全性は
+  拒否リストではなく構造で担保しています。ネスト構築には `__proto__` セッターを継承しない
+  null プロトタイプのオブジェクトを使い、各アダプタと `toObject()` はキーを own データ
+  プロパティとして定義します。パース自体は何も汚染せず、返るオブジェクトのプロトタイプは
+  常に `Object.prototype` です。
+
+  **重要なのは結果をどう扱うか** です。設定データが own な `__proto__` キーを持ち得ます:
+
+  ```ts
+  const data = cfg.toObject()
+  { ...data }             // 安全
+  structuredClone(data)   // 安全
+  Object.assign({}, data) // 危険 — キーが消え、設定データがコピー先のプロトタイプになる
+  deepMerge({}, data)     // 危険 — 素朴な再帰マージはグローバルな Object.prototype に書き込み得る
+  ```
+
+  いずれも **コピー先** オブジェクトのプロトタイプに起因するため、避けるのは利用側の責務です。
+  コピーはスプレッドか `structuredClone`、走査は `Object.entries()` / `Object.keys()` を使い、
+  `__proto__` を通常のキー名として扱ってください。制御下にない場所へ渡す場合は
+  `cfg.toObject({ nullPrototype: true })` が何も継承しないツリーを返します（ただし利用側が
+  素の `{}` にコピーする場合の問題までは解消できません）。
 
 ## ライセンス
 

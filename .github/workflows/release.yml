@@ -68,6 +68,14 @@ jobs:
       - name: Build
         run: pnpm build
 
+      # The gate that matters most here: this is the only workflow that
+      # publishes, and `pnpm test` runs against src/, so a bundler-shape defect
+      # in dist/ is invisible to every step above. 1.10.0 shipped exactly that.
+      # Loads, uses and type-checks the declarations of every entrypoint in both
+      # module formats; a failure stops the release before `pnpm publish`.
+      - name: Smoke-test published entrypoints
+        run: node tools/smoke-entrypoints.mjs
+
       - name: Extract CHANGELOG section for this tag
         # Pulls the section between `## [VERSION]` and the next `## [`
         # from CHANGELOG.md so the GitHub Release body matches what's

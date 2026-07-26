@@ -21,6 +21,11 @@ import { parseProperties } from '../internal/properties/properties.js'
  * A `${a.b}` in a value stays that literal text — the file belongs to another
  * program that never agreed to HOCON's syntax (spec F0.2).
  *
+ * Dotted keys nest (F2.1), and every key is preserved — `__proto__`,
+ * `constructor` and `prototype` included (F2.9). They arrive as ordinary keys:
+ * the tree is built on null-prototype objects and `toObject()` defines own
+ * properties, so nothing can reach `Object.prototype`.
+ *
  * Shares its syntax layer with `include "x.properties"`, so the two cannot
  * drift apart.
  */

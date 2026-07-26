@@ -1,5 +1,6 @@
 import type { HoconValue } from '../../value.js'
 import { ParseError } from '../../errors.js'
+import { stripBom } from '../strip-bom.js'
 
 /**
  * Parse a `.properties` file the way `java.util.Properties` does, which is what
@@ -17,31 +18,72 @@ export function parseProperties(input: string): Record<string, unknown> {
   // and an object expansion ("a.b=world"), the object must always win.
   // Sorting keys gives a single deterministic processing order regardless of input
   // line order (mirrors go.hocon's sort.Strings(keys) and spec L1476-1479 intent).
-  const pairs: [string, string][] = []
-  for (const { text, line } of logicalLines(input)) {
+  const pairs: PathPair[] = []
+  for (const { text, line } of logicalLines(stripBom(input))) {
     const [rawKey, rawValue] = splitKeyValue(text)
     const key = unescapeProps(rawKey, line)
     if (key === '') continue
-    pairs.push([key, unescapeProps(rawValue, line)])
+    // F2.1: a `.properties` key is a path expression, so the split happens
+    // here, in the caller that owns that rule — nestPairs never re-splits.
+    pairs.push([key.split('.'), unescapeProps(rawValue, line)])
   }
 
   return nestPairs(pairs)
 }
 
 /**
- * Turn dotted-key pairs into a nested object, applying the S23.4 object-wins
- * rule. Keys are sorted first so the outcome does not depend on input order.
+ * One flat entry: the path **already split into segments**, and its value.
+ *
+ * Segments rather than a joined string because what counts as a boundary is the
+ * caller's rule, not this module's: `.properties` splits keys on `.` (F2.1)
+ * while env splits only on `__`, so a literal `.` in a variable name is key text
+ * (F1.2). Joining and re-splitting here would manufacture a boundary the source
+ * never had.
+ */
+export type PathPair = [segments: string[], value: string]
+
+/**
+ * Turn pre-split path pairs into a nested object, applying the S23.4/F2.5
+ * object-wins rule. Entries are sorted first so the outcome does not depend on
+ * input order.
  *
  * Exported because the `env` adapter mounts variables the same way and must not
  * carry a second copy of this rule.
  */
-export function nestPairs(pairs: [string, string][]): Record<string, unknown> {
+export function nestPairs(pairs: PathPair[]): Record<string, unknown> {
   const root: Record<string, unknown> = Object.create(null)
-  const sorted = [...pairs].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-  for (const [key, value] of sorted) {
-    setNested(root, key.split('.'), value)
+  // Ordered segment-wise, so `a.b` (one segment) and `a` → `b` (two) sort as the
+  // different paths they are, with no delimiter to assume. Array.sort is stable,
+  // so equal paths keep input order and the last one wins (F0.7).
+  const sorted = [...pairs].sort(([a], [b]) => compareSegments(a, b))
+  for (const [segments, value] of sorted) {
+    setNested(root, segments, value)
   }
   return root
+}
+
+/** Lexicographic order on the segment lists themselves. */
+function compareSegments(a: readonly string[], b: readonly string[]): number {
+  const n = Math.min(a.length, b.length)
+  for (let i = 0; i < n; i++) {
+    const x = a[i] as string
+    const y = b[i] as string
+    if (x !== y) return x < y ? -1 : 1
+  }
+  return a.length - b.length
+}
+
+/**
+ * A collision-free key for a segment list, for callers that need one path per
+ * map entry (the env adapter's F1.6 collision check).
+ *
+ * JSON encoding rather than a joined string: a `.properties` key can contain
+ * any character, NUL included (F2.3 honours `\u0000`), so no single delimiter is
+ * safe in general. `JSON.stringify` escapes unambiguously, so two segment lists
+ * share a key only when they are equal.
+ */
+export function pathKey(segments: readonly string[]): string {
+  return JSON.stringify(segments)
 }
 
 interface LogicalLine {
@@ -168,20 +210,27 @@ function unescapeProps(s: string, line: number): string {
   return out
 }
 
-const DANGEROUS_KEYS = new Set(['__proto__', 'constructor', 'prototype'])
-
+/**
+ * Insert one path into the tree.
+ *
+ * F2.9: there is no key denylist. `__proto__`, `constructor` and `prototype`
+ * are ordinary keys in a file another program owns, and dropping them is silent
+ * data loss (the old denylist also left the parent it had already created
+ * behind as a phantom empty object). Prototype-pollution safety comes from the
+ * carrier instead: every level is an `Object.create(null)` object, which
+ * inherits no `__proto__` setter and no `constructor`, so assigning any of
+ * these names defines a plain own property and reaches nothing global.
+ */
 function setNested(obj: Record<string, unknown>, segments: string[], value: string): void {
   let current = obj
   for (let i = 0; i < segments.length - 1; i++) {
-    const seg = segments[i]
-    if (seg === undefined || DANGEROUS_KEYS.has(seg)) return
+    const seg = segments[i] as string
     if (!(seg in current) || typeof current[seg] !== 'object' || current[seg] === null) {
       current[seg] = Object.create(null)
     }
     current = current[seg] as Record<string, unknown>
   }
-  const last = segments[segments.length - 1]
-  if (last === undefined || DANGEROUS_KEYS.has(last)) return
+  const last = segments[segments.length - 1] as string
   // S23.4 — HOCON.md L1485: object must always win over scalar.
   // If the last segment already holds an object, do not overwrite it with a scalar.
   if (typeof current[last] === 'object' && current[last] !== null) return

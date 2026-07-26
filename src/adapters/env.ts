@@ -1,7 +1,8 @@
 import { fromMap } from '../value-factory.js'
 import type { Config } from '../config.js'
-import { nestPairs } from '../internal/properties/properties.js'
+import { type PathPair, nestPairs, pathKey } from '../internal/properties/properties.js'
 import { ConfigError } from '../errors.js'
+import { stripBom } from '../internal/strip-bom.js'
 
 /** The double underscore that marks a path boundary; a single one stays part of
  *  the segment, so `APP_DB__MAX_CONN` is `db.max_conn` (spec F1.2). Fixed rather
@@ -31,6 +32,16 @@ export type EnvOptions = {
  * Reading a single variable needs nothing from here — HOCON's own `${?VAR}`
  * already does that. This is for mounting a whole namespace as a subtree.
  *
+ * `__` is the only path separator: a single `_` stays part of its segment
+ * (`APP_DB__MAX_CONN` → `db.max_conn`), and a literal `.` in a variable name is
+ * key text rather than a boundary, so `APP_FOO.BAR` becomes the single
+ * top-level key `foo.bar` — addressable as the quoted path `"foo.bar"` — and
+ * coexists with `APP_FOO__BAR` instead of colliding with it (F1.2).
+ *
+ * Two names that do map to one path are an error, the environment having no
+ * order to break the tie with (F1.6). Keys named `__proto__`, `constructor` or
+ * `prototype` are kept like any other (F2.9).
+ *
  * Values are always strings, and a `${...}` inside one stays literal (F0.2, F1.4).
  */
 export function loadEnv(opts: EnvOptions & { env?: Record<string, string | undefined> } = {}): Config {
@@ -46,20 +57,26 @@ export function loadEnv(opts: EnvOptions & { env?: Record<string, string | undef
   // Sorted so a collision is reported the same way on every run.
   const names = Object.keys(source).sort()
   const seen = new Map<string, string>()
-  const pairs: [string, string][] = []
+  const pairs: PathPair[] = []
 
   for (const name of names) {
     if (!name.startsWith(prefix)) continue
     const value = source[name]
     if (value === undefined) continue
     const path = toPath(name.slice(prefix.length))
-    const prev = seen.get(path)
+    // Collisions are compared on the segment list, as go.hocon's adapter does
+    // (it joins with NUL; this encodes, which needs no delimiter to be safe):
+    // `APP_FOO.BAR` (one segment "foo.bar") and `APP_FOO__BAR` (two segments)
+    // are different paths and must both survive, which a dot-joined comparison
+    // would conflate (F1.2/F1.6).
+    const key = pathKey(path)
+    const prev = seen.get(key)
     if (prev !== undefined) {
       // F1.6: two names can reach one path and the environment has no
       // meaningful order to break the tie with, so neither silently wins.
-      throw new ConfigError(`loadEnv: ${prev} and ${name} both map to "${path}"`, path)
+      throw new ConfigError(`loadEnv: ${prev} and ${name} both map to "${path.join('.')}"`, path.join('.'))
     }
-    seen.set(path, name)
+    seen.set(key, name)
     pairs.push([path, value])
   }
 
@@ -74,13 +91,18 @@ export function loadEnv(opts: EnvOptions & { env?: Record<string, string | undef
  * double quotes with `\n \r \t \\ \"`. Multi-line values and trailing comments
  * are not supported — an unquoted value containing ` #` is an error rather than
  * a guess about whether a comment was meant. No `${...}` expansion.
+ *
+ * Names map to paths exactly as in {@link loadEnv}: `__` is the only separator,
+ * so a literal `.` stays key text (`FOO.BAR` → the single key `foo.bar`). A
+ * file has a definite line order, so a repeated name is last-wins (F0.7)
+ * rather than the collision error the process environment gets.
  */
 export function parseDotEnv(input: string, opts: EnvOptions = {}): Config {
   const origin = opts.originDescription ?? '.env'
   const prefix = opts.prefix ?? ''
-  const pairs: [string, string][] = []
+  const pairs: PathPair[] = []
 
-  const lines = input.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n')
+  const lines = stripBom(input).replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n')
   for (let i = 0; i < lines.length; i++) {
     const raw = (lines[i] ?? '').trim()
     if (raw === '' || raw.startsWith('#')) continue
@@ -101,13 +123,33 @@ export function parseDotEnv(input: string, opts: EnvOptions = {}): Config {
   return fromMap(nestPairs(pairs), origin)
 }
 
-/** Strip the prefix, split on `__`, lowercase each segment (F1.2, F1.3). */
-function toPath(name: string): string {
-  const segs = name.split(SEPARATOR).map(s => s.toLowerCase())
+/**
+ * Split a prefix-stripped name on `__` and lowercase each segment (F1.2, F1.3).
+ *
+ * The result stays a **segment list** all the way into `nestPairs`. Joining it
+ * on `.` and letting the nesting step re-split — which is what this did before
+ * — turns a literal `.` in a variable name into a path boundary the environment
+ * never had: `APP_FOO.BAR` must be the single top-level key `"foo.bar"`,
+ * addressable as a quoted path, and must not collide with `APP_FOO__BAR`.
+ * go.hocon's env adapter carries `[]string` for the same reason.
+ *
+ * Case folding is ASCII-only (F1.3). JS's `toLowerCase` applies the full
+ * Unicode mapping, so `İ` (U+0130) becomes `i` + U+0307, while Go's simple
+ * mapping yields plain `i` — which decides whether `APP_İ` collides with
+ * `APP_I` under F1.6. Environment variable names are ASCII in practice, so
+ * pinning the mapping costs nothing and keeps the implementations agreeing.
+ */
+function toPath(name: string): string[] {
+  const segs = name.split(SEPARATOR).map(asciiLower)
   if (segs.some(s => s === '')) {
     throw new ConfigError(`env: "${name}" produces an empty path segment`, name)
   }
-  return segs.join('.')
+  return segs
+}
+
+/** `A`–`Z` → `a`–`z`, every other codepoint untouched (F1.3). */
+function asciiLower(s: string): string {
+  return s.replace(/[A-Z]/g, c => String.fromCharCode(c.charCodeAt(0) + 32))
 }
 
 function dotEnvValue(v: string, origin: string, line: number, name: string): string {

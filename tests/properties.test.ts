@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { parseProperties } from '../src/internal/properties/properties.js'
+import { parsePropertiesConfig } from '../src/adapters/properties.js'
 
 describe('parseProperties', () => {
   it('parses simple key=value pairs', () => {
@@ -84,8 +85,36 @@ describe('parseProperties', () => {
     expect(result).toEqual({ num: '42', bool: 'true', null: 'null' })
   })
 
-  it('should not pollute prototype via __proto__ key', () => {
-    parseProperties('__proto__.polluted=true')
+  // F2.9 (2026-07-25): these were silently dropped by a key denylist, which is
+  // data loss — a `.properties` file may legitimately carry them, and the file
+  // is another program's. Pollution safety comes from the carrier being a
+  // null-prototype object, so the keys are preserved *and* nothing leaks onto
+  // Object.prototype. (Previously this test only asserted the second half.)
+  it('preserves __proto__ as an ordinary key without polluting Object.prototype (F2.9)', () => {
+    const result = parseProperties('__proto__.polluted=true')
+
+    const desc = Object.getOwnPropertyDescriptor(result, '__proto__')
+    expect(desc).toBeDefined()
+    expect(desc?.value).toEqual({ polluted: 'true' })
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined()
+    expect(Object.getPrototypeOf(result)).toBe(null)
+  })
+
+  it('preserves constructor and prototype keys, with no phantom empty parents (F2.9)', () => {
+    const result = parseProperties('constructor.name=x\nprototype=y\nsafe.a=1')
+    expect(result).toEqual({ constructor: { name: 'x' }, prototype: 'y', safe: { a: '1' } })
+    // The old denylist bailed out mid-path, leaving the parent it had already
+    // created behind as an empty object.
+    expect(Object.keys(result).sort()).toEqual(['constructor', 'prototype', 'safe'])
+  })
+
+  it('surfaces those keys through the Config API too (F2.9 + toObject)', () => {
+    const cfg = parsePropertiesConfig('__proto__.polluted=true\nconstructor=c\n')
+    expect(cfg.getString('__proto__.polluted')).toBe('true')
+    expect(cfg.getString('constructor')).toBe('c')
+    const obj = cfg.toObject() as Record<string, unknown>
+    expect(Object.getOwnPropertyDescriptor(obj, '__proto__')?.value).toEqual({ polluted: 'true' })
+    expect(Object.getPrototypeOf(obj)).toBe(Object.prototype)
     expect(({} as Record<string, unknown>).polluted).toBeUndefined()
   })
 })

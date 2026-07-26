@@ -1,5 +1,6 @@
 import { createRequire } from 'node:module'
 import * as nodePath from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { PackageLookupError, ParseError, ResolveError } from '../../errors.js'
 import type { AstNode } from '../parser/ast.js'
 import { tokenize } from '../lexer/lexer.js'
@@ -17,10 +18,59 @@ import {
   isFileNotFoundError,
 } from './utils.js'
 
-// createRequire works in both CJS and ESM Node contexts (Node ≥ 12).
-// Using import.meta.url makes this module's directory the resolution anchor,
-// which is overridden per-call via the `paths` option.
-const _require = createRequire(import.meta.url)
+/**
+ * The `require` used to resolve `include package(...)`, in whichever module
+ * format this code was bundled into.
+ *
+ * Getting this wrong has now broken one format twice, in opposite directions,
+ * so the rules are written down:
+ *
+ *  - **Probe the capability, never `typeof require`.** esbuild rewrites a bare
+ *    `require` identifier in *ESM* output into a shim that is a `Proxy` over a
+ *    function: `typeof` reports `"function"` while `.resolve` is `undefined`,
+ *    so a `typeof` guard picks it and every package include fails with a
+ *    misleading "module not found". Asking for `.resolve` directly is the only
+ *    check that describes what this code actually needs.
+ *  - **Never call `createRequire(import.meta.url)` unguarded.** The *CJS*
+ *    bundle rewrites `import.meta` to `{}`, making that `createRequire(undefined)`
+ *    — an ERR_INVALID_ARG_VALUE thrown at module load, which is what shipped in
+ *    1.10.0. The cwd anchor keeps a bundler shape we have not seen yet from
+ *    reintroducing it.
+ *  - **Stay lazy.** Resolution happens on first use, so no bundling artifact of
+ *    these lines can crash `require()`/`import()` of an entrypoint.
+ *
+ * The anchor barely matters in practice: {@link defaultPackageResolver} always
+ * passes an explicit `paths`, which is what actually decides resolution.
+ *
+ * `tools/smoke-entrypoints.mjs` exercises a real package include through both
+ * built formats, because vitest runs against `src/`, where the bundler shapes
+ * this comment is about do not exist.
+ */
+let _require: NodeRequire | undefined
+function getRequire(): NodeRequire {
+  if (_require === undefined) {
+    _require = pickRequire(
+      typeof require === 'function' ? require : undefined,
+      (import.meta as { url?: string }).url,
+    )
+  }
+  return _require
+}
+
+/**
+ * Choose the require to use, given whatever the bundler left behind.
+ *
+ * @internal Exported for tests only. Both failure modes above live in bundled
+ * artifacts, which vitest never sees, so the *decision* is unit-tested here with
+ * the shapes the bundlers actually produce, and the built artifacts are covered
+ * end-to-end by `tools/smoke-entrypoints.mjs`.
+ */
+export function pickRequire(candidate: unknown, metaUrl: string | undefined): NodeRequire {
+  if (typeof (candidate as NodeRequire | undefined)?.resolve === 'function') {
+    return candidate as NodeRequire
+  }
+  return createRequire(metaUrl ?? pathToFileURL(nodePath.join(process.cwd(), 'noop.js')))
+}
 
 /**
  * Detect Yarn Berry PnP store paths. PnP resolves to ZIP-internal paths that
@@ -115,7 +165,7 @@ function defaultPackageResolver(
 
   let resolved: string
   try {
-    resolved = _require.resolve(`${identifier}/${file}`, { paths: from })
+    resolved = getRequire().resolve(`${identifier}/${file}`, { paths: from })
   } catch {
     throw new PackageLookupError(
       `include package("${identifier}", "${file}"): module not found (starting from: ${from.join(', ')})`,
