@@ -265,12 +265,12 @@ Supported byte units: `B`, `KB`/`KiB`, `MB`/`MiB`, `GB`/`GiB`, `TB`/`TiB` (and l
 
 ## Spec Compliance
 
-Conformance against the [Lightbend HOCON specification](https://github.com/lightbend/config/blob/main/HOCON.md) is tracked at item granularity in [`docs/spec-compliance.md`](docs/spec-compliance.md). The table below is a snapshot as of 2026-05-13; see [`xx.hocon/docs/compliance-matrix.md`](https://github.com/o3co/xx.hocon/blob/main/docs/compliance-matrix.md) for live cross-impl values.
+Conformance against the [Lightbend HOCON specification](https://github.com/lightbend/config/blob/main/HOCON.md) is tracked at item granularity in [`docs/spec-compliance.md`](docs/spec-compliance.md), which is the source these rates are computed from — `tests/docs.test.ts` recomputes them and fails the build if this table drifts. See [`xx.hocon/docs/compliance-matrix.md`](https://github.com/o3co/xx.hocon/blob/main/docs/compliance-matrix.md) for the cross-implementation roll-up.
 
 | Metric                                | Status        |
 | ------------------------------------- | ------------- |
-| Spec total (incl. out-of-scope)       | **74.2%**     |
-| In-scope only                         | **83.3%**     |
+| Spec total (incl. out-of-scope)       | **89.3%**     |
+| In-scope only                         | **99.2%**     |
 | Lightbend `test01`–`test13` suite     | 13/13 passing |
 
 **Extra-spec conventions (E-series) — implementation status:**
@@ -288,10 +288,6 @@ Not supported:
 Supported since v0.2.0 (P1):
 
 - `.properties` file parsing
-
-### Stricter than Lightbend
-
-- **S8.6 leading-hyphen rejection** (Unreleased): `a = -foo`, `a = -bar`, `a = -` etc. now raise a lex error per HOCON.md L270–276, where Lightbend silently falls back to unquoted strings. Mitigation: quote the value (`a = "-foo"`). See [CHANGELOG](CHANGELOG.md#unreleased) and [`docs/spec-compliance.md`](docs/spec-compliance.md) §S8.6.
 
 ## Performance
 
@@ -325,7 +321,7 @@ For typical application configs (loaded once at startup), the parsing cost is ne
 
 ### Feature Comparison with node-config
 
-ts.hocon provides significantly richer configuration capabilities compared to [node-config](https://github.com/node-config/node-config) (JSON):
+Feature-level comparison with [node-config](https://github.com/node-config/node-config) **v4.4.2** reading JSON config files, as of 2026-07-26:
 
 | Feature | ts.hocon | node-config (JSON) |
 |---|---|---|
