@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — documentation that had drifted away from the code
+
+Nothing was checking the README's factual claims, so they aged with each
+release. The ones that can be recomputed from a source of truth in this
+repository are now pinned by `tests/docs.test.ts`, which runs in the release
+workflow — a stale README fails the cut.
+
+- **"Stricter than Lightbend — S8.6 leading-hyphen rejection" described behavior
+  retracted in v1.3.0.** `a = -foo`, `a = -`, and (since v1.9.0) `a.-foo = 1`
+  all parse; the section told readers to quote values that need no quoting. The
+  E8 amendment and its retraction are already recorded in the [1.3.0] and
+  [1.9.0] sections, so the section is removed rather than rewritten.
+- **The compliance rates were a 2026-05-13 snapshot** (74.2% / 83.3%) against
+  the current 89.3% / 99.2%. They are now recomputed from the status glyphs in
+  `docs/spec-compliance.md` and compared against the table, so the two cannot
+  diverge again.
+- **`CONTRIBUTING.md` told contributors to release with `npm version`**, which
+  bumps `package.json` — the opposite of this repository's convention, where the
+  tag is the version and `package.json` stays at `0.0.0-snapshot` for CI to
+  overwrite. Following it produced exactly the PR that broke the v1.4.0 publish.
+- The node-config comparison now names the version it was checked against
+  (v4.4.2) and drops the editorializing lead-in.
+
 ## [1.11.0] - 2026-07-26
 
 ### Changed (behavior) — read this before upgrading

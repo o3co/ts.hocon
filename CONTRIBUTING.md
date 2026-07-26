@@ -59,23 +59,28 @@ pnpm vitest run tests/lightbend/
 
 ## Releasing
 
-Releases are published to npm automatically by CI when a `v*` tag is pushed.
-Use `npm version` to do everything in one command:
+**The tag is the version.** `package.json` stays at `0.0.0-snapshot` on
+`develop`; the release workflow writes the real version from the tag before it
+publishes. Do not bump `package.json` in a PR — a release-prep PR that pre-sets
+it is what broke the v1.4.0 publish, and while the workflow now skips the bump
+when the two already agree, the manifest is still not where a version is
+decided.
+
+Releasing is therefore just a tag on a merged commit:
 
 ```bash
-npm version patch   # or: npm version minor / npm version major
-git push && git push --tags
+git checkout develop && git pull
+git tag v1.4.0
+git push origin v1.4.0
 ```
 
-`npm version` will:
+CI then runs the tests, sets the version from the tag, builds, publishes to npm,
+and creates the GitHub Release from the matching `## [1.4.0]` section of
+`CHANGELOG.md` — so that section has to exist and be committed *before* the tag
+is pushed, or the run fails without publishing.
 
-1. Bump the version in `package.json`
-2. Create a commit (`v0.1.4`)
-3. Tag it (`v0.1.4`)
-
-Then `git push --tags` triggers CI, which runs tests, builds, and publishes to npm.
-
-> **Do not** run `pnpm publish` locally — CI handles it and verifies the tag matches `package.json`.
+> **Do not** run `pnpm publish` locally — CI handles it, and npm does not allow
+> republishing a version.
 
 ## License
 
