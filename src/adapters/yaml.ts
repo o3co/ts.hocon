@@ -64,7 +64,14 @@ export function parseYaml(input: string, originDescription?: string): Config {
     throw new ConfigError(`yaml: ${doc.errors[0]?.message ?? 'parse error'}`, '')
   }
 
-  return fromYamlValue(doc.toJS({ mapAsMap: false }), originDescription)
+  // mapAsMap, because F5.3 cannot be enforced on a plain object: `1:` and
+  // `"1":` are distinct YAML keys that both stringify to "1", and an object
+  // has already kept one of them by the time this function sees it — the other
+  // value is gone with nothing left to notice. A Map keeps both, so the
+  // collision is still there to be reported. It also keeps a null key as
+  // `null`; the object form turns it into "" rather than "null", which is the
+  // key the sibling implementations produce.
+  return fromYamlValue(doc.toJS({ mapAsMap: true }), originDescription)
 }
 
 /**
@@ -103,8 +110,10 @@ function convert(v: unknown, atPath: string): unknown {
     return v.toISOString()
   }
   if (v instanceof Map) {
-    // eemeli's mapAsMap shape; scalar keys stringify per F5.3.
+    // eemeli's mapAsMap shape, and the shape `parseYaml` asks for; scalar keys
+    // stringify per F5.3.
     const entries: [string, unknown][] = []
+    const seen = new Map<string, unknown>()
     for (const [k, e] of v) {
       if (k !== null && typeof k === 'object') {
         throw new ConfigError(
@@ -113,6 +122,21 @@ function convert(v: unknown, atPath: string): unknown {
         )
       }
       const key = String(k)
+      if (seen.has(key)) {
+        // Two source keys, one object key: the int 1 and the string "1", ~ and
+        // "null", 0x10 and "16". Writing the second would drop the first's
+        // value with nothing to show for it, so neither wins (spec F5.3). A Map
+        // iterates in insertion order, so this reports the same pair every run
+        // and names the keys in the order they were written.
+        throw new ConfigError(
+          `yaml: sibling mapping keys ${keyForm(seen.get(key))} and ${keyForm(k)} ` +
+            `both give the key "${key}"${atPath === '' ? '' : ` at "${atPath}"`}; ` +
+            `quote the one you mean to keep distinct, because one of the two ` +
+            `values would otherwise be lost (spec F5.3)`,
+          atPath,
+        )
+      }
+      seen.set(key, k)
       entries.push([key, convert(e, atPath === '' ? key : `${atPath}.${key}`)])
     }
     return Object.fromEntries(entries)
@@ -170,6 +194,16 @@ function bytesToBase64(bytes: Uint8Array): string {
     binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK))
   }
   return btoa(binary)
+}
+
+/**
+ * Render a source key for the F5.3 collision error: a string is quoted, every
+ * other scalar shows its type, so the int `1` and the string `"1"` stay apart
+ * in the message the way they failed to in the mapping.
+ */
+function keyForm(k: unknown): string {
+  if (typeof k === 'string') return JSON.stringify(k)
+  return `${String(k)} (${k === null ? 'null' : typeof k})`
 }
 
 const MAX_SAFE = BigInt(Number.MAX_SAFE_INTEGER)
