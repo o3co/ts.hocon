@@ -441,6 +441,12 @@ describe('yaml adapter', () => {
     expect(() => parseYaml(src)).toThrow(new RegExp(`both give the key ${key}`))
   })
 
+  it('does not tell the reader to quote a key when that cannot help (F5.3)', () => {
+    // Quoting turns `1:` into `'1':`, which gives the same key and so becomes a
+    // duplicate-key error instead. Renaming is the advice that always works.
+    expect(() => parseYaml("1: a\n'1': b\n")).toThrow(/rename one of them/)
+  })
+
   it('reports the path of a nested collision (F5.3)', () => {
     expect(() => parseYaml("outer:\n  1: a\n  '1': b\n")).toThrow(/at "outer"/)
   })
