@@ -131,8 +131,9 @@ function convert(v: unknown, atPath: string): unknown {
         throw new ConfigError(
           `yaml: sibling mapping keys ${keyForm(seen.get(key))} and ${keyForm(k)} ` +
             `both give the key "${key}"${atPath === '' ? '' : ` at "${atPath}"`}; ` +
-            `quote the one you mean to keep distinct, because one of the two ` +
-            `values would otherwise be lost (spec F5.3)`,
+            `rename one of them, because one of the two values would otherwise ` +
+            `be lost. Quoting a non-string key helps only where that changes ` +
+            `the key text, as 0x10 does and 1 does not (spec F5.3)`,
           atPath,
         )
       }
