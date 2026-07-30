@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — `adapters/yaml`: coinciding sibling keys were last-wins, not an error
+
+**BREAKING** (input previously accepted is now refused; quote the key you mean
+to keep distinct).
+
+`parseYaml("1: a\n'1': b\n")` returned `{"1":"b"}`. The integer key and the
+string key are distinct in YAML but have the same string form, so writing the
+second dropped the first's value with nothing to show for it — the silent loss
+F5.3 exists to prevent. The same held for `~`/`"null"`, `true`/`"true"` and
+`0x10`/`"16"`, and for a `Map` handed to `fromYamlValue`
+([#171](https://github.com/o3co/ts.hocon/issues/171)).
+
+The document is now decoded with `mapAsMap`, so both keys survive the decode
+and one collision check covers the parse path and the injected-tree path
+alike. Which forms coincide is still the library's business — `1.0` resolves to
+the number `1` here and so does not meet the string `"1.0"`.
+
+**A null key now spells itself `"null"` rather than `""`**, which is what
+go.hocon, rs.hocon and py.hocon produce; `mapAsMap` keeps the key as `null`
+instead of the empty string the object form substitutes.
+
 ### Fixed — documentation that had drifted away from the code
 
 Nothing was checking the README's factual claims, so they aged with each

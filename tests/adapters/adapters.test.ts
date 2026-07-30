@@ -424,6 +424,50 @@ describe('yaml adapter', () => {
     expect(fromYamlValue({ n: 42n }).getNumber('n')).toBe(42)
     expect(() => fromYamlValue({ huge: 9223372036854775808n })).toThrow(/int64/)
   })
+
+  // F5.3 — two source keys with one string form used to be last-wins, and the
+  // loser's value was gone with nothing to show for it. Which forms actually
+  // coincide is the library's business (`1.0` resolves to the number 1 here, so
+  // it does *not* meet the string "1.0"); what this pins is that a coincidence
+  // is an error rather than a silent loss.
+  it.each([
+    ['int and string', "1: a\n'1': b\n", '"1"'],
+    ['string and int', "'1': b\n1: a\n", '"1"'],
+    ['null and "null"', "~: a\n'null': b\n", '"null"'],
+    ['bool and "true"', "true: a\n'true': b\n", '"true"'],
+    ['hex and its decimal string', "0x10: a\n'16': b\n", '"16"'],
+  ])('refuses sibling keys that coincide — %s (F5.3)', (_name, src, key) => {
+    expect(() => parseYaml(src)).toThrow(/F5\.3/)
+    expect(() => parseYaml(src)).toThrow(new RegExp(`both give the key ${key}`))
+  })
+
+  it('reports the path of a nested collision (F5.3)', () => {
+    expect(() => parseYaml("outer:\n  1: a\n  '1': b\n")).toThrow(/at "outer"/)
+  })
+
+  // The other half: a key that only *looks* like it might collide still parses,
+  // and a non-string scalar key keeps its string form.
+  it('stringifies lone non-string keys instead of refusing them (F5.3)', () => {
+    expect(parseYaml('1: a\n').getString('"1"')).toBe('a')
+    expect(parseYaml('~: a\n').getString('"null"')).toBe('a')
+    expect(parseYaml('true: a\n').getString('"true"')).toBe('a')
+  })
+
+  // A null key used to reach the config as "" — the object form of toJS spells
+  // it that way — where go.hocon, rs.hocon and py.hocon all produce "null".
+  it('spells a null key "null", as the sibling implementations do (F5.3)', () => {
+    expect(parseYaml('~: a\n').keys()).toEqual(['null'])
+  })
+
+  it('detects a collision in an injected Map tree too (F5.3)', async () => {
+    const { fromYamlValue } = await import('../../src/adapters/yaml.js')
+    expect(() => fromYamlValue(new Map<unknown, unknown>([[1, 'a'], ['1', 'b']]))).toThrow(/F5\.3/)
+    // A Map whose keys have distinct string forms is still fine.
+    expect(fromYamlValue(new Map<unknown, unknown>([[1, 'a'], [2, 'b']])).keys().sort()).toEqual([
+      '1',
+      '2',
+    ])
+  })
 })
 
 describe('use as a substitution source under HOCON', () => {
