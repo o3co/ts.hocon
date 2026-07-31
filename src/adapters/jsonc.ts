@@ -24,6 +24,16 @@ import { depthError, guardStackDepth } from '../internal/depth.js'
  * the JS number model, as they do for HOCON's own literals, so read large
  * identifiers with `getString`.
  *
+ * **An unpaired `\uXXXX` surrogate is accepted here and refused by go.hocon,
+ * py.hocon and rs.hocon** (F3.5). That is deliberate, and the same divergence
+ * the properties adapter already carries under F2.8: a JavaScript string is
+ * UTF-16, like Java's, so it holds a lone surrogate natively and round-trips it.
+ * A Go or Rust string cannot hold one at all — Go silently substituted U+FFFD
+ * until F3.5 — and a Python `str` can hold one but cannot encode it as UTF-8,
+ * so all three refuse rather than defer the failure. Refusing here would mean
+ * this spec overriding the host language rather than protecting the user; see
+ * S1.2.6 for the class.
+ *
  * See docs/specs/format-ingestion-mapping.md items F3.x in the hocon scope.
  */
 export function parseJsonc(input: string, originDescription?: string): Config {
