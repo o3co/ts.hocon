@@ -16,7 +16,8 @@ import { depthError, guardStackDepth } from '../internal/depth.js'
  * the safe-integer range is an error here rather than silently rounded — go's
  * adapter accepts those, its int64 being wide enough (spec F0.5).
  *
- * See docs/specs/format-ingestion-mapping.md items F4.x in the hocon scope.
+ * See the F4.x items in the format-ingestion mapping spec:
+ * https://github.com/o3co/xx.hocon/blob/main/docs/format-ingestion-mapping.md
  */
 export function parseTomlConfig(input: string, originDescription?: string): Config {
   const doc = parseToml(stripBom(input)) as Record<string, unknown>

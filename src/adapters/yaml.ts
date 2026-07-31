@@ -34,7 +34,8 @@ import { depthError, guardStackDepth } from '../internal/depth.js'
  * than rounded. `getNumber` and `toObject` still apply the JS number model, so
  * read large identifiers with `getString`.
  *
- * See docs/specs/format-ingestion-mapping.md items F5.x in the hocon scope.
+ * See the F5.x items in the format-ingestion mapping spec:
+ * https://github.com/o3co/xx.hocon/blob/main/docs/format-ingestion-mapping.md
  */
 export function parseYaml(input: string, originDescription?: string): Config {
   // version is declared rather than defaulted. The same library returns 8 for

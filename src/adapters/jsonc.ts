@@ -34,7 +34,8 @@ import { depthError, guardStackDepth } from '../internal/depth.js'
  * this spec overriding the host language rather than protecting the user; see
  * S1.2.6 for the class.
  *
- * See docs/specs/format-ingestion-mapping.md items F3.x in the hocon scope.
+ * See the F3.x items in the format-ingestion mapping spec:
+ * https://github.com/o3co/xx.hocon/blob/main/docs/format-ingestion-mapping.md
  */
 export function parseJsonc(input: string, originDescription?: string): Config {
   // JSON.parse recurses per level and gives out before anything here does, so
