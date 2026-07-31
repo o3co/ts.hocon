@@ -494,6 +494,15 @@ When parsing untrusted HOCON input, be aware of:
 - **Path traversal in includes:** a relative `include` path resolves against `baseDir` and can climb out of it with `..` segments to reach sensitive files such as `/etc/passwd`. Use a custom `readFileSync`/`readFile` that validates paths if parsing untrusted input.
 - **Input size:** The parser has no built-in input size limit. For untrusted input, validate size before calling `parse()`.
 - **Include depth:** Limited to 50 levels to prevent stack overflow from deep include chains.
+- **Mapped path depth:** an environment variable's `__` segments and a
+  `.properties` dotted key are limited to 64 segments. One name produces one
+  arbitrarily deep chain, so without the cap a single long variable name was
+  enough to exhaust the stack. rs.hocon and py.hocon cap the same mapping at 64.
+- **Document nesting depth:** not capped. A document nested past what the
+  engine's stack holds fails as `ParseError` or `ConfigError` — never as a bare
+  `RangeError` — but the depth at which that happens depends on how deep the
+  calling code already is, so validate size before parsing untrusted input (see
+  above) rather than relying on a fixed level.
 - **Prototype pollution:** keys named `__proto__`, `constructor` or `prototype`
   are **kept as ordinary keys** — a `.properties` file or environment variable
   may legitimately use them, and dropping them would be silent data loss.

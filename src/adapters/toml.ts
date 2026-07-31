@@ -3,6 +3,7 @@ import { fromMap } from '../value-factory.js'
 import type { Config } from '../config.js'
 import { ConfigError } from '../errors.js'
 import { stripBom } from '../internal/strip-bom.js'
+import { depthError, guardStackDepth } from '../internal/depth.js'
 
 /**
  * Read a TOML document as HOCON config, via `smol-toml`.
@@ -19,7 +20,13 @@ import { stripBom } from '../internal/strip-bom.js'
  */
 export function parseTomlConfig(input: string, originDescription?: string): Config {
   const doc = parseToml(stripBom(input)) as Record<string, unknown>
-  return fromMap(convert(doc, '') as Record<string, unknown>, originDescription)
+  return fromMap(
+    guardStackDepth(
+      () => convert(doc, '') as Record<string, unknown>,
+      msg => depthError(`toml: ${msg}`),
+    ),
+    originDescription,
+  )
 }
 
 function convert(v: unknown, atPath: string): unknown {

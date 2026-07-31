@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — deeply nested input threw `RangeError`, outside the documented error contract
+
+**BREAKING** for one of the two halves (a mapped path over 64 segments is now
+refused; nothing else changes about what is accepted).
+
+`RangeError` is not a type this library documents, so a caller writing
+`catch (e) { if (e instanceof ConfigError) … }` did not recognise it and the
+failure surfaced as an engine-level error from the middle of a parse
+([#177](https://github.com/o3co/ts.hocon/issues/177)).
+
+Two mechanisms, because two different things can be too deep:
+
+- **A name that maps to a path is capped at 64 segments** — an environment
+  variable's `__` segments, a `.properties` dotted key. One name produces one
+  arbitrarily deep chain, so the input needed was a single long string rather
+  than a structured document, which is reachable for anything bulk-mounting a
+  container environment. rs.hocon and py.hocon cap the same mapping at the same
+  number, so a name that mounts in one implementation mounts in the other. Over
+  the limit is a `ConfigError` (env) or `ParseError` (Properties) naming the
+  depth and the limit.
+- **A deeply nested document is not capped** — refusing a 65-level JSON file
+  would be a claim about the format rather than about a mapping we invented.
+  Instead the `RangeError` is turned into the error type the entry point's
+  contract names: `ConfigError` from the adapters (including the `from*Value`
+  tree entry points, which skip the decoder) and from `fromMap`, `ParseError`
+  from `parse`. That matters beyond tidiness, because the depth at which V8
+  gives out depends on how deep the *caller* already is: the same document could
+  parse from one call site and throw from another. The same guard covers a
+  *cyclic* input structure — an object that contains itself, handed to `fromMap`
+  — which from inside the handler is indistinguishable from depth, so the
+  message names both shapes.
+
+Only stack-exhaustion `RangeError`s are converted; one thrown for any other
+reason keeps its own identity rather than being relabelled a depth problem.
+
 ### Fixed — `adapters/yaml`: coinciding sibling keys were last-wins, not an error
 
 **BREAKING** (input previously accepted is now refused; rename one of the two

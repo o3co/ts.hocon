@@ -3,6 +3,7 @@ import type { Config } from '../config.js'
 import { type PathPair, nestPairs, pathKey } from '../internal/properties/properties.js'
 import { ConfigError } from '../errors.js'
 import { stripBom } from '../internal/strip-bom.js'
+import { MAX_PATH_SEGMENTS, tooDeep } from '../internal/depth.js'
 
 /** The double underscore that marks a path boundary; a single one stays part of
  *  the segment, so `APP_DB__MAX_CONN` is `db.max_conn` (spec F1.2). Fixed rather
@@ -143,6 +144,16 @@ function toPath(name: string): string[] {
   const segs = name.split(SEPARATOR).map(asciiLower)
   if (segs.some(s => s === '')) {
     throw new ConfigError(`env: "${name}" produces an empty path segment`, name)
+  }
+  if (tooDeep(segs.length)) {
+    // One name produces one arbitrarily deep chain, so a single long variable
+    // name was enough to exhaust the stack — and it did so as a RangeError,
+    // outside every error type documented here. rs.hocon and py.hocon cap the
+    // same mapping at the same number.
+    throw new ConfigError(
+      `env: "${name}" maps to a path ${segs.length} segments deep, over the limit of ${MAX_PATH_SEGMENTS}`,
+      name,
+    )
   }
   return segs
 }

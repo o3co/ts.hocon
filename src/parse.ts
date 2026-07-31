@@ -1,7 +1,8 @@
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { Config } from './config.js'
-import { ConfigError } from './errors.js'
+import { ConfigError, ParseError } from './errors.js'
+import { guardStackDepth } from './internal/depth.js'
 import { tokenize } from './internal/lexer/lexer.js'
 import { parseTokens } from './internal/parser/parser.js'
 import { buildTree, containsPlaceholders, resolve, resolveAsync } from './internal/resolver/resolver.js'
@@ -108,10 +109,7 @@ function buildResolveContext(input: string, opts: ParseOptions): { ast: ReturnTy
 }
 
 export function parse(input: string, opts: ParseOptions = {}): Config {
-  const { ast, resolveOpts } = buildResolveContext(input, opts)
-  const value = resolve(ast, resolveOpts)
-  if (value.kind !== 'object') throw new Error('resolved value is not an object')
-  return new Config(value, { resolved: true, originDescription: opts.originDescription })
+  return parseStringWithOptions(input, opts)
 }
 
 /** Lightbend-aligned alias for parse(). Produces a fully resolved Config. */
@@ -121,6 +119,16 @@ export const parseString = parse
  *  is false, returns an unresolved Config with substitution placeholders intact.
  *  Use Config.resolve() or Config.resolveWith() to complete resolution later. */
 export function parseStringWithOptions(input: string, opts: ParseOptions = {}): Config {
+  // The lexer, the parser and the resolver all recurse per level, and by the
+  // time the engine gives out there is no position left to report — so this is
+  // a ParseError naming the document rather than a stage (see internal/depth).
+  return guardStackDepth(
+    () => parseStringInner(input, opts),
+    msg => new ParseError(msg, 1, 1, opts.originDescription),
+  )
+}
+
+function parseStringInner(input: string, opts: ParseOptions): Config {
   const resolveSubstitutions = opts.resolveSubstitutions ?? true
   const { ast, resolveOpts } = buildResolveContext(input, opts)
   if (resolveSubstitutions) {

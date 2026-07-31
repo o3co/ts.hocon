@@ -3,6 +3,7 @@ import { fromMap } from '../value-factory.js'
 import type { Config } from '../config.js'
 import { ConfigError } from '../errors.js'
 import { stripBom } from '../internal/strip-bom.js'
+import { depthError, guardStackDepth } from '../internal/depth.js'
 
 /**
  * Read a YAML document as HOCON config.
@@ -92,7 +93,13 @@ export function fromYamlValue(value: unknown, originDescription?: string): Confi
   // An empty document is the empty object, as an empty HOCON document is
   // (S3.1), rather than a root-type failure (spec F5.9).
   if (value === null || value === undefined) return fromMap({}, originDescription)
-  const normalized = convert(value, '')
+  // `convert` recurses per level and runs before `fromMap`'s own guard, so a
+  // tree handed straight to this entry point would otherwise leave as a
+  // RangeError (see internal/depth.ts).
+  const normalized = guardStackDepth(
+    () => convert(value, ''),
+    msg => depthError(`yaml: ${msg}`),
+  )
   if (typeof normalized !== 'object' || normalized === null || Array.isArray(normalized)) {
     throw new ConfigError(
       `yaml: document root is ${Array.isArray(normalized) ? 'an array' : typeof normalized}, but a config root must be an object (spec F0.3)`,
