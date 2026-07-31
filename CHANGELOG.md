@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Documented — `adapters/jsonc`: accepting an unpaired surrogate is deliberate (F3.5)
+
+No behaviour change. New spec item F3.5 makes an unpaired `\uXXXX` surrogate an
+error in the JSON family, and go.hocon, py.hocon and rs.hocon now refuse one
+([xx.hocon#75](https://github.com/o3co/xx.hocon/issues/75)). **This
+implementation keeps accepting it**, and that is recorded here and pinned by a
+test so it is not mistaken for an oversight.
+
+A JavaScript string is UTF-16, like Java's: it holds a lone surrogate natively
+and round-trips it. A Go or Rust string cannot hold one at all — go.hocon was
+silently substituting U+FFFD — and a Python `str` can hold one but cannot encode
+it as UTF-8, so all three refuse rather than defer the failure. Refusing here
+would be the spec overriding the host language rather than protecting anyone;
+the properties adapter already carries the same divergence under F2.8, and
+S1.2.6 is the class.
+
 ### Fixed — deeply nested input threw `RangeError`, outside the documented error contract
 
 **BREAKING** for one of the two halves (a mapped path over 64 segments is now

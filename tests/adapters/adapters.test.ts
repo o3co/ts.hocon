@@ -600,3 +600,21 @@ describe('depth limits', () => {
     expect(() => guardStackDepth(() => (1.5).toFixed(101), depthError)).not.toThrow(ConfigError)
   })
 })
+
+// F3.5 — an unpaired surrogate is refused by go.hocon, py.hocon and rs.hocon,
+// and accepted here. Deliberate, and the same divergence the properties adapter
+// already carries under F2.8: a JavaScript string is UTF-16 like Java's and
+// holds a lone surrogate natively, so refusing would be the spec overriding the
+// host language rather than protecting anyone. Pinned so the next person to
+// read F3.5 does not "fix" it.
+describe('jsonc lone surrogates (F3.5 divergence)', () => {
+  it('keeps an unpaired surrogate, where the three siblings refuse it', () => {
+    expect(parseJsonc('{"a":"\\ud800"}').getString('a')).toBe('\ud800')
+    expect(parseJsonc('{"a":"\\udc00"}').getString('a')).toBe('\udc00')
+    expect(parseJsonc('{"\\ud800":1}').keys()).toEqual(['\ud800'])
+  })
+
+  it('still combines a valid pair into one astral codepoint', () => {
+    expect(parseJsonc('{"a":"\\ud83d\\ude00"}').getString('a')).toBe('\u{1f600}')
+  })
+})
