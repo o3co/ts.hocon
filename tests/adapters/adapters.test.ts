@@ -660,6 +660,25 @@ describe('dotenv name and filter rules (F1.7)', () => {
     expect(() => parseDotEnv(src)).toThrow(/F1\.7/)
   })
 
+  // F1.7 pins "whitespace" in a name to the Unicode White_Space property rather
+  // than to whichever predicate a stdlib offers, because the four do not agree.
+  // Enumerated over the whole codepoint space on 2026-07-31:
+  //
+  //   Go   unicode.IsSpace     == White_Space
+  //   Rust char::is_whitespace == White_Space
+  //   Py   str.isspace         == White_Space + U+001C..U+001F
+  //   JS   regex \s            == White_Space - U+0085 + U+FEFF
+  //
+  // JS is the outlier that accepted too much, so U+0085 is the case that
+  // changes here: it used to become an ordinary name character.
+  it('treats name whitespace as the Unicode White_Space property', () => {
+    // U+0085 NEL is White_Space, so the name is a mis-parse and refused.
+    expect(() => parseDotEnv('FOO\u0085BAR=baz\n')).toThrow(/F1\.7/)
+    // U+FEFF is not White_Space, whatever `\s` says — F0.9 already removes the
+    // realistic case, a leading BOM.
+    expect(parseDotEnv('FOO\uFEFFBAR=baz\n').getString('"foo\uFEFFbar"')).toBe('baz')
+  })
+
   // Deliberately narrower than a POSIX name grammar, which would reject this —
   // a name F1.2 documents as valid (one key `"foo.bar"`, not nesting).
   it('still accepts a dotted name', () => {

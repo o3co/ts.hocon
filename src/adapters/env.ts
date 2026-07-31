@@ -236,9 +236,17 @@ function stripExport(line: string): string {
  *
  * Deliberately narrower than a POSIX name grammar, which would reject
  * `APP_FOO.BAR` — a name F1.2 documents as valid and the fixtures exercise.
+ *
+ * `\p{White_Space}` rather than `\s`, because the two are not the same set and
+ * F1.7 pins the Unicode property. Enumerated over the whole codepoint space
+ * (2026-07-31), `\s` is `White_Space` minus U+0085 (NEL) plus U+FEFF, so `\s`
+ * let a NEL through as an ordinary name character — Go, Rust and Python all
+ * refused it — and refused U+FEFF, which the property does not call space.
+ * Whether a name is refused must not depend on which helper the implementation
+ * reached for; same argument F1.3 makes for ASCII-only case folding.
  */
 function checkName(name: string, origin: string, line: number): void {
-  const bad = /\s|#/.exec(name)
+  const bad = /\p{White_Space}|#/u.exec(name)
   if (bad) {
     const what = bad[0] === '#' ? "'#'" : 'whitespace'
     throw new ConfigError(

@@ -26,6 +26,8 @@ type Case = {
   format: string
   input: string
   kind?: string
+  /** dotenv only; an env-vars input names its prefix inside the JSON document. */
+  prefix?: string
   expect: 'ok' | 'error'
   expected?: string
   cites?: string
@@ -55,7 +57,8 @@ describe('format-ingestion fixtures (xx.hocon)', () => {
       case 'yaml':
         return parseYaml(text, c.id)
       case 'env': {
-        if (c.kind === 'dotenv') return parseDotEnv(text, { originDescription: c.id })
+        if (c.kind === 'dotenv')
+          return parseDotEnv(text, { prefix: c.prefix ?? '', originDescription: c.id })
         const f = JSON.parse(text) as { prefix: string; vars: Record<string, string> }
         return loadEnv({ prefix: f.prefix, env: f.vars, originDescription: c.id })
       }
