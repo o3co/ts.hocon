@@ -642,12 +642,15 @@ describe('dotenv name and filter rules (F1.7)', () => {
 
   // `'export '` matched a single space only, so `export\tFOO=bar` became the
   // variable `export\tfoo` — a key nothing would look up, produced silently.
-  it('accepts any whitespace after export', () => {
+  it('accepts spaces and tabs after export, and nothing else', () => {
     for (const src of ['export FOO=bar\n', 'export\tFOO=bar\n', 'export  FOO=bar\n']) {
       expect(parseDotEnv(src).getString('foo')).toBe('bar')
     }
     // …and a name that merely begins with `export` is still a name.
     expect(parseDotEnv('exportFOO=bar\n').getString('exportfoo')).toBe('bar')
+    // A form feed is not one of the two, so `export` stays part of the name and
+    // the F1.7 name rule rejects it. That is the intended outcome, not a gap.
+    expect(() => parseDotEnv('export\fFOO=bar\n')).toThrow(/F1\.7/)
   })
 
   it.each([
