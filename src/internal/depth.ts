@@ -13,7 +13,11 @@
  * Deeply nested *documents* get no such cap: refusing a 65-level JSON document
  * would be a claim about the format, not about a name we invented a mapping
  * for. They get {@link guardStackDepth} instead, which turns the engine's
- * `RangeError` into the `ConfigError` this library's callers are told to catch.
+ * `RangeError` into whichever error the calling entry point's contract names —
+ * `ParseError` from `parse`, `ConfigError` from `fromMap` and the adapters. The
+ * guard takes that as a parameter rather than choosing, because the two entry
+ * points document different types and neither should inherit the other's.
+ *
  * That matters beyond tidiness — the depth at which V8 gives out depends on how
  * deep the *caller* already is, so the same document can parse from one call
  * site and throw from another, and neither outcome should be an error type the
@@ -34,7 +38,7 @@ export function tooDeep(segments: number): boolean {
 }
 
 /**
- * Run `fn`, turning a `RangeError` from stack exhaustion into a `ConfigError`.
+ * Run `fn`, turning a `RangeError` from stack exhaustion into `wrap(message)`.
  *
  * The message names the possibilities rather than asserting one, because from
  * inside the handler they are indistinguishable: input nested past what the
@@ -51,12 +55,13 @@ export function guardStackDepth<T>(fn: () => T, wrap: (message: string) => Error
     return fn()
   } catch (e) {
     if (!isStackOverflow(e)) throw e
-    throw wrap(
-      'input is nested too deeply for this engine\'s stack, or contains a cycle ' +
-        '(flatten the document, or break the cycle)',
-    )
+    throw wrap(STACK_MESSAGE)
   }
 }
+
+const STACK_MESSAGE =
+  "input is nested too deeply for this engine's stack, or contains a cycle " +
+  '(flatten the document, or break the cycle)'
 
 /**
  * V8, JavaScriptCore and SpiderMonkey all report stack exhaustion as a
@@ -77,4 +82,24 @@ function isStackOverflow(e: unknown): boolean {
 /** The `ConfigError` shape the adapters and the value factory both want. */
 export function depthError(message: string): ConfigError {
   return new ConfigError(message, '')
+}
+
+/**
+ * {@link guardStackDepth} for a promise-returning `fn`.
+ *
+ * The `await` sits inside the `try` deliberately: the async parse path can
+ * exhaust the stack either synchronously, before it yields, or in a
+ * continuation after an `await`, and only awaiting inside catches both. A bare
+ * `try { return fn() }` would return the rejected promise untouched.
+ */
+export async function guardStackDepthAsync<T>(
+  fn: () => Promise<T>,
+  wrap: (message: string) => Error,
+): Promise<T> {
+  try {
+    return await fn()
+  } catch (e) {
+    if (!isStackOverflow(e)) throw e
+    throw wrap(STACK_MESSAGE)
+  }
 }

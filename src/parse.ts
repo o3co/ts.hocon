@@ -2,7 +2,7 @@ import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { Config } from './config.js'
 import { ConfigError, ParseError } from './errors.js'
-import { guardStackDepth } from './internal/depth.js'
+import { guardStackDepth, guardStackDepthAsync } from './internal/depth.js'
 import { tokenize } from './internal/lexer/lexer.js'
 import { parseTokens } from './internal/parser/parser.js'
 import { buildTree, containsPlaceholders, resolve, resolveAsync } from './internal/resolver/resolver.js'
@@ -167,10 +167,14 @@ export function parseFileWithOptions(filePath: string, opts: ParseOptions = {}):
  * asynchronously via `readFile` when provided.
  */
 export async function parseAsync(input: string, opts: ParseOptions = {}): Promise<Config> {
-  const { ast, resolveOpts } = buildResolveContext(input, opts)
-  const value = await resolveAsync(ast, resolveOpts)
-  if (value.kind !== 'object') throw new Error('resolved value is not an object')
-  return new Config(value)
+  // The async path recurses in the same three places the sync one does, so it
+  // needs the same guard; parseFileAsync reaches it through here.
+  return guardStackDepthAsync(async () => {
+    const { ast, resolveOpts } = buildResolveContext(input, opts)
+    const value = await resolveAsync(ast, resolveOpts)
+    if (value.kind !== 'object') throw new Error('resolved value is not an object')
+    return new Config(value)
+  }, msg => new ParseError(msg, 1, 1, opts.originDescription))
 }
 
 export function parseFile(filePath: string, opts: ParseOptions = {}): Config {
