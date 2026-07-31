@@ -9,6 +9,7 @@
 
 import { Config } from './config.js'
 import { ConfigError } from './errors.js'
+import { depthError, guardStackDepth } from './internal/depth.js'
 import type { HoconValue } from './value.js'
 
 /**
@@ -35,7 +36,13 @@ import type { HoconValue } from './value.js'
  * E12 decision 13.
  */
 export function fromMap(values: Record<string, unknown>, originDescription?: string): Config {
-  const fields = coerceObject(values, '')
+  // Every adapter funnels its decoded tree through here, and the coercion below
+  // recurses once per level, so this is the one place that has to keep a
+  // too-deep tree from leaving as a RangeError (see internal/depth.ts).
+  const fields = guardStackDepth(
+    () => coerceObject(values, ''),
+    msg => depthError(`fromMap: ${msg}`),
+  )
   const root: HoconValue & { kind: 'object' } = { kind: 'object', fields }
   return Config._fromResolvedValue(root, { originDescription })
 }

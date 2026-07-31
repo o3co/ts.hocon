@@ -5,6 +5,10 @@ import { loadEnv, parseDotEnv } from '../../src/adapters/env.js'
 import { parseJsonc, stripComments } from '../../src/adapters/jsonc.js'
 import { parseTomlConfig } from '../../src/adapters/toml.js'
 import { parseYaml } from '../../src/adapters/yaml.js'
+import { parse } from '../../src/index.js'
+import { fromMap } from '../../src/value-factory.js'
+import { ConfigError, ParseError } from '../../src/errors.js'
+import { depthError, guardStackDepth } from '../../src/internal/depth.js'
 
 describe('properties adapter', () => {
   it('nests dotted keys and shares the include syntax layer', () => {
@@ -508,5 +512,80 @@ describe('yaml fromYamlValue — bring your own parser', () => {
     const { fromYamlValue } = await import('../../src/adapters/yaml.js')
     expect(() => fromYamlValue({ a: Number.NaN })).toThrow(/F0\.6/)
     expect(() => fromYamlValue([1, 2])).toThrow(/F0\.3/)
+  })
+})
+
+// --- depth: nothing outside the documented error types escapes (#177) --------
+//
+// Two mechanisms, because two different things can be too deep. A *name* that
+// maps to a path is capped, because one name produces one arbitrarily deep
+// chain from a single long string. A deeply nested *document* is not capped —
+// refusing a 65-level JSON file would be a claim about the format — but the
+// RangeError it can still provoke becomes the ConfigError callers are told to
+// catch.
+
+describe('depth limits', () => {
+  const seg = (n: number): string => Array(n).fill('s').join('__')
+  const nest = (d: number): unknown => {
+    let v: unknown = 1
+    for (let i = 0; i < d; i++) v = { a: v }
+    return v
+  }
+
+  // rs.hocon and py.hocon cap the same mapping at the same number.
+  it('refuses an env name deeper than the segment limit (F1.2)', () => {
+    expect(loadEnv({ prefix: 'APP_', env: { [`APP_${seg(64)}`]: 'v' } }).keys()).toEqual(['s'])
+    expect(() => loadEnv({ prefix: 'APP_', env: { [`APP_${seg(65)}`]: 'v' } })).toThrow(
+      /over the limit of 64/,
+    )
+    expect(() => loadEnv({ prefix: 'APP_', env: { [`APP_${seg(10000)}`]: 'v' } })).toThrow(
+      ConfigError,
+    )
+  })
+
+  it('refuses a .env name deeper than the segment limit', () => {
+    expect(() => parseDotEnv(`${seg(65)}=v\n`)).toThrow(/over the limit of 64/)
+  })
+
+  it('refuses a properties key deeper than the segment limit', () => {
+    expect(parsePropertiesConfig(`${Array(64).fill('k').join('.')} = 1`).keys()).toEqual(['k'])
+    expect(() => parsePropertiesConfig(`${Array(65).fill('k').join('.')} = 1`)).toThrow(
+      /over the limit of 64/,
+    )
+  })
+
+  // JSON.parse recurses per level and gives out before anything here does, so
+  // the guard has to wrap it and not only the conversion after it.
+  it('reports a too-deep JSONC document as a ConfigError', () => {
+    expect(parseJsonc(`${'{"a":'.repeat(100)}1${'}'.repeat(100)}`).has('a')).toBe(true)
+    expect(() => parseJsonc(`${'{"a":'.repeat(50000)}1${'}'.repeat(50000)}`)).toThrow(ConfigError)
+  })
+
+  // The `from*Value` entry points skip the decoder, so the shared conversion
+  // needs its own guard rather than relying on fromMap's.
+  it('reports a too-deep injected tree as a ConfigError', async () => {
+    const { fromYamlValue } = await import('../../src/adapters/yaml.js')
+    expect(() => fromYamlValue(nest(50000))).toThrow(ConfigError)
+    expect(() => fromMap(nest(50000) as Record<string, unknown>)).toThrow(ConfigError)
+  })
+
+  it('reports a too-deep HOCON document as a ParseError', () => {
+    expect(parse(`${'{"a":'.repeat(500)}1${'}'.repeat(500)}`).has('a')).toBe(true)
+    expect(() => parse(`${'{"a":'.repeat(50000)}1${'}'.repeat(50000)}`)).toThrow(ParseError)
+  })
+
+  // A cyclic structure hits the same limit from a different shape, so the
+  // message names both rather than asserting depth.
+  it('covers a cyclic structure with the same guard', () => {
+    const cyclic: Record<string, unknown> = {}
+    cyclic.self = cyclic
+    expect(() => fromMap(cyclic)).toThrow(/or contains a cycle/)
+  })
+
+  // Only stack-exhaustion RangeErrors are converted; a genuine range bug keeps
+  // its own identity rather than being relabelled a depth problem.
+  it('rethrows a RangeError that is not stack exhaustion', () => {
+    expect(() => guardStackDepth(() => (1.5).toFixed(101), depthError)).toThrow(RangeError)
+    expect(() => guardStackDepth(() => (1.5).toFixed(101), depthError)).not.toThrow(ConfigError)
   })
 })

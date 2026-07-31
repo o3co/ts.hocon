@@ -1,6 +1,7 @@
 import type { HoconValue } from '../../value.js'
 import { ParseError } from '../../errors.js'
 import { stripBom } from '../strip-bom.js'
+import { MAX_PATH_SEGMENTS, tooDeep } from '../depth.js'
 
 /**
  * Parse a `.properties` file the way `java.util.Properties` does, which is what
@@ -25,7 +26,18 @@ export function parseProperties(input: string): Record<string, unknown> {
     if (key === '') continue
     // F2.1: a `.properties` key is a path expression, so the split happens
     // here, in the caller that owns that rule — nestPairs never re-splits.
-    pairs.push([key.split('.'), unescapeProps(rawValue, line)])
+    const segments = key.split('.')
+    if (tooDeep(segments.length)) {
+      // One dotted key produces one arbitrarily deep chain, so ~1 kB of key
+      // text was enough to exhaust the stack during coercion — as a RangeError,
+      // outside every error type documented here.
+      throw new ParseError(
+        `key maps to a path ${segments.length} segments deep, over the limit of ${MAX_PATH_SEGMENTS}`,
+        line,
+        1,
+      )
+    }
+    pairs.push([segments, unescapeProps(rawValue, line)])
   }
 
   return nestPairs(pairs)
