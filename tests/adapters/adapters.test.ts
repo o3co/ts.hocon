@@ -574,6 +574,17 @@ describe('depth limits', () => {
     expect(() => parse(`${'{"a":'.repeat(50000)}1${'}'.repeat(50000)}`)).toThrow(ParseError)
   })
 
+  // The async entry point recurses in the same three places the sync one does,
+  // and a promise rejection needs the `await` inside the `try` to be caught at
+  // all — so it takes its own guard rather than inheriting parse()'s.
+  it('reports a too-deep HOCON document as a ParseError from parseAsync too', async () => {
+    const { parseAsync } = await import('../../src/index.js')
+    await expect(parseAsync(`${'{"a":'.repeat(500)}1${'}'.repeat(500)}`)).resolves.toBeDefined()
+    await expect(parseAsync(`${'{"a":'.repeat(50000)}1${'}'.repeat(50000)}`)).rejects.toThrow(
+      ParseError,
+    )
+  })
+
   // A cyclic structure hits the same limit from a different shape, so the
   // message names both rather than asserting depth.
   it('covers a cyclic structure with the same guard', () => {
