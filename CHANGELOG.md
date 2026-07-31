@@ -143,6 +143,25 @@ nothing. The spec is now published at
 there ([xx.hocon#81](https://github.com/o3co/xx.hocon/issues/81)). Error text is
 unchanged; only the pointers move.
 
+### Fixed — `.env`: "whitespace" in a name is the Unicode `White_Space` property (F1.7)
+
+`checkName` used `/\s/`, which is **not** the `White_Space` property:
+enumerated over the whole codepoint space, `\s` is `White_Space` minus U+0085
+(NEL) plus U+FEFF. So `FOO<NEL>BAR=baz` produced the key `foo<NEL>bar` here and
+raised in the other three implementations, whose `unicode.IsSpace` /
+`char::is_whitespace` / `str.isspace` all have NEL.
+
+Whether a name is refused must not depend on which helper an implementation
+reached for; this is the same argument F1.3 makes for ASCII-only case folding.
+The spec now pins the property
+([xx.hocon#81](https://github.com/o3co/xx.hocon/issues/81)) and `checkName` uses
+`/\p{White_Space}/u`. Two changes, in opposite directions: a name containing
+U+0085 now throws, and a name containing U+FEFF no longer does — F0.9 already
+removes the realistic BOM case, and the property is what the spec cites.
+
+The behaviour being corrected has not been released; the name rule itself
+arrived in this same unreleased window.
+
 ## [1.11.0] - 2026-07-26
 
 ### Changed (behavior) — read this before upgrading
