@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.12.0] - 2026-07-31
+
+Cross-impl release, coordinated to land at v1.12.0 across go.hocon / ts.hocon /
+rs.hocon / py.hocon so the ecosystem stays on one version line.
+
+**Minor, not patch, and the `.env` changes are BREAKING in both directions**:
+the prefix filter now runs before validation (a file that used to fail may now
+load), a variable name containing whitespace or `#` is refused (a file that used
+to load may now fail), and "whitespace" is now the Unicode `White_Space`
+property rather than the regex `\s` — so a name containing U+0085 is refused
+where it used to become part of a key, and one containing U+FEFF is accepted
+where it used to throw.
+
+The rest: deeply nested input now raises this library's own error instead of a
+bare `RangeError`, coinciding sibling keys in YAML are an error rather than
+last-wins, and the documentation was corrected where it had drifted.
+
+The F-item spec these errors cite is now public at
+[`xx.hocon/docs/format-ingestion-mapping.md`](https://github.com/o3co/xx.hocon/blob/main/docs/format-ingestion-mapping.md);
+it previously lived in a private working scope.
+
+The published version comes from the tag; `package.json` stays at
+`0.0.0-snapshot`.
+
 ### Changed — `.env`: the prefix filter runs first, and names are validated (F1.7)
 
 **BREAKING both ways**: a line the prefix discards is no longer validated (so a
