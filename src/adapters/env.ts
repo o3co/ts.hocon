@@ -107,15 +107,19 @@ export function parseDotEnv(input: string, opts: EnvOptions = {}): Config {
   for (let i = 0; i < lines.length; i++) {
     const raw = (lines[i] ?? '').trim()
     if (raw === '' || raw.startsWith('#')) continue
-    const line = raw.startsWith('export ') ? raw.slice('export '.length) : raw
+    const line = stripExport(raw)
 
     const eq = line.indexOf('=')
     if (eq === -1) throw new ConfigError(`${origin}:${i + 1}: expected NAME=value`, '')
     const name = line.slice(0, eq).trim()
+    // The two checks before the filter are about the *line* rather than the
+    // entry: a line with no `=` is not a NAME=value pair at all, and an empty
+    // name gives nothing to compare the prefix against.
     if (name === '') throw new ConfigError(`${origin}:${i + 1}: empty variable name`, '')
-    const value = dotEnvValue(line.slice(eq + 1).replace(/^[ \t]+/, ''), origin, i + 1, name)
-
     if (!name.startsWith(prefix)) continue
+
+    checkName(name, origin, i + 1)
+    const value = dotEnvValue(line.slice(eq + 1).replace(/^[ \t]+/, ''), origin, i + 1, name)
     pairs.push([toPath(name.slice(prefix.length)), value])
   }
 
@@ -202,4 +206,40 @@ function dotEnvValue(v: string, origin: string, line: number, name: string): str
     fail(`ambiguous value "${trimmed}": trailing comments are not supported, so quote the value if the # belongs to it`)
   }
   return trimmed
+}
+
+/**
+ * Drop a leading `export` and the whitespace after it (spec F1.7).
+ *
+ * Matching the literal `'export '` missed a tab, so `export\tFOO=bar` became
+ * the variable `export\tfoo` — a key nothing would ever look up, produced
+ * silently. A name that merely *begins* with `export` (`exportFOO=1`) is still
+ * a name, so the whitespace is what makes it the keyword.
+ */
+function stripExport(line: string): string {
+  const m = /^export[ \t]+/.exec(line)
+  return m ? line.slice(m[0].length) : line
+}
+
+/**
+ * Refuse a name that cannot have been meant (spec F1.7).
+ *
+ * F1.7's rule for values is an error naming the fix rather than a guess about
+ * the author's intent; names get the same treatment. Whitespace or `#` inside
+ * one means the line was mis-parsed — `FOO BAR=baz` and `FOO#x=1` used to
+ * become the keys `foo bar` and `foo#x`.
+ *
+ * Deliberately narrower than a POSIX name grammar, which would reject
+ * `APP_FOO.BAR` — a name F1.2 documents as valid and the fixtures exercise.
+ */
+function checkName(name: string, origin: string, line: number): void {
+  const bad = /\s|#/.exec(name)
+  if (bad) {
+    const what = bad[0] === '#' ? "'#'" : 'whitespace'
+    throw new ConfigError(
+      `${origin}:${line}: variable name "${name}" contains ${what}; ` +
+        `the line is not NAME=value (spec F1.7)`,
+      name,
+    )
+  }
 }

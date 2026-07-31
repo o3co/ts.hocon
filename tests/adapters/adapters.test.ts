@@ -618,3 +618,48 @@ describe('jsonc lone surrogates (F3.5 divergence)', () => {
     expect(parseJsonc('{"a":"\\ud83d\\ude00"}').getString('a')).toBe('\u{1f600}')
   })
 })
+
+// F1.7 — the prefix filter runs first, and only what survives it is validated.
+//
+// A .env shared with tools that support trailing comments has to stay loadable
+// when the caller wants one namespace out of it. `loadEnv` already worked that
+// way ("entries outside the prefix are never inspected", F1.1); `parseDotEnv`
+// disagreeing with its sibling in the same module was the actual
+// inconsistency, and all four implementations had the same accidental split.
+describe('dotenv name and filter rules (F1.7)', () => {
+  it.each([
+    ['an ambiguous value', 'BAD=x # y\n'],
+    ['a name the rule refuses', 'BAD NAME=x\n'],
+    ['an empty path segment', 'OTHER__=x\n'],
+  ])('does not inspect %s the prefix discards', (_name, src) => {
+    expect(parseDotEnv(src, { prefix: 'APP_' }).keys()).toEqual([])
+  })
+
+  it('still validates what the prefix keeps', () => {
+    expect(() => parseDotEnv('APP_BAD=x # y\n', { prefix: 'APP_' })).toThrow(/quote the value/)
+    expect(() => parseDotEnv('APP___=x\n', { prefix: 'APP_' })).toThrow(/empty path segment/)
+  })
+
+  // `'export '` matched a single space only, so `export\tFOO=bar` became the
+  // variable `export\tfoo` — a key nothing would look up, produced silently.
+  it('accepts any whitespace after export', () => {
+    for (const src of ['export FOO=bar\n', 'export\tFOO=bar\n', 'export  FOO=bar\n']) {
+      expect(parseDotEnv(src).getString('foo')).toBe('bar')
+    }
+    // …and a name that merely begins with `export` is still a name.
+    expect(parseDotEnv('exportFOO=bar\n').getString('exportfoo')).toBe('bar')
+  })
+
+  it.each([
+    ['whitespace', 'FOO BAR=baz\n'],
+    ['a hash', 'FOO#x=1\n'],
+  ])('refuses a name containing %s', (_what, src) => {
+    expect(() => parseDotEnv(src)).toThrow(/F1\.7/)
+  })
+
+  // Deliberately narrower than a POSIX name grammar, which would reject this —
+  // a name F1.2 documents as valid (one key `"foo.bar"`, not nesting).
+  it('still accepts a dotted name', () => {
+    expect(parseDotEnv('FOO.BAR=v\n').getString('"foo.bar"')).toBe('v')
+  })
+})
