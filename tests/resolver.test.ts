@@ -972,23 +972,23 @@ describe('S14a.7 - whitespace/newlines allowed between include and resource name
 // black-box public API; structural reason: the spec rule constrains resolver internals,
 // not the observable output for any valid input program).
 
-// S13a.3 — self-ref before any prior value → error (HOCON spec L767)
-// Probe (2026-05-13): resolveStr('a = ${a}') throws ResolveError "circular substitution: a".
-// Spec L767-773: error should be treated as "undefined" (missing subst) rather than
-// "intractable cycle". Both lead to an error, but the error message differs.
-// Classification: ⚠️ — error is raised (correct), but as a cycle error rather than a
-// missing-substitution error; the spec wants "undefined" semantics for this case.
-describe('S13a.3 - self-ref with no prior value → error (HOCON spec L767)', () => {
-  it('S13a.3: a = ${a} with no prior value for a raises an error', () => {
-    // Spec: treated as "undefined" — same outcome as required substitution not found.
-    // Impl raises ResolveError("circular substitution: a") instead of a missing-path error,
-    // but an error IS raised either way. ⚠️ wrong error message, correct behavior.
+// S13a.3 — self-ref before any prior value → undefined → error (HOCON spec L767)
+// A 2026-05-13 probe found this raised "circular substitution"; the #120
+// self-reference widening (isOwner + containsSubstByPath short-circuit) has
+// since routed it to the undefined classification the spec asks for. These
+// tests pin the classification so it cannot silently regress to a cycle error.
+describe('S13a.3 - self-ref with no prior value → undefined → error (HOCON spec L767)', () => {
+  it('S13a.3: a = ${a} with no prior value is an undefined substitution, not a cycle', () => {
+    // Spec L767-773: treated as "undefined" — same classification as a
+    // required substitution whose path does not exist.
     expect(() => resolveStr('a = ${a}')).toThrow(ResolveError)
+    expect(() => resolveStr('a = ${a}')).toThrow(/could not resolve substitution/)
+    expect(() => resolveStr('a = ${a}')).not.toThrow(/circular/)
   })
 
-  it('S13a.3: a = ${a} is distinct from a two-step cycle (both error, but different cause)', () => {
-    // Two-step cycle — also an error, per S13a.8
+  it('S13a.3: a two-step cycle stays classified as circular (S13a.8)', () => {
     expect(() => resolveStr('a = ${b}\nb = ${a}')).toThrow(ResolveError)
+    expect(() => resolveStr('a = ${b}\nb = ${a}')).toThrow(/circular substitution/)
   })
 })
 

@@ -66,7 +66,16 @@ class Parser {
       // at the bracket that opened the array root.
       return { ...arr, pos: { line: t.line, col: t.col } }
     }
-    return this.parseObject(false)
+    // S3.4 (HOCON.md L138): an unbraced root ends at EOF. parseObject(false)
+    // stops at a stray `}` (it has no opening brace to match), so any token
+    // left over here is unbalanced trailing content, not root content.
+    const root = this.parseObject(false)
+    this.skip('newline')
+    const remaining = this.peek()
+    if (remaining.kind !== 'eof') {
+      throw new ParseError(`Unexpected token '${remaining.value}' after root content`, remaining.line, remaining.col)
+    }
+    return root
   }
 
   private peek(offset = 0): Token { return this.tokens[this.pos + offset] ?? EOF_TOKEN }

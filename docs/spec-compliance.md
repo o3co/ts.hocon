@@ -84,8 +84,11 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
   tests: tests/lightbend/testdata/equiv01/no-root-braces.conf (fixture)
   status: ✅
 - **S3.4** Unbalanced trailing `}` without opening `{` is invalid — §Omit root braces (L138)
-  tests: tests/parser.test.ts:234
-  status: ❌ ([#55](https://github.com/o3co/ts.hocon/issues/55)) — related test passes but specific case (unbraced root + stray `}`) is not covered
+  tests: tests/parser.test.ts (S3.4 test group)
+  status: ✅ — Fixed 2026-08-17 ([#55](https://github.com/o3co/ts.hocon/issues/55)): the
+  unbraced-root parse path now verifies all tokens were consumed, so a stray `}` (or any
+  other trailing token) after unbraced root content is a ParseError. The braced-root and
+  array-root paths already validated this.
 - **S3.5** Array-root document is valid syntax; object-rooted parse API rejects with a type error — §Include semantics: merging (L989-991)
   tests: tests/spec-s3-5-array-root.test.ts; tests/conformance/array-root.test.ts (ar01–ar03 `.error` sidecars)
   status: ✅ — Added 2026-07-23. `Parser.parse()` accepts `[` at root and parses the array
@@ -400,13 +403,13 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
   status: ✅
 - **S13a.3** Self-ref before any prior value → undefined → error — §Self-Referential (L767)
   tests: tests/resolver.test.ts (S13a.3 describe block)
-  status: ⚠️
-  notes: `a = ${a}` (no prior value) raises `ResolveError("circular substitution: a")`.
-  An error is raised (correct), but spec L767-773 says this case should be treated as
-  "undefined" (i.e. a missing-substitution error), not an "intractable cycle" error.
-  The distinction matters for error messages and for `${?a}` handling (which the impl
-  already handles correctly via separate detection). Behavior (error) is correct;
-  error classification is off-spec.
+  status: ✅ — the ⚠️ recorded here was stale: a 2026-05-13 probe observed
+  `circular substitution: a`, but the #120 self-reference widening (isOwner +
+  containsSubstByPath short-circuit, cross-impl with rs.hocon v1.5.1) has since routed
+  `a = ${a}` (no prior value) to `could not resolve substitution: ${a}` — the "undefined"
+  classification the spec asks for. A genuine two-step cycle (`a = ${b}, b = ${a}`) still
+  reports `circular substitution` (S13a.8). Both classifications are now pinned by tests
+  (2026-08-17) so a regression to the cycle message fails the suite.
 - **S13a.4** Optional self-ref `${?foo}` disappears silently — §Self-Referential (L776)
   tests: tests/resolver.test.ts:291
   status: ✅

@@ -133,6 +133,29 @@ describe('docs consistency', () => {
     expect(inScope).toBe(rate(counts, SPEC_ITEM_TOTAL - counts.outOfScope))
   })
 
+  // README.ja.md was not covered by this gate and drifted 15+ points (found
+  // 2026-08-17 still showing the 2026-05-13 snapshot). Same recomputation,
+  // Japanese table labels.
+  it('README.ja compliance rates match docs/spec-compliance.md', () => {
+    const counts = countCompliance()
+    const readme = read('README.ja.md')
+    const specTotal = findOne(
+      'README.ja.md',
+      readme,
+      /\| 仕様全体（out-of-scope を含む） +\| \*\*([0-9.]+)%\*\* +\|/,
+      'spec-total compliance rate (ja)',
+    )
+    const inScope = findOne(
+      'README.ja.md',
+      readme,
+      /\| In-scope のみ +\| \*\*([0-9.]+)%\*\* +\|/,
+      'in-scope compliance rate (ja)',
+    )
+
+    expect(specTotal).toBe(rate(counts, SPEC_ITEM_TOTAL))
+    expect(inScope).toBe(rate(counts, SPEC_ITEM_TOTAL - counts.outOfScope))
+  })
+
   it('README minimum Node version matches package.json engines', () => {
     const engines = findOne(
       'package.json',

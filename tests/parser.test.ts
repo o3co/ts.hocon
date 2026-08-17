@@ -236,6 +236,28 @@ describe('parseTokens', () => {
     expect(() => parseTokens(tokenize('{ a = 1 } }'))).toThrow()
   })
 
+  // S3.4 (HOCON.md L138, ts#55): an unbraced root followed by an unbalanced
+  // `}` used to be silently accepted (parseObject(false) stops at `}` and the
+  // leftover token was never checked).
+  it('S3.4: should error on stray } after unbraced root', () => {
+    expect(() => parseTokens(tokenize('a = 1\n}'))).toThrow(/Unexpected token/)
+  })
+
+  it('S3.4: should error on stray } on the same line as unbraced root content', () => {
+    expect(() => parseTokens(tokenize('a = 1 }'))).toThrow(/Unexpected token/)
+  })
+
+  it('S3.4: should error on stray ] after unbraced root', () => {
+    // rejected on a different path (`]` cannot start a key) — message differs,
+    // but the trailing token is refused either way
+    expect(() => parseTokens(tokenize('a = 1\n]'))).toThrow()
+  })
+
+  it('S3.4: unbraced root with trailing newlines still parses', () => {
+    const node = parseTokens(tokenize('a = 1\n\n'))
+    expect(node.kind).toBe('object')
+  })
+
   it('should error on include url() with "not supported" message', () => {
     expect(() => parseTokens(tokenize('include url("http://example.com")'))).toThrow(/not supported/)
   })

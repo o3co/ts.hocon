@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **BREAKING (spec fix, S3.4)**: an unbraced root followed by an unbalanced
+  `}` — e.g. `a = 1` on one line and a stray `}` on the next — now raises
+  `ParseError` instead of being silently accepted with the trailing tokens
+  ignored (#55). The braced-root and array-root paths already rejected this;
+  only the unbraced-root path skipped the end-of-input check. A document that
+  relied on the old behaviour has an unbalanced brace to delete.
+- Spec-compliance bookkeeping: S13a.3 was recorded as ⚠️ from a stale
+  2026-05-13 probe, but the #120 self-reference widening had already routed
+  `a = ${a}` (no prior value) to the spec's "undefined" classification
+  (`could not resolve substitution`), distinct from a genuine cycle's
+  `circular substitution`. Both classifications are now pinned by tests, and
+  with S3.4 fixed the in-scope compliance rate is **100.0%** (spec-total
+  90.0%). `tests/docs.test.ts` now also gates README.ja.md's compliance
+  table, which had drifted 15+ points.
+
 ## [1.12.0] - 2026-07-31
 
 Cross-impl release, coordinated to land at v1.12.0 across go.hocon / ts.hocon /
