@@ -3,3 +3,6 @@ packages:
 
 overrides:
   vite: '~7.3.5'
+  # GHSA-g7r4-m6w7-qqqr: tsup's transitive esbuild resolves to 0.27.x, which
+  # is in the vulnerable range; force the patched line for every consumer.
+  esbuild: '>=0.28.1'
