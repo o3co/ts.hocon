@@ -20,7 +20,7 @@
 
 import { describe, expect, it } from 'vitest'
 
-import { parse, ResolveError } from '../src/index'
+import { parse, parseStringWithOptions, ResolveError } from '../src/index'
 
 // '$' via charcode to avoid IDE template-string lint on ${...} literals.
 const D = String.fromCharCode(36)
@@ -141,5 +141,105 @@ describe('S13a.12 — prefix self-reference resolves to "below"', () => {
       'bar { nested { x = { q: 10 }\na = ' + D + '{bar.nested.x}\na = { c: 3 } } }',
     ).toObject() as Record<string, Record<string, Record<string, unknown>>>
     expect(v['bar']!['nested']!['a']).toEqual({ q: 10, c: 3 })
+  })
+})
+
+describe('S13a.12 — bookkeeping, dead-ends, and lenient contract', () => {
+  it('layer merge carries BOTH layers priorValues (delayed-merge chains survive the splice)', () => {
+    // Two object layers below the sandwich: the navigated `a` carries its own
+    // delayed-merge chain (c:1 under c:2) and the below layer carries chains
+    // for a/k. Expected values verified against py.hocon (post-#37/#38).
+    expect(
+      foo(
+        'foo : { a : { c : 1 }, k : 1 }\nfoo : { a : { c : 2 }, k : 2 }\nfoo : ' +
+          D +
+          '{foo.a}\nfoo : { z : 9 }',
+      ),
+    ).toEqual({ a: { c: 2 }, k: 2, c: 2, z: 9 })
+  })
+
+  it("the navigated layer's own delayed-merge chains survive the splice", () => {
+    // The navigated `a` carries a priorValues chain of its own (c: {d:1} under
+    // ${x}) — the layer merge must carry it so the delayed merge still fires
+    // inside `a`, while the spliced top-level `c` keeps only the navigated
+    // side. Matches py.hocon (post-#37/#38) on the same input.
+    expect(
+      foo(
+        'foo : { a : { c : { d : 1 } } }\nfoo : { a : { c : ' +
+          D +
+          '{x} } }\nfoo : ' +
+          D +
+          '{foo.a}\nfoo : { z : 9 }\nx : { e : 5 }',
+      ),
+    ).toEqual({ a: { c: { d: 1, e: 5 } }, c: { e: 5 }, z: 9 })
+  })
+
+  it('fold-side walk that dead-ends in a scalar mid-path takes the undefined classification', () => {
+    expect(() => foo('foo : { a : 5 }\nfoo : ' + D + '{foo.a.b}\nfoo : { c : 1 }')).toThrow(
+      /could not resolve substitution/,
+    )
+  })
+
+  it('resolve-side walk that dead-ends in a scalar mid-path takes the undefined classification', () => {
+    expect(() => foo('foo : { a : 1 }\nfoo : ' + D + '{foo.a.b}')).toThrow(
+      /could not resolve substitution/,
+    )
+  })
+
+  it("resolve-side prior that itself fails to resolve propagates the prior's error", () => {
+    expect(() => foo('foo : { a : ' + D + '{zz} }\nfoo : ' + D + '{foo.a}')).toThrow(
+      /could not resolve substitution.*zz/,
+    )
+  })
+
+  it("optional final layer that vanishes falls back to the prior, and the prior's undefined classification still errors", () => {
+    expect(() =>
+      foo('foo : { a : 1 }\nfoo : ' + D + '{foo.b}\nfoo : ' + D + '{?zz}'),
+    ).toThrow(/could not resolve substitution/)
+  })
+
+  it('unrelated substitution inside a folded prior is left untouched', () => {
+    // The prior object holds an exact self-ref AND an unrelated ${bar} — the
+    // fold rewrites only the former. The self-ref sees the below-merge with
+    // its own occurrence unfolded one step ({x:1, h:{x:1}, o:9}), matching
+    // py.hocon (post-#37/#38) on the same input.
+    expect(
+      foo(
+        'foo : { x : 1 }\nfoo : { h : ' + D + '{foo}, o : ' + D + '{bar} }\nfoo : { z : 2 }\nbar : 9',
+      ),
+    ).toEqual({ x: 1, h: { x: 1, h: { x: 1 }, o: 9 }, o: 9, z: 2 })
+  })
+
+  it('self-ref inside an object literal inside an array folds against the below layer', () => {
+    // The array item is a plain object interior — the fold walks it with the
+    // prefix rule off, so only the exact self-ref rewrites. The optional final
+    // layer misses (an array is not navigable) and falls back to the prior.
+    expect(
+      foo('foo : { x : 1 }\nfoo : [ { h : ' + D + '{foo} } ]\nfoo : ' + D + '{?foo.q}'),
+    ).toEqual([{ h: { x: 1 } }])
+  })
+
+  it('allowUnresolved keeps a required prefix self-ref placeholder on the resolve side', () => {
+    const cfg = parseStringWithOptions('foo : { a : 1 }\nfoo : ' + D + '{foo.b}', {
+      resolveSubstitutions: false,
+    })
+    const out = cfg.resolve({ allowUnresolved: true })
+    expect(out.isResolved()).toBe(false)
+  })
+
+  it('allowUnresolved drops a poisoned prior from the delayed merge on the fold side', () => {
+    // The knownAbsent sentinel saved at the prior-save site resolves to a
+    // placeholder under allowUnresolved; not being an object, it is dropped
+    // from the delayed merge and the top layer resolves alone. The top layer
+    // carries its own substitution so the resolver actually visits the field
+    // (a placeholder-free tree takes the fast path). The strict-mode
+    // counterpart is the fold-side dead-end case above.
+    const cfg = parseStringWithOptions(
+      'foo : { a : 5 }\nfoo : ' + D + '{foo.a.b}\nfoo : { c : ' + D + '{x} }\nx : 1',
+      { resolveSubstitutions: false },
+    )
+    const out = cfg.resolve({ allowUnresolved: true })
+    expect(out.isResolved()).toBe(true)
+    expect((out.toObject() as Record<string, unknown>)['foo']).toEqual({ c: 1 })
   })
 })
