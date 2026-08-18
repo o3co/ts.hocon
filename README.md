@@ -435,6 +435,7 @@ Deferring resolution matters: the plain `parse` resolves as it goes, so a
 | `@o3co/ts.hocon/adapters/properties` | — | `java.util.Properties`, sharing the `include` syntax layer |
 | `@o3co/ts.hocon/adapters/env` | — | Bulk-mounts a prefixed namespace; also reads `.env` |
 | `@o3co/ts.hocon/adapters/jsonc` | — | JSON with comments and trailing commas |
+| `@o3co/ts.hocon/adapters/json5` | — | JSON5 1.0.0, hand-rolled scanner, zero dependencies |
 | `@o3co/ts.hocon/adapters/toml` | `smol-toml` | Optional peer dependency |
 | `@o3co/ts.hocon/adapters/yaml` | `yaml` 2.9.x | Optional peer dependency; scalar resolution is that library's answer, with `version: '1.2'` declared so it cannot drift |
 
@@ -458,11 +459,12 @@ cfg.getString('"foo.bar"')   // "dotted"  — one key whose name contains a dot
 cfg.getString('foo.bar')     // "nested"  — foo -> bar
 ```
 
-### Numbers from JSONC and YAML
+### Numbers from JSONC, JSON5 and YAML
 
 Integers are ingested losslessly: an integer literal too wide for a JS `number`
 keeps its digits instead of being rounded, and one outside the int64 range is
-refused rather than silently mangled. What you get back depends on the getter:
+refused rather than silently mangled (JSON5's hex integers included). What you
+get back depends on the getter:
 
 ```ts
 const cfg = parseJsonc('{"id": 9007199254740993}')

@@ -62,6 +62,16 @@
         "default": "./dist/adapters/jsonc.cjs"
       }
     },
+    "./adapters/json5": {
+      "import": {
+        "types": "./dist/adapters/json5.d.ts",
+        "default": "./dist/adapters/json5.js"
+      },
+      "require": {
+        "types": "./dist/adapters/json5.d.cts",
+        "default": "./dist/adapters/json5.cjs"
+      }
+    },
     "./adapters/toml": {
       "import": {
         "types": "./dist/adapters/toml.d.ts",

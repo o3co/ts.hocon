@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`adapters/json5` — JSON5 1.0.0 ingestion (spec F3.3).** A new
+  `@o3co/ts.hocon/adapters/json5` subpath exporting `parseJson5`, a port of
+  go.hocon's `adapters/json5` shipping in lockstep with it
+  ([go.hocon#193](https://github.com/o3co/go.hocon/pull/193)) and with the
+  py.hocon / rs.hocon ports. The accepted grammar is JSON5 1.0.0 as defined by
+  the reference implementation (the json5 npm package, the dialect owner) —
+  but JSON5 changes the token grammar itself (unquoted identifier keys,
+  single-quoted strings with line continuations, hex integers, leading and
+  trailing decimal points, an explicit plus sign), so unlike the jsonc adapter
+  this is a hand-rolled scanner and recursive-descent parser. Zero new
+  dependencies. Where the mapping spec is stricter than JSON5, the spec wins:
+  integers — decimal or hex — must fit in int64, carried past 2^53 as lossless
+  digits (F0.5); `Infinity`/`NaN` in every spelling are errors (F0.6); an
+  unpaired `\uXXXX` surrogate escape is an error and a valid pair combines
+  (F3.5 — the scanner is ours here, so unlike `adapters/jsonc` the four
+  implementations agree; a raw lone surrogate code unit in source is still
+  host string data); duplicate keys follow HOCON semantics — objects merge,
+  otherwise last-wins (F0.7); and exactly one top-level value with a strict
+  EOF check (the F3.2 strictness rule). A `//` comment ends at LS/PS as well
+  as LF/CR — deliberately different from the jsonc dialect, whose owner ends
+  comments at LF/CR only.
+
 ### Fixed
 
 - **BREAKING (spec fix, S9.2): a triple-quoted string whose content starts

@@ -7,6 +7,7 @@ export default defineConfig({
     'adapters/properties': 'src/adapters/properties.ts',
     'adapters/env': 'src/adapters/env.ts',
     'adapters/jsonc': 'src/adapters/jsonc.ts',
+    'adapters/json5': 'src/adapters/json5.ts',
     'adapters/toml': 'src/adapters/toml.ts',
     'adapters/yaml': 'src/adapters/yaml.ts',
   },

@@ -349,6 +349,7 @@ const merged = cfg.withFallback(base).resolve()
 | `@o3co/ts.hocon/adapters/properties` | — | `java.util.Properties`。`include` と構文レイヤーを共有 |
 | `@o3co/ts.hocon/adapters/env` | — | プレフィックス付き名前空間の一括マウント。`.env` の読み込みも可能 |
 | `@o3co/ts.hocon/adapters/jsonc` | — | コメントと末尾カンマを許す JSON |
+| `@o3co/ts.hocon/adapters/json5` | — | JSON5 1.0.0。手書き scanner で依存ゼロ |
 | `@o3co/ts.hocon/adapters/toml` | `smol-toml` | オプショナルなピア依存 |
 | `@o3co/ts.hocon/adapters/yaml` | `yaml` 2.9.x | オプショナルなピア依存。スカラー解決はそのライブラリの答えで、`version: '1.2'` を明示してドリフトを防止 |
 
