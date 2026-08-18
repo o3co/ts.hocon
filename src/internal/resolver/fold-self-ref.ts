@@ -35,6 +35,7 @@ import type { HoconValue } from '../../value.js'
 import type { Segment } from '../lexer/token.js'
 import {
   type ConcatPlaceholder,
+  type ResObj,
   type ResolverValue,
   type SubstPlaceholder,
   isConcat,
@@ -67,12 +68,117 @@ export function stringSegmentsToKey(segments: string[]): string {
     .join('.')
 }
 
+/** S13a.12: remainder segment texts when `fullKey` is a PROPER segment-wise
+ * prefix of the subst's path (`foo` ⊏ `foo.a` → `["a"]`), else null.
+ *
+ * The boundary check works on the dotted keys because both sides use the same
+ * quoting (`stringSegmentsToKey`): a literal dotted segment renders quoted
+ * (`"foo.a"`), so it can never string-prefix `foo.` — only a genuine segment
+ * boundary matches. The remainder is recovered by finding the segment count
+ * whose prefix key equals `fullKey`. */
+export function prefixSelfRefRemainder(s: SubstPlaceholder, fullKey: string): string[] | null {
+  const texts = s.segments.map(seg => seg.text)
+  if (!stringSegmentsToKey(texts).startsWith(fullKey + '.')) return null
+  for (let n = 1; n < texts.length; n++) {
+    if (stringSegmentsToKey(texts.slice(0, n)) === fullKey) return texts.slice(n)
+  }
+  return null
+}
+
+/** Structural navigation of `remainder` into a resolver value, following
+ * ResObj fields and already-resolved object fields.
+ *
+ * Returns the reached node, `undefined` when a segment is missing (or the
+ * walk dead-ends in a scalar/array — path semantics treat both as absent),
+ * and `null` when it hits a node it cannot see through structurally
+ * (a substitution or concat placeholder). */
+export function navigateResolverValue(
+  v: ResolverValue,
+  remainder: string[],
+): ResolverValue | undefined | null {
+  let cur: ResolverValue = v
+  for (const seg of remainder) {
+    if (isSubst(cur) || isConcat(cur)) return null
+    if (isResObj(cur)) {
+      const next = cur.fields.get(seg)
+      if (next === undefined) return undefined
+      cur = next
+      continue
+    }
+    const hv = cur as HoconValue
+    if (hv.kind === 'object') {
+      const next = hv.fields.get(seg)
+      if (next === undefined) return undefined
+      cur = next as ResolverValue
+      continue
+    }
+    return undefined
+  }
+  return cur
+}
+
+/** Fold one prefix self-reference (`${fullKey.rest}`) against the below value:
+ * navigate `rest` into `replacement`. A missing path folds to the undefined
+ * classification — a `knownAbsent` placeholder that disappears when optional
+ * and errors at resolve time when required. An unnavigable path (a live
+ * substitution mid-walk) leaves the subst unchanged; the resolve-time guard
+ * covers it. */
+function foldPrefixSelfRef(
+  s: SubstPlaceholder,
+  replacement: ResolverValue,
+  remainder: string[],
+): ResolverValue {
+  const navigated = navigateResolverValue(replacement, remainder)
+  if (navigated === null) return s
+  if (navigated === undefined) {
+    return {
+      _kind: 'subst-placeholder',
+      segments: s.segments.map(seg => ({ text: seg.text, line: seg.line, col: seg.col })),
+      optional: s.optional,
+      knownAbsent: true,
+      listSuffix: s.listSuffix,
+      line: s.line,
+      col: s.col,
+      prefixLen: s.prefixLen,
+    } satisfies SubstPlaceholder
+  }
+  return cloneResolverValue(navigated)
+}
+
+/** Prior-layer object merge for the standalone-prefix-self-ref save case
+ * (S13a.12): the below layer as base, the navigated value on top. A local,
+ * bookkeeping-free merge — deliberately NOT utils.deepMergeResObjInto, which
+ * would create an import cycle and re-run prior-save logic that has already
+ * happened for these (cloned) layers. */
+function mergeResObjLayers(base: ResObj, top: ResObj): ResObj {
+  const fields = new Map(base.fields)
+  for (const [k, tv] of top.fields) {
+    const bv = fields.get(k)
+    if (bv !== undefined && isResObj(bv) && isResObj(tv)) {
+      fields.set(k, mergeResObjLayers(bv, tv))
+    } else {
+      fields.set(k, tv)
+    }
+  }
+  return {
+    _kind: 'res-obj',
+    fields,
+    priorValues: new Map(base.priorValues),
+    resetKeys: new Set(base.resetKeys),
+  }
+}
+
 /** Returns true if `v` contains at least one `Subst` whose dotted-path key
- * equals `fullKey`. Walks Subst / Concat / Append / ResObj / HoconValue
- * array / HoconValue object — all six wrapping shapes that can carry a
- * substitution placeholder post-parse. */
+ * equals `fullKey` — or, per S13a.12, whose path has `fullKey` as a proper
+ * segment-wise prefix (`${foo.a}` inside the stack of `foo`). Walks Subst /
+ * Concat / Append / ResObj / HoconValue array / HoconValue object — all six
+ * wrapping shapes that can carry a substitution placeholder post-parse. */
 export function containsSelfRef(v: ResolverValue, fullKey: string): boolean {
-  if (isSubst(v)) return !v.knownAbsent && substFullKey(v) === fullKey
+  if (isSubst(v))
+    return (
+      !v.knownAbsent &&
+      (substFullKey(v) === fullKey || prefixSelfRefRemainder(v, fullKey) !== null)
+    )
   if (isConcat(v)) return v.nodes.some(n => containsSelfRef(n, fullKey))
   if (isResObj(v)) {
     for (const f of v.fields.values()) {
@@ -104,7 +210,10 @@ export function foldSelfRef(
   replacement: ResolverValue,
 ): ResolverValue {
   if (isSubst(v)) {
-    return substFullKey(v) === fullKey ? replacement : v
+    if (substFullKey(v) === fullKey) return replacement
+    const remainder = prefixSelfRefRemainder(v, fullKey)
+    if (remainder !== null) return foldPrefixSelfRef(v, replacement, remainder)
+    return v
   }
   if (isConcat(v)) {
     return {
@@ -216,6 +325,28 @@ export function foldOrSkipPrior(
 ): ResolverValue | undefined {
   if (!containsSelfRef(prior, fullKey)) return cloneResolverValue(prior)
   if (old === undefined) return foldOptionalSelfRefAbsent(prior, fullKey)
+  // S13a.12: a STANDALONE prefix self-ref in field-value position is a merge
+  // LAYER — an object it navigates to merges over the stack below it, so the
+  // saved prior must keep the below layer's other keys (`foo:{a:{c:1},keep:9};
+  // foo:${foo.a}` → prior {a:{c:1},keep:9,c:1}, not just {c:1}). Nested
+  // occurrences (inside concat/array/object) substitute in place instead —
+  // they are not merge layers — and take the generic fold below.
+  if (isSubst(prior)) {
+    const remainder = prefixSelfRefRemainder(prior, fullKey)
+    if (remainder !== null) {
+      const navigated = navigateResolverValue(old, remainder)
+      // Optional prefix self-ref with nothing below at the navigated path:
+      // the layer vanishes, and a vanished layer is transparent — the below
+      // layer itself is the surviving prior.
+      if (navigated === undefined && prior.optional) return cloneResolverValue(old)
+      if (navigated !== null && navigated !== undefined && isResObj(navigated) && isResObj(old)) {
+        return mergeResObjLayers(
+          cloneResolverValue(old) as ResObj,
+          cloneResolverValue(navigated) as ResObj,
+        )
+      }
+    }
+  }
   // foldSelfRef already constructs new ResObj/array/object/Concat nodes
   // along the path it traverses, so the result is a fresh tree wherever
   // mutation could matter. No additional clone needed.
@@ -223,7 +354,7 @@ export function foldOrSkipPrior(
 }
 
 function foldOptionalSelfRefAbsent(v: ResolverValue, fullKey: string): ResolverValue | undefined {
-  if (isSubst(v) && substFullKey(v) === fullKey) {
+  if (isSubst(v) && (substFullKey(v) === fullKey || prefixSelfRefRemainder(v, fullKey) !== null)) {
     if (!v.optional) return undefined
     return {
       _kind: 'subst-placeholder',
