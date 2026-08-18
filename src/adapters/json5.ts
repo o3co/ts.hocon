@@ -573,6 +573,10 @@ class Parser {
       if (mag > limit) {
         throw this.errf(`integer ${this.src.slice(start, this.pos)} does not fit in int64 (spec F0.5)`)
       }
+      // BigInt has no -0, so a negative zero hex literal (-0x0) would lose
+      // its sign here; route it through the number path, which preserves -0
+      // (the adapter's documented behaviour for decimal literals).
+      if (neg && mag === 0n) return -0
       return integerValue(neg ? -mag : mag)
     }
 
