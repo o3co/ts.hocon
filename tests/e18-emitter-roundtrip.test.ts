@@ -7,10 +7,12 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { fileURLToPath } from 'node:url'
+
 import { parseString } from '../src/parse.js'
 import { fromMap } from '../src/value-factory.js'
 
-const corpusDir = new URL('./testdata/emitter-roundtrip', import.meta.url).pathname
+const corpusDir = fileURLToPath(new URL('./testdata/emitter-roundtrip', import.meta.url))
 
 describe('E18 emitter round-trip corpus', () => {
   if (!existsSync(corpusDir)) {

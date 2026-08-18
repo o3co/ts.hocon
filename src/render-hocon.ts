@@ -118,6 +118,10 @@ function renderScalar(s: HoconValue & { kind: 'scalar' }): string {
 const SAFE_UNQUOTED_KEY = /^[A-Za-z0-9_-]+$/
 
 function renderKey(k: string): string {
+  // `include` is reserved unquoted at the start of a key (S12.5/S14a) — the
+  // parser (and Lightbend: "include keyword is not followed by a quoted
+  // string") rejects `include = 1`, so the key must be quoted to round-trip.
+  if (k === 'include') return quoteString(k)
   return SAFE_UNQUOTED_KEY.test(k) ? k : quoteString(k)
 }
 
@@ -137,8 +141,9 @@ function renderString(s: string): string {
 function quoteString(s: string): string {
   // A string containing newlines is triple-quoted when that is unambiguous
   // and lossless: no embedded `"""`, no trailing `"`, and no carriage return
-  // (the parser normalizes CRLF inside triple quotes, which would drop the
-  // `\r`, so those fall through to escaped double quotes below).
+  // (an invisible raw CR inside triple quotes is ambiguous to readers and
+  // editors even though this lexer preserves it — Lightbend probe 2026-08-19
+  // — so CR strings take the escaped double-quoted form below).
   if (s.includes('\n') && !s.includes('\r') && !s.includes('"""') && !s.endsWith('"')) {
     return `"""${s}"""`
   }

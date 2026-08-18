@@ -16,7 +16,7 @@ EMITTER_ROUNDTRIP_DIR       := tests/testdata/emitter-roundtrip
 .PHONY: testdata test
 
 testdata:
-	@if [ -f .xx-hocon-version ] && [ -d "$(EXPECTED_DIR)" ] && [ -d "$(UNITS_DIR)" ] && [ -d "$(UNQUOTED_STARTS_DIR)" ] && [ -d "$(UNQUOTED_PARENS_DIR)" ] && [ -d "$(DEFERRED_RESOLUTION_DIR)" ] && [ -d "$(KEY_HYPHEN_DIR)" ] && [ -d "$(PATH_EXPR_WS_DIR)" ] && [ -d "$(ARRAY_ROOT_DIR)" ] && [ -d "$(PATH_EMPTY_SEGMENT_DIR)" ] && [ -d "$(UNQUOTED_FORBIDDEN_DIR)" ]; then \
+	@if [ -f .xx-hocon-version ] && [ -d "$(EXPECTED_DIR)" ] && [ -d "$(UNITS_DIR)" ] && [ -d "$(UNQUOTED_STARTS_DIR)" ] && [ -d "$(UNQUOTED_PARENS_DIR)" ] && [ -d "$(DEFERRED_RESOLUTION_DIR)" ] && [ -d "$(KEY_HYPHEN_DIR)" ] && [ -d "$(PATH_EXPR_WS_DIR)" ] && [ -d "$(ARRAY_ROOT_DIR)" ] && [ -d "$(PATH_EMPTY_SEGMENT_DIR)" ] && [ -d "$(UNQUOTED_FORBIDDEN_DIR)" ] && [ -d "$(EMITTER_ROUNDTRIP_DIR)" ]; then \
 	  remote_sha=$$(curl -sf "https://api.github.com/repos/$(TESTDATA_REPO)/commits/$(TESTDATA_REF)" | grep '"sha"' | head -1 | cut -d'"' -f4) && \
 	  local_sha=$$(cat .xx-hocon-version) && \
 	  if [ "$$remote_sha" = "$$local_sha" ]; then \
