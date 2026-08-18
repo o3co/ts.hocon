@@ -160,11 +160,18 @@ function mergeResObjLayers(base: ResObj, top: ResObj): ResObj {
       fields.set(k, tv)
     }
   }
+  // Carry BOTH layers' bookkeeping: top's priorValues (its keys' own
+  // delayed-merge chains) win per key over base's, and resetKeys union so
+  // reset markers from either layer survive the splice.
+  const priorValues = new Map(base.priorValues)
+  for (const [k, pv] of top.priorValues) priorValues.set(k, pv)
+  const resetKeys = new Set(base.resetKeys)
+  for (const k of top.resetKeys) resetKeys.add(k)
   return {
     _kind: 'res-obj',
     fields,
-    priorValues: new Map(base.priorValues),
-    resetKeys: new Set(base.resetKeys),
+    priorValues,
+    resetKeys,
   }
 }
 
