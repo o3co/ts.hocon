@@ -95,6 +95,10 @@ const checks = {
   './adapters/jsonc': async (m) => {
     eq(m.parseJsonc('{"a": 1 /* c */, "b": [1,2,],}').getNumber('a'), 1, 'jsonc adapter')
   },
+  './adapters/json5': async (m) => {
+    eq(m.parseJson5("{db: {host: 'local'}, port: 0x1F90, /* c */}").getString('db.host'), 'local', 'json5 adapter')
+    eq(m.parseJson5('{port: 0x1F90}').getNumber('port'), 8080, 'json5 hex integer')
+  },
   './adapters/toml': async (m) => {
     eq(m.parseTomlConfig('[db]\nhost = "local"\n').getString('db.host'), 'local', 'toml adapter')
   },
