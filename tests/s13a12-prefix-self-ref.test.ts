@@ -81,6 +81,37 @@ describe('S13a.12 — prefix self-reference resolves to "below"', () => {
     expect(v['srv']!['foo']).toEqual({ a: 2, c: 1 })
   })
 
+  it('unnavigable below (live subst mid-walk): optional variant stays resolvable', () => {
+    // navigate([a, b]) hits the unresolved ${x} inside the below layer — the
+    // fold leaves the subst live and the resolve-time guard catches the
+    // re-entry; the optional form vanishes instead of erroring.
+    expect(
+      foo(
+        'foo : { a : ' + D + '{x} }\nfoo : ' + D + '{?foo.a.b}\nfoo : { z : 1 }\nx : { b : 7 }',
+      ),
+    ).toEqual({ z: 1 })
+  })
+
+  it('layer merge recurses into shared object keys', () => {
+    expect(
+      foo(
+        'foo : { shared : { p : 1 }, a : { shared : { q : 2 } } }\nfoo : ' +
+          D +
+          '{foo.a}\nfoo : { z : 0 }',
+      ),
+    ).toEqual({ shared: { p: 1, q: 2 }, a: { shared: { q: 2 } }, z: 0 })
+  })
+
+  it('two layers, required miss: undefined-substitution error', () => {
+    expect(() => foo('foo : { a : 1 }\nfoo : ' + D + '{foo.nope}')).toThrow(
+      /could not resolve substitution/,
+    )
+  })
+
+  it('two layers, optional miss: prior survives', () => {
+    expect(foo('foo : { a : 1 }\nfoo : ' + D + '{?foo.nope}')).toEqual({ a: 1 })
+  })
+
   it('regression: non-self-ref delayed merge sandwich is unchanged', () => {
     expect(
       foo(
