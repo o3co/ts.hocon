@@ -102,9 +102,11 @@ describe('tokenize', () => {
     expect(t.isQuoted).toBe(true)
   })
 
-  it('strips leading newline from triple-quoted strings', () => {
+  it('preserves the leading newline in triple-quoted strings (S9.2)', () => {
+    // Lightbend preserves every character between the quotes (typesafe-config
+    // 1.4.6 probe, 2026-08-18); the old strip was a spec deviation.
     const [t] = tokenize('"""\nhello"""')
-    expect(t.value).toBe('hello')
+    expect(t.value).toBe('\nhello')
   })
 
   it('tokenizes unquoted strings', () => {

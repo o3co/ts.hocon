@@ -174,14 +174,17 @@ export class SubstitutionResolver {
     if (isResObj(v)) return this.resolveResObj(v)
     const hv = v as HoconValue
     if (hv.kind === 'array') {
-      return {
-        kind: 'array',
-        items: hv.items.map(
-          (item: HoconValue) =>
-            this.resolveVal(item as ResolverValue, scope) ??
-            ({ kind: 'scalar', raw: 'null', valueType: 'null' } satisfies HoconValue),
-        ),
+      // S13.12 (HOCON.md L635): an element that resolves to nothing (an
+      // undefined optional substitution) is NOT added — Lightbend yields
+      // [1, 3] for `[1, ${?missing}, 3]`, never [1, null, 3]. A literal
+      // `null` element resolves to a null scalar (not undefined) and is kept.
+      const items: HoconValue[] = []
+      for (const item of hv.items) {
+        const resolved = this.resolveVal(item as ResolverValue, scope)
+        if (resolved === undefined) continue
+        items.push(resolved)
       }
+      return { kind: 'array', items }
     }
     return hv
   }
