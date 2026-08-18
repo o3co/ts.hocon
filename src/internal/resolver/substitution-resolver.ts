@@ -54,6 +54,13 @@ export class SubstitutionResolver {
   // same prefix-match semantics).
   private resolvingFieldPath: string[] = []
 
+  // S13a.12 recursion guard: field keys whose prior is currently being
+  // resolved through the prefix-self-ref branch. Saved priors are
+  // prefix-self-ref-free by the fold invariant, so re-entry only happens on
+  // a shape the fold could not see through (a live subst mid-navigation) —
+  // report it as a cycle instead of recursing forever.
+  private resolvingPrefixPriors = new Set<string>()
+
   constructor(
     private root: ResObj,
     private opts: ResolveOptions,
@@ -71,53 +78,74 @@ export class SubstitutionResolver {
   private resolveResObj(obj: ResObj): HoconValue {
     const result = new Map<string, HoconValue>()
     for (const [key, val] of obj.fields) {
+      // The push/pop span covers BOTH the value resolution and the
+      // prior-chain resolution below: a prior belongs to this field's value
+      // stack, so a substitution inside it must see the full field path.
+      // With the field popped, a prior's reference into a sibling of this
+      // field (`a`'s prior holding `${bar.nested.x}` while resolving
+      // `bar.nested.a`) would satisfy the S13a.12 prefix-self-ref test
+      // against the truncated path [bar, nested] and mis-route to the
+      // prior of `nested` instead of the final tree.
       this.resolvingFieldPath.push(key)
       const fullCacheKey = stringSegmentsToKey(this.resolvingFieldPath)
       this.cache.delete(fullCacheKey)
-      let resolved: HoconValue | undefined
       try {
-        resolved = this.resolveVal(val, obj)
-      } finally {
-        this.resolvingFieldPath.pop()
-      }
-      if (resolved !== undefined) {
-        // Delayed merge: if both current and prior resolve to objects, deep merge
-        if (resolved.kind === 'object') {
+        const resolved = this.resolveVal(val, obj)
+        if (resolved !== undefined) {
+          // Delayed merge: if both current and prior resolve to objects, deep merge
+          if (resolved.kind === 'object') {
+            const prior = obj.priorValues.get(key)
+            if (prior !== undefined) {
+              const priorResolved = this.resolveVal(prior, obj)
+              if (
+                priorResolved !== undefined &&
+                priorResolved.kind === 'object'
+              ) {
+                const finalValue = deepMergeHoconValues(
+                  priorResolved as HoconValue & { kind: 'object' },
+                  resolved as HoconValue & { kind: 'object' },
+                )
+                result.set(key, finalValue)
+                this.cache.set(fullCacheKey, finalValue)
+                this.cacheDescendants(fullCacheKey, finalValue)
+                continue
+              }
+            }
+          }
+          result.set(key, resolved)
+          this.cache.set(fullCacheKey, resolved)
+          this.cacheDescendants(fullCacheKey, resolved)
+        } else {
+          // Unresolved optional substitution: fall back to prior value per HOCON spec
           const prior = obj.priorValues.get(key)
           if (prior !== undefined) {
             const priorResolved = this.resolveVal(prior, obj)
-            if (
-              priorResolved !== undefined &&
-              priorResolved.kind === 'object'
-            ) {
-              const finalValue = deepMergeHoconValues(
-                priorResolved as HoconValue & { kind: 'object' },
-                resolved as HoconValue & { kind: 'object' },
-              )
-              result.set(key, finalValue)
-              this.cache.set(fullCacheKey, finalValue)
-              this.cacheDescendants(fullCacheKey, finalValue)
-              continue
+            if (priorResolved !== undefined) {
+              result.set(key, priorResolved)
+              this.cache.set(fullCacheKey, priorResolved)
+              this.cacheDescendants(fullCacheKey, priorResolved)
             }
           }
         }
-        result.set(key, resolved)
-        this.cache.set(fullCacheKey, resolved)
-        this.cacheDescendants(fullCacheKey, resolved)
-      } else {
-        // Unresolved optional substitution: fall back to prior value per HOCON spec
-        const prior = obj.priorValues.get(key)
-        if (prior !== undefined) {
-          const priorResolved = this.resolveVal(prior, obj)
-          if (priorResolved !== undefined) {
-            result.set(key, priorResolved)
-            this.cache.set(fullCacheKey, priorResolved)
-            this.cacheDescendants(fullCacheKey, priorResolved)
-          }
-        }
+      } finally {
+        // `continue` routes through here too — every exit pops.
+        this.resolvingFieldPath.pop()
       }
     }
     return { kind: 'object', fields: result }
+  }
+
+  /** S13a.12: walk resolved-object fields by segment text. A missing segment
+   * or a walk into a scalar/array is path-absent → undefined. */
+  private navigateResolved(v: HoconValue, remainder: string[]): HoconValue | undefined {
+    let cur: HoconValue = v
+    for (const seg of remainder) {
+      if (cur.kind !== 'object') return undefined
+      const next = cur.fields.get(seg)
+      if (next === undefined) return undefined
+      cur = next
+    }
+    return cur
   }
 
   private cacheDescendants(prefix: string, value: HoconValue): void {
@@ -162,7 +190,63 @@ export class SubstitutionResolver {
     s: SubstPlaceholder,
     scope: ResObj,
   ): HoconValue | undefined {
-    if (s.knownAbsent) return undefined
+    if (s.knownAbsent) {
+      // A required substitution folded to knownAbsent (S13a.12 prefix fold
+      // with no below value at the navigated path) is the spec's "undefined"
+      // classification — an error, not a silent disappearance. The `+=`
+      // chain-bottom sentinel (go.hocon#134) is always `${?…}` and keeps the
+      // silent path.
+      if (!s.optional) {
+        const k = segmentsToKey(s.segments)
+        throw new ResolveError(
+          `${this.originPrefix()}could not resolve substitution: \${${k}}`,
+          k,
+          s.line,
+          s.col,
+        )
+      }
+      return undefined
+    }
+
+    // S13a.12 (HOCON.md L791): a substitution whose target lies INSIDE the
+    // field currently being resolved (the field path is a proper prefix of
+    // the target path, e.g. `foo : ${foo.a}` while resolving `foo`) is
+    // self-referential and resolves against the field's "below" value — its
+    // saved prior — never the final tree, which would see the layers ABOVE
+    // the substitution. The exact-key case (`foo : ${foo}`) keeps its
+    // existing prior machinery further down.
+    {
+      const rfp = this.resolvingFieldPath
+      const sTexts = s.segments.map(seg => seg.text)
+      if (
+        rfp.length > 0 &&
+        rfp.length < sTexts.length &&
+        stringSegmentsToKey(sTexts.slice(0, rfp.length)) === stringSegmentsToKey(rfp)
+      ) {
+        const guardKey = stringSegmentsToKey(rfp)
+        const prior = scope.priorValues.get(rfp[rfp.length - 1]!)
+        if (prior !== undefined && !this.resolvingPrefixPriors.has(guardKey)) {
+          this.resolvingPrefixPriors.add(guardKey)
+          try {
+            const priorResolved = this.resolveVal(prior, scope)
+            if (priorResolved !== undefined) {
+              const navigated = this.navigateResolved(priorResolved, sTexts.slice(rfp.length))
+              if (navigated !== undefined) return navigated
+            }
+          } finally {
+            this.resolvingPrefixPriors.delete(guardKey)
+          }
+        }
+        if (s.optional) return undefined
+        const k = segmentsToKey(s.segments)
+        throw new ResolveError(
+          `${this.originPrefix()}could not resolve substitution: \${${k}}`,
+          k,
+          s.line,
+          s.col,
+        )
+      }
+    }
 
     // Cache key includes listSuffix to prevent `${X}` and `${X[]}` collisions:
     // both resolve via different code paths (scalar fallback vs resolveEnvList)

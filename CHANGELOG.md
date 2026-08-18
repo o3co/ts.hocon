@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **BREAKING (spec fix, S13a.12): a substitution whose target lies inside the
+  field being defined (`foo : ${foo.a}`) now resolves against the field's
+  "below" value — the merge of the stack beneath the substitution — instead of
+  the final tree.** The spec example `foo:{a:{c:1}}; foo:${foo.a}; foo:{a:2}`
+  now yields `{a:2, c:1}` (was `{a:2}`, dropping `c`), and the two-layer form
+  `foo:{a:{c:1}}; foo:${foo.a}` now resolves to `{a:{c:1}, c:1}` (was an
+  unresolved-substitution error). A required prefix self-ref with nothing
+  below at the navigated path errors with the undefined classification
+  (`could not resolve substitution`); an optional one vanishes transparently,
+  leaving the below layer as the surviving prior. Found by a cross-impl probe
+  — all four sibling implementations shared the gap (the recorded ts ✅ was a
+  stale-pointer misclassification), and the fixes land in lockstep.
+
 - **BREAKING (spec fix, S3.4)**: an unbraced root followed by an unbalanced
   `}` — e.g. `a = 1` on one line and a stray `}` on the next — now raises
   `ParseError` instead of being silently accepted with the trailing tokens

@@ -442,8 +442,16 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
   tests: tests/resolver.test.ts:227
   status: ✅
 - **S13a.12** Self-ref in path expression `${foo.a}` resolves to "below" — §Self-Referential (L791)
-  tests: tests/resolver.test.ts:93
-  status: ✅
+  tests: tests/s13a12-prefix-self-ref.test.ts
+  status: ✅ — Fixed 2026-08-18. The previous ✅ was a misclassification (stale test
+  pointer): a 2026-08-18 cross-impl probe showed the spec example
+  `foo:{a:{c:1}}; foo:${foo.a}; foo:{a:2}` yielded `{a:2}` (c lost) in all four
+  siblings — the prefix direction (`foo` ⊏ `foo.a`) was missing from self-reference
+  detection, so the substitution resolved against the final tree ("above") instead of
+  the stack "below". Fixed in the fold (prefix self-refs fold at prior-save time,
+  standalone occurrences forming a merge layer) and in resolveSubst (standing prefix
+  self-refs resolve via the field's prior + remainder navigation; a miss takes the
+  undefined classification). Non-self-ref delayed merge was always correct.
 - **S13a.13** `a = ${?a}foo` resolves to `"foo"` (look-back undefined) — §Self-Referential (L841)
   tests: tests/resolver.test.ts:766, tests/s13a13-self-ref-lookback.test.ts (sr01–sr11)
   status: ✅ Fix landed in cluster 3f via resolver short-circuit when no prior value exists (see #84).
