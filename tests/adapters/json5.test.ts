@@ -312,3 +312,41 @@ it('S: -0x0 preserves the sign like decimal -0 (Copilot review pin)', () => {
   const cfg = parseJson5('{a: -0x0}')
   expect(Object.is((cfg.toObject() as Record<string, unknown>).a, -0)).toBe(true)
 })
+
+// ── codecov patch-coverage pins (branches the ported battery missed) ─────────
+
+it('S: whitespace forms TAB/VT/FF separate tokens', () => {
+  expect(parseJson5('{a:\t1,\u000bb:\u000c2}').toObject()).toEqual({ a: 1, b: 2 })
+})
+
+it('S: bare true/false/null values', () => {
+  expect(parseJson5('{t: true, f: false, n: null}').toObject()).toEqual({ t: true, f: false, n: null })
+})
+
+it('S: missing separator errors in objects and arrays', () => {
+  expect(() => parseJson5('{a: 1 b: 2}')).toThrow(/expected ',' or '}'/)
+  expect(() => parseJson5('[1 2]')).toThrow(/expected ',' or ']'/)
+})
+
+it('S: invalid \\u quad is rejected', () => {
+  expect(() => parseJson5('{a: "\\uZZZZ"}')).toThrow(/invalid \\u escape/)
+})
+
+it('S: the single-character escape set decodes', () => {
+  const cfg = parseJson5(`{a: "\\n\\t\\r\\b\\f"}`)
+  expect((cfg.toObject() as Record<string, unknown>).a).toBe('\n\t\r\b\f')
+})
+
+it('S: digit escapes \\1–\\9 are rejected', () => {
+  for (const d of ['1', '5', '9']) {
+    expect(() => parseJson5(`{a: "\\${d}"}`)).toThrow(/digits cannot be escaped/)
+  }
+})
+
+it('S: a plain BMP \\u escape decodes', () => {
+  expect((parseJson5('{a: "\\u0041"}').toObject() as Record<string, unknown>).a).toBe('A')
+})
+
+it('S: float overflow is malformed, not Infinity', () => {
+  expect(() => parseJson5('{a: 1e999}')).toThrow(/malformed number/)
+})
