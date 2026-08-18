@@ -195,9 +195,14 @@ export class SubstitutionResolver {
       // with no below value at the navigated path) is the spec's "undefined"
       // classification — an error, not a silent disappearance. The `+=`
       // chain-bottom sentinel (go.hocon#134) is always `${?…}` and keeps the
-      // silent path.
+      // silent path. allowUnresolved leaves the placeholder in place, and the
+      // key keeps the `[]` suffix so `${X[]}` reports (and, under
+      // allowUnresolved, occupies) its own path.
       if (!s.optional) {
-        const k = segmentsToKey(s.segments)
+        if (this.opts.allowUnresolved) return s as unknown as HoconValue
+        const k = s.listSuffix
+          ? `${segmentsToKey(s.segments)}[]`
+          : segmentsToKey(s.segments)
         throw new ResolveError(
           `${this.originPrefix()}could not resolve substitution: \${${k}}`,
           k,
@@ -238,7 +243,10 @@ export class SubstitutionResolver {
           }
         }
         if (s.optional) return undefined
-        const k = segmentsToKey(s.segments)
+        if (this.opts.allowUnresolved) return s as unknown as HoconValue
+        const k = s.listSuffix
+          ? `${segmentsToKey(s.segments)}[]`
+          : segmentsToKey(s.segments)
         throw new ResolveError(
           `${this.originPrefix()}could not resolve substitution: \${${k}}`,
           k,
