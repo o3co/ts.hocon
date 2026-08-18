@@ -307,3 +307,8 @@ describe('json5 origin naming', () => {
     expect(() => parseJson5('{a: [}')).toThrow('json5: document:')
   })
 })
+
+it('S: -0x0 preserves the sign like decimal -0 (Copilot review pin)', () => {
+  const cfg = parseJson5('{a: -0x0}')
+  expect(Object.is((cfg.toObject() as Record<string, unknown>).a, -0)).toBe(true)
+})
