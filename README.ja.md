@@ -80,6 +80,7 @@ HOCON は単なるシリアライズ形式ではなく、**プログラムに注
 - `+=` 追加演算子
 - `include "file.conf"` および `include file("file.conf")` ディレクティブ
 - トリプルクォート文字列（`"""..."""`）
+- HOCON エミッタ（`renderHocon()`）— 解決済み `Config` を HOCON テキストとして出力。再パースすると同一の値ツリーになる（E18 ラウンドトリップ契約）
 - 同期・非同期 API（`parse` / `parseAsync` / `parseFile` / `parseFileAsync`）
 - ESM + CJS デュアルパッケージ（全エントリポイントを CI で両形式ロード検証）
 - [Zod](https://zod.dev/) スキーマバリデーション統合（オプション）
@@ -121,6 +122,7 @@ parseFileAsync(path: string, opts?: ParseOptions): Promise<Config>
 | `keys()` | `string[]` | — |
 | `withFallback(fallback)` | `Config` | — |
 | `toObject()` | `unknown` | — |
+| `renderHocon()` | `string` | 未解決の場合 |
 
 ### Zod 統合
 

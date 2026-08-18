@@ -30,6 +30,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   EOF check (the F3.2 strictness rule). A `//` comment ends at LS/PS as well
   as LF/CR — deliberately different from the jsonc dialect, whose owner ends
   comments at LF/CR only.
+- **`Config.renderHocon()` — HOCON emitter (E18)**: renders a resolved,
+  data-only Config back to HOCON text. The correctness contract is the round
+  trip — `parseString(cfg.renderHocon())` yields the same value tree — not
+  byte-for-byte formatting: a string is quoted whenever leaving it bare would
+  re-parse as another type (`"8080"`, keyword look-alikes such as `no`/`on`,
+  `${…}` look-alikes), numbers / booleans / null emit raw, and a multi-line
+  string is triple-quoted only when that is lossless (no CR, no embedded
+  `"""`, no trailing `"`). An unresolved Config throws `ConfigError` — a
+  substitution has no textual round trip through a value tree. Lockstep with
+  go.hocon v1.11.0 `RenderHOCON` and the py.hocon / rs.hocon ports; verified
+  against the shared xx.hocon `emitter-roundtrip` corpus (rt01–rt10, synced
+  by `make testdata`).
 
 ### Fixed
 

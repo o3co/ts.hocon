@@ -86,6 +86,7 @@ On top of that, HOCON combines the readability of YAML with the structure of JSO
 - `include "file.conf"` and `include file("file.conf")` directives
 - Triple-quoted strings (`"""..."""`)
 - Duration and byte size parsing (`getDuration()`, `getBytes()`)
+- HOCON emitter (`renderHocon()`) — renders a resolved `Config` back to HOCON text; re-parsing yields the same value tree (E18 round-trip contract)
 - Sync and async API (`parse` / `parseAsync` / `parseFile` / `parseFileAsync`)
 - ESM + CJS dual package (every entrypoint smoke-tested in both formats on each CI run)
 - Optional [Zod](https://zod.dev/) integration for schema validation
@@ -134,6 +135,7 @@ parseFileAsync(path: string, opts?: ParseOptions): Promise<Config>
 | `resolveWith(source, opts?)` | `Config` | source unresolved, or unresolvable substitution |
 | `isResolved()` | `boolean` | — |
 | `toObject()` | `unknown` | — |
+| `renderHocon()` | `string` | unresolved |
 
 ### Deferred resolution API (E12)
 

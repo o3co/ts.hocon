@@ -10,6 +10,7 @@ import {
 } from './internal/resolver/resolver.js'
 import { isConcat, isResObj, isSubst, mergeUnresolved } from './internal/resolver/types.js'
 import type { ResObj, ResolveOptions as InternalResolveOptions } from './internal/resolver/types.js'
+import { renderHoconFromRoot } from './render-hocon.js'
 import { numericObjectToArray } from './value/numeric-array.js'
 import type { HoconValue, ReadonlyHoconValue, ScalarValueType } from './value.js'
 
@@ -410,6 +411,40 @@ export class Config {
    */
   toObject(opts?: { nullPrototype?: boolean }): unknown {
     return hoconToJs(this.root, opts?.nullPrototype === true)
+  }
+
+  /**
+   * Renders this resolved Config as HOCON text (E18; lockstep with go.hocon's
+   * `Config.RenderHOCON`, v1.11.0).
+   *
+   * The output round-trips: parsing it back yields the same value tree. That
+   * is the correctness contract, not byte-for-byte formatting — a scalar is
+   * quoted whenever leaving it bare would re-parse as a different type (a
+   * string `"8080"` becomes `"8080"`, not `8080`), and left bare only when it
+   * provably cannot.
+   *
+   * The Config must be resolved and hold only data (objects, arrays, string /
+   * number / boolean / null scalars) — exactly what {@link fromMap} and the
+   * format adapters produce. An unresolved placeholder throws
+   * {@link ConfigError}; substitutions have no textual round trip through a
+   * value tree.
+   *
+   * The root object's fields are emitted without enclosing braces, nested
+   * objects as `key { … }`, arrays as newline-separated `[ … ]`, indented two
+   * spaces. Source comments are not represented — a value tree does not carry
+   * them.
+   */
+  renderHocon(): string {
+    if (!this._resolved) {
+      // Placeholder fields are omitted from the partial root, so the walk
+      // below could not see them — gate on the resolved flag instead (same
+      // whole-config granularity as isResolved, E12 decision 11).
+      throw new ConfigError(
+        'renderHocon: unrenderable unresolved substitution (config must be resolved data)',
+        '',
+      )
+    }
+    return renderHoconFromRoot(this.root)
   }
 
   /**

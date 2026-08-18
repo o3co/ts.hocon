@@ -11,6 +11,7 @@ PATH_EXPR_WS_DIR            := tests/lightbend/testdata/hocon/path-expr-whitespa
 ARRAY_ROOT_DIR              := tests/lightbend/testdata/hocon/array-root
 PATH_EMPTY_SEGMENT_DIR      := tests/lightbend/testdata/hocon/path-empty-segment
 UNQUOTED_FORBIDDEN_DIR      := tests/lightbend/testdata/hocon/unquoted-forbidden
+EMITTER_ROUNDTRIP_DIR       := tests/testdata/emitter-roundtrip
 
 .PHONY: testdata test
 
@@ -48,6 +49,7 @@ testdata:
 	{ [ ! -d "$$tmpdir/testdata/hocon/array-root" ] || cp -R "$$tmpdir/testdata/hocon/array-root/." "$(ARRAY_ROOT_DIR)/"; } && \
 	cp -R "$$tmpdir/testdata/hocon/path-empty-segment/." "$(PATH_EMPTY_SEGMENT_DIR)/" && \
 	cp -R "$$tmpdir/testdata/hocon/unquoted-forbidden/." "$(UNQUOTED_FORBIDDEN_DIR)/" && \
+	{ [ ! -d "$$tmpdir/testdata/emitter-roundtrip" ] || { rm -rf "$(EMITTER_ROUNDTRIP_DIR)" && mkdir -p "$(EMITTER_ROUNDTRIP_DIR)" && cp -R "$$tmpdir/testdata/emitter-roundtrip/." "$(EMITTER_ROUNDTRIP_DIR)/"; }; } && \
 	curl -sf "https://api.github.com/repos/$(TESTDATA_REPO)/commits/$(TESTDATA_REF)" | grep '"sha"' | head -1 | cut -d'"' -f4 > .xx-hocon-version && \
 	echo "Done. Fetched $$(cat .xx-hocon-version)"
 
