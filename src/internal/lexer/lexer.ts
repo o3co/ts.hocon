@@ -168,7 +168,6 @@ class Lexer {
         if (!closed) {
           throw new ParseError('unterminated triple-quoted string', sl, sc)
         }
-        if (value.startsWith('\n')) value = value.slice(1)
         this.push('triple_string', value, sl, sc, true)
         continue
       }

@@ -210,8 +210,8 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
   tests: tests/lexer.test.ts:98; tests/lightbend/testdata/equiv05/triple-quotes.conf (fixture)
   status: ✅
 - **S9.2** Newlines and whitespace preserved literally — §Multi-line strings (L293)
-  tests: tests/lexer.test.ts:98; tests/lightbend/testdata/equiv05/triple-quotes.conf (fixture)
-  status: ✅
+  tests: tests/lexer.test.ts:98; tests/s9-s13-lightbend-conformance.test.ts (leading-newline case); tests/lightbend/testdata/equiv05/triple-quotes.conf (fixture)
+  status: ✅ — the lexer stripped a LEADING newline (spec deviation; Lightbend preserves every character between the quotes — probe 2026-08-18, surfaced by the py.hocon verification wave); fixed 2026-08-18. equiv05 has no leading-newline case, which is how the strip survived the fixture.
 - **S9.3** Unicode escapes NOT interpreted inside triple-quoted — §Multi-line strings (L294)
   tests: tests/lightbend/testdata/equiv05/triple-quotes.conf (fixture)
   status: ✅
@@ -369,8 +369,8 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
   tests: tests/resolver.test.ts:103; tests/lightbend/testdata/equiv04/missing-substitutions.conf (fixture)
   status: ✅
 - **S13.12** Optional undefined in array element → element not added — §Substitutions (L635)
-  tests: tests/lightbend/testdata/equiv04/missing-substitutions.conf (fixture)
-  status: ✅
+  tests: tests/s9-s13-lightbend-conformance.test.ts (element omitted; literal null kept; nested arrays; concat-element remainder)
+  status: ✅ — the previous ✅ was a stale citation: equiv04/missing-substitutions.conf contains no array-element case, and the resolver actually null-filled the element ([1, null, 3]; Lightbend yields [1, 3] — probe 2026-08-18, surfaced by the py.hocon verification wave). Fixed 2026-08-18.
 - **S13.13** Optional undefined in string concat → empty string — §Substitutions (L636)
   tests: tests/resolver.test.ts:737
   status: ✅
