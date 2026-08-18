@@ -112,6 +112,17 @@ describe('S13a.12 — prefix self-reference resolves to "below"', () => {
     expect(foo('foo : { a : 1 }\nfoo : ' + D + '{?foo.nope}')).toEqual({ a: 1 })
   })
 
+  it('interior sibling reference stays a lazy final-tree lookup', () => {
+    // ${a.p.v} sits INSIDE a's object literal — an object-interior sibling
+    // reference, not a value-stack layer. It must keep S13a.14 lazy final-tree
+    // semantics (the allowPrefix narrowing), not fold to a below value.
+    const v = parse('a = { p : { v : 1 }, x : ' + D + '{a.p.v} }\na = { y : 2 }').toObject() as Record<
+      string,
+      unknown
+    >
+    expect(v['a']).toEqual({ p: { v: 1 }, x: 1, y: 2 })
+  })
+
   it('regression: non-self-ref delayed merge sandwich is unchanged', () => {
     expect(
       foo(
