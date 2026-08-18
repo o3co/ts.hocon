@@ -374,8 +374,8 @@ describe('getBytes', () => {
     expect(c.getBytes('size')).toBe(1024)
   })
 
-  it('parses kilobytes (SI)', () => {
-    const c = parse('size = "10KB"')
+  it('parses kilobytes (SI) — Lightbend spelling kB', () => {
+    const c = parse('size = "10kB"')
     expect(c.getBytes('size')).toBe(10_000)
   })
 
@@ -446,14 +446,14 @@ describe('getBytes', () => {
     expect(c.getBytes('size')).toBe(1_500_000_000)
   })
 
-  it('parses lowercase short units', () => {
-    const c = parse('size = "10kb"')
-    expect(c.getBytes('size')).toBe(10_000)
-  })
-
-  it('parses mixed case units', () => {
-    const c = parse('size = "512mb"')
-    expect(c.getBytes('size')).toBe(512_000_000)
+  it('rejects non-Lightbend unit casings (S21.2 alignment)', () => {
+    // Lightbend's unit table is case-sensitive: kB parses, KB/kb/Kb do not,
+    // and long forms are lowercase only (probe 2026-08-18). The old
+    // case-insensitive fallback accepted spellings the reference rejects.
+    for (const bad of ['10KB', '10kb', '10Kb', '512mb', '1mB', '1Kilobyte', '1MEGABYTES', '1kiB', '1ki']) {
+      const c = parse(`size = "${bad}"`)
+      expect(() => c.getBytes('size'), bad).toThrow()
+    }
   })
 
   it('rounds to integer when output unit is bytes', () => {

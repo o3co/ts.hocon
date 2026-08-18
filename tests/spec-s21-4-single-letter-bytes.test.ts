@@ -75,9 +75,9 @@ describe('S21.4 — single-letter byte abbreviations → powers of two (HOCON.md
     expect(() => parseBytes('1e')).toThrow(RangeError)
   })
 
-  // Regression guard: multi-letter units (KB/MB) remain unchanged (SI decimal)
-  it('S21.4 regression: parseBytes("1KB") = 1000 (multi-letter KB stays SI decimal)', () => {
-    expect(parseBytes('1KB')).toBe(1_000)
+  // Regression guard: multi-letter units (kB/MB) remain unchanged (SI decimal)
+  it('S21.4 regression: parseBytes("1kB") = 1000 (multi-letter kB stays SI decimal)', () => {
+    expect(parseBytes('1kB')).toBe(1_000)
   })
 
   it('S21.4 regression: parseBytes("1MB") = 1000000 (multi-letter MB stays SI decimal)', () => {
