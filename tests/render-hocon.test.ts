@@ -95,6 +95,7 @@ describe('renderHocon round trip', () => {
       '': 'empty key',
       'a=b': true,
       '123': 'numeric key ok',
+      include: 'reserved word must be quoted to round-trip',
     })
   })
 
