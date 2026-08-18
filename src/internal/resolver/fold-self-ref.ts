@@ -174,25 +174,36 @@ function mergeResObjLayers(base: ResObj, top: ResObj): ResObj {
  * Concat / Append / ResObj / HoconValue array / HoconValue object — all six
  * wrapping shapes that can carry a substitution placeholder post-parse. */
 export function containsSelfRef(v: ResolverValue, fullKey: string): boolean {
+  return containsSelfRefInner(v, fullKey, true)
+}
+
+/** `allowPrefix` narrows the S13a.12 prefix rule to value-stack positions: it
+ * stays true through concat nodes and array elements (the value chain of the
+ * field itself) but turns false when descending into object interiors — a
+ * substitution nested inside an object literal that references a sibling
+ * branch of the same field (`a = { x = ${a.p.v} }`) is a lazy final-tree
+ * lookup (S13a.14), NOT a below-lookback. */
+function containsSelfRefInner(v: ResolverValue, fullKey: string, allowPrefix: boolean): boolean {
   if (isSubst(v))
     return (
       !v.knownAbsent &&
-      (substFullKey(v) === fullKey || prefixSelfRefRemainder(v, fullKey) !== null)
+      (substFullKey(v) === fullKey ||
+        (allowPrefix && prefixSelfRefRemainder(v, fullKey) !== null))
     )
-  if (isConcat(v)) return v.nodes.some(n => containsSelfRef(n, fullKey))
+  if (isConcat(v)) return v.nodes.some(n => containsSelfRefInner(n, fullKey, allowPrefix))
   if (isResObj(v)) {
     for (const f of v.fields.values()) {
-      if (containsSelfRef(f, fullKey)) return true
+      if (containsSelfRefInner(f, fullKey, false)) return true
     }
     return false
   }
   const hv = v as HoconValue
   if (hv.kind === 'array') {
-    return hv.items.some(item => containsSelfRef(item as ResolverValue, fullKey))
+    return hv.items.some(item => containsSelfRefInner(item as ResolverValue, fullKey, allowPrefix))
   }
   if (hv.kind === 'object') {
     for (const f of hv.fields.values()) {
-      if (containsSelfRef(f as ResolverValue, fullKey)) return true
+      if (containsSelfRefInner(f as ResolverValue, fullKey, false)) return true
     }
     return false
   }
@@ -209,16 +220,28 @@ export function foldSelfRef(
   fullKey: string,
   replacement: ResolverValue,
 ): ResolverValue {
+  return foldSelfRefInner(v, fullKey, replacement, true)
+}
+
+/** See `containsSelfRefInner` for the `allowPrefix` narrowing rule. */
+function foldSelfRefInner(
+  v: ResolverValue,
+  fullKey: string,
+  replacement: ResolverValue,
+  allowPrefix: boolean,
+): ResolverValue {
   if (isSubst(v)) {
     if (substFullKey(v) === fullKey) return replacement
-    const remainder = prefixSelfRefRemainder(v, fullKey)
-    if (remainder !== null) return foldPrefixSelfRef(v, replacement, remainder)
+    if (allowPrefix) {
+      const remainder = prefixSelfRefRemainder(v, fullKey)
+      if (remainder !== null) return foldPrefixSelfRef(v, replacement, remainder)
+    }
     return v
   }
   if (isConcat(v)) {
     return {
       _kind: 'concat-placeholder',
-      nodes: v.nodes.map(n => foldSelfRef(n, fullKey, replacement)),
+      nodes: v.nodes.map(n => foldSelfRefInner(n, fullKey, replacement, allowPrefix)),
       line: v.line,
       col: v.col,
     } satisfies ConcatPlaceholder
@@ -226,7 +249,7 @@ export function foldSelfRef(
   if (isResObj(v)) {
     const newFields = new Map<string, ResolverValue>()
     for (const [k, val] of v.fields) {
-      newFields.set(k, foldSelfRef(val, fullKey, replacement))
+      newFields.set(k, foldSelfRefInner(val, fullKey, replacement, false))
     }
     // Preserve priorValues from the original so per-object look-back continues
     // to find them post-fold.
@@ -236,13 +259,15 @@ export function foldSelfRef(
   if (hv.kind === 'array') {
     return {
       kind: 'array',
-      items: hv.items.map(item => foldSelfRef(item as ResolverValue, fullKey, replacement) as HoconValue),
+      items: hv.items.map(
+        item => foldSelfRefInner(item as ResolverValue, fullKey, replacement, allowPrefix) as HoconValue,
+      ),
     }
   }
   if (hv.kind === 'object') {
     const newFields = new Map<string, HoconValue>()
     for (const [k, val] of hv.fields) {
-      newFields.set(k, foldSelfRef(val as ResolverValue, fullKey, replacement) as HoconValue)
+      newFields.set(k, foldSelfRefInner(val as ResolverValue, fullKey, replacement, false) as HoconValue)
     }
     return { kind: 'object', fields: newFields }
   }
@@ -354,7 +379,20 @@ export function foldOrSkipPrior(
 }
 
 function foldOptionalSelfRefAbsent(v: ResolverValue, fullKey: string): ResolverValue | undefined {
-  if (isSubst(v) && (substFullKey(v) === fullKey || prefixSelfRefRemainder(v, fullKey) !== null)) {
+  return foldOptionalSelfRefAbsentInner(v, fullKey, true)
+}
+
+/** See `containsSelfRefInner` for the `allowPrefix` narrowing rule. */
+function foldOptionalSelfRefAbsentInner(
+  v: ResolverValue,
+  fullKey: string,
+  allowPrefix: boolean,
+): ResolverValue | undefined {
+  if (
+    isSubst(v) &&
+    (substFullKey(v) === fullKey ||
+      (allowPrefix && prefixSelfRefRemainder(v, fullKey) !== null))
+  ) {
     if (!v.optional) return undefined
     return {
       _kind: 'subst-placeholder',
@@ -370,7 +408,7 @@ function foldOptionalSelfRefAbsent(v: ResolverValue, fullKey: string): ResolverV
   if (isConcat(v)) {
     const nodes: ResolverValue[] = []
     for (const node of v.nodes) {
-      const folded = foldOptionalSelfRefAbsent(node, fullKey)
+      const folded = foldOptionalSelfRefAbsentInner(node, fullKey, allowPrefix)
       if (folded === undefined) return undefined
       nodes.push(folded)
     }
@@ -379,7 +417,7 @@ function foldOptionalSelfRefAbsent(v: ResolverValue, fullKey: string): ResolverV
   if (isResObj(v)) {
     const fields = new Map<string, ResolverValue>()
     for (const [key, value] of v.fields) {
-      const folded = foldOptionalSelfRefAbsent(value, fullKey)
+      const folded = foldOptionalSelfRefAbsentInner(value, fullKey, false)
       if (folded === undefined) return undefined
       fields.set(key, folded)
     }
@@ -389,7 +427,7 @@ function foldOptionalSelfRefAbsent(v: ResolverValue, fullKey: string): ResolverV
   if (hv.kind === 'array') {
     const items: HoconValue[] = []
     for (const item of hv.items) {
-      const folded = foldOptionalSelfRefAbsent(item as ResolverValue, fullKey)
+      const folded = foldOptionalSelfRefAbsentInner(item as ResolverValue, fullKey, allowPrefix)
       if (folded === undefined) return undefined
       items.push(folded as HoconValue)
     }
@@ -398,7 +436,7 @@ function foldOptionalSelfRefAbsent(v: ResolverValue, fullKey: string): ResolverV
   if (hv.kind === 'object') {
     const fields = new Map<string, HoconValue>()
     for (const [key, value] of hv.fields) {
-      const folded = foldOptionalSelfRefAbsent(value as ResolverValue, fullKey)
+      const folded = foldOptionalSelfRefAbsentInner(value as ResolverValue, fullKey, false)
       if (folded === undefined) return undefined
       fields.set(key, folded as HoconValue)
     }
