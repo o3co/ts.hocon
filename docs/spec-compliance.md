@@ -728,14 +728,14 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
 ## S19. Duration format
 
 - **S19.1** `ns` / `nano` / `nanos` / `nanosecond` / `nanoseconds` — §Duration format (L1307)
-  tests: tests/config.test.ts:264
-  status: ✅
+  tests: tests/config.test.ts:264; tests/s19-s21-lightbend-units.test.ts (bare alias forms)
+  status: ✅ — the bare `nano`/`nanos` aliases were missing from the table (the prior ✅ pinned only the forms that existed); added 2026-08-18 in the four-impl units audit.
 - **S19.2** `us` / `micro` / `micros` / `microsecond` / `microseconds` — §Duration format (L1308)
-  tests: tests/config.test.ts:269
-  status: ✅
+  tests: tests/config.test.ts:269; tests/s19-s21-lightbend-units.test.ts (bare alias forms)
+  status: ✅ — the bare `micro`/`micros` aliases were missing; added 2026-08-18.
 - **S19.3** `ms` / `milli` / `millis` / `millisecond` / `milliseconds` — §Duration format (L1309)
-  tests: tests/config.test.ts:259
-  status: ✅
+  tests: tests/config.test.ts:259; tests/s19-s21-lightbend-units.test.ts (bare alias forms)
+  status: ✅ — the bare `milli`/`millis` aliases were missing; added 2026-08-18.
 - **S19.4** `s` / `second` / `seconds` — §Duration format (L1310)
   tests: tests/config.test.ts:239; tests/config.test.ts:274
   status: ✅
@@ -781,14 +781,14 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
   tests: tests/config.test.ts:313
   status: ✅
 - **S21.2** Powers of 10 (kB, MB, GB, TB, PB, EB, ZB, YB + long forms) — §Size in bytes format (L1365)
-  tests: tests/config.test.ts:318; tests/config.test.ts:328
-  status: ✅
+  tests: tests/config.test.ts:318; tests/config.test.ts:328; tests/s19-s21-lightbend-units.test.ts (PB–YB, case-sensitivity)
+  status: ✅ — the prior ✅ over-claimed: the table stopped at TB, was keyed `KB`, and a case-insensitive fallback accepted spellings Lightbend rejects. Aligned 2026-08-18 to the exact Lightbend set (probe): `kB` is the one kilo-decimal spelling (`KB`/`kb` are errors), decimals run through `YB`, long forms are lowercase only. EB+ magnitudes at count ≥1 exceed the 2^53 guard, so those rows pin unit recognition with fractional counts.
 - **S21.3** Powers of 2 (K/Ki/KiB, M/Mi/MiB, ...) — §Size in bytes format (L1376)
-  tests: tests/config.test.ts:323; tests/config.test.ts:333
-  status: ✅
+  tests: tests/config.test.ts:323; tests/config.test.ts:333; tests/s19-s21-lightbend-units.test.ts (Pi–Yi, `kiB`/`ki` rejected)
+  status: ✅ — extended 2026-08-18 through `Yi`/`YiB` + long forms; binary prefixes are capital-first exactly (`Ki`, never `ki`).
 - **S21.4** Single-letter abbreviations → powers of 2 (java -Xmx convention) — §Size in bytes format (L1385)
-  tests: tests/spec-s21-4-single-letter-bytes.test.ts; tests/conformance/byte-single-letter.test.ts; tests/config.test.ts (S21.4 block); tests/s18-units-default.test.ts (ub05)
-  status: ✅
+  tests: tests/spec-s21-4-single-letter-bytes.test.ts; tests/conformance/byte-single-letter.test.ts; tests/config.test.ts (S21.4 block); tests/s18-units-default.test.ts (ub05); tests/s19-s21-lightbend-units.test.ts (Z/z/Y/y)
+  status: ✅ — the ladder now runs through `Z`/`Y` (both cases, matching Lightbend); the old "Z/Y deferred" note is resolved via fractional-count pins under the 2^53 guard.
   notes: Fixed in Phase 6 #3h. `BYTE_UNITS` in `src/coerce.ts` now includes K/k/M/m/G/g/T/t/P/p/E/e
   as powers-of-two per HOCON.md L1385 (Lightbend typesafe-config 1.4.3 verified). Values exceeding
   `Number.MAX_SAFE_INTEGER` (e.g. 1E = 2^60) throw `RangeError`. Z/Y deferred (overflow BigInt scope).

@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **BREAKING (spec fix, S21.2–S21.4): byte units now match the Lightbend
+  reference exactly.** The kilo-decimal spelling is `kB` — `KB`, `kb` and
+  every other case variant the old case-insensitive fallback accepted
+  (`Megabytes`, `mB`, `kiB`, …) are now errors, matching typesafe-config's
+  case-sensitive table (probe 2026-08-18). The table also extends through
+  `PB`–`YB`, `Pi`/`PiB`–`Yi`/`YiB` (+ long forms) and single-letter `Z`/`z`/
+  `Y`/`y`; magnitudes at or above 2^53 bytes still raise the documented
+  overflow guard. Part of the four-impl units audit.
+- `getDuration` now accepts the bare `nano`/`nanos`, `micro`/`micros`, and
+  `milli`/`millis` unit aliases (S19.1–S19.3) — part of the spec's unit lists
+  and accepted by Lightbend, previously missing from the table.
+
 - **BREAKING (spec fix, S9.2): a triple-quoted string whose content starts
   with a newline now preserves it** (`"""<LF>hello"""` → `"\nhello"`, was
   `"hello"`). The lexer stripped the leading newline; the Lightbend reference

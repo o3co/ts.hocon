@@ -50,9 +50,12 @@ export function coerceNumber(value: string): number | undefined {
 }
 
 const DURATION_UNITS: Record<string, number> = {
-  ns: 1e-6, nanosecond: 1e-6, nanoseconds: 1e-6,
-  us: 1e-3, microsecond: 1e-3, microseconds: 1e-3,
-  ms: 1, millisecond: 1, milliseconds: 1,
+  // S19.1–S19.3: the bare nano/micro/milli (+plural) aliases are part of the
+  // spec's unit lists (HOCON.md L1307–L1309) and accepted by Lightbend
+  // (typesafe-config 1.4.6 probe, 2026-08-18); they were missing here.
+  ns: 1e-6, nano: 1e-6, nanos: 1e-6, nanosecond: 1e-6, nanoseconds: 1e-6,
+  us: 1e-3, micro: 1e-3, micros: 1e-3, microsecond: 1e-3, microseconds: 1e-3,
+  ms: 1, milli: 1, millis: 1, millisecond: 1, milliseconds: 1,
   s: 1_000, second: 1_000, seconds: 1_000,
   m: 60_000, minute: 60_000, minutes: 60_000,
   h: 3_600_000, hour: 3_600_000, hours: 3_600_000,
@@ -92,31 +95,41 @@ export function parseDuration(value: string, outputUnit: DurationUnit = 'ms'): n
 }
 
 const BYTE_UNITS: Record<string, number> = {
-  B: 1, byte: 1, bytes: 1,
-  KB: 1_000, kilobyte: 1_000, kilobytes: 1_000,
-  KiB: 1_024, kibibyte: 1_024, kibibytes: 1_024,
+  // S21.1–S21.4 — the EXACT Lightbend/typesafe-config unit set (1.4.6 probe,
+  // 2026-08-18). Multi-letter units are case-sensitive: the SI decimal short
+  // form is `kB` (NOT `KB`/`kb` — Lightbend rejects both), higher decimals
+  // are `MB`…`YB`, binary prefixes are `Ki`/`KiB`…`Yi`/`YiB` with capital
+  // first letter, and long forms are lowercase only (`kilobyte`, never
+  // `Kilobyte`). Only the bare byte unit (`B`/`b`) and the single-letter
+  // -Xmx forms accept both cases. The old case-insensitive fallback and the
+  // lowercase alias rows accepted spellings Lightbend rejects — removed.
+  B: 1, b: 1, byte: 1, bytes: 1,
+  kB: 1_000, kilobyte: 1_000, kilobytes: 1_000,
   MB: 1_000_000, megabyte: 1_000_000, megabytes: 1_000_000,
-  MiB: 1_048_576, mebibyte: 1_048_576, mebibytes: 1_048_576,
   GB: 1_000_000_000, gigabyte: 1_000_000_000, gigabytes: 1_000_000_000,
-  GiB: 1_073_741_824, gibibyte: 1_073_741_824, gibibytes: 1_073_741_824,
   TB: 1_000_000_000_000, terabyte: 1_000_000_000_000, terabytes: 1_000_000_000_000,
-  TiB: 1_099_511_627_776, tebibyte: 1_099_511_627_776, tebibytes: 1_099_511_627_776,
-  // S21.4 — HOCON.md L1385: single-letter abbreviations → powers of two (java -Xmx convention).
-  // Lightbend typesafe-config 1.4.3 verified: 1K=1024, 1M=1048576, etc.
-  // Both upper- and lowercase accepted per Lightbend behaviour.
-  // Z/Y (2^70/2^80) are deferred — they overflow MAX_SAFE_INTEGER and require BigInt accessor.
+  PB: 1e15, petabyte: 1e15, petabytes: 1e15,
+  EB: 1e18, exabyte: 1e18, exabytes: 1e18,
+  ZB: 1e21, zettabyte: 1e21, zettabytes: 1e21,
+  YB: 1e24, yottabyte: 1e24, yottabytes: 1e24,
+  Ki: 1_024, KiB: 1_024, kibibyte: 1_024, kibibytes: 1_024,
+  Mi: 1_048_576, MiB: 1_048_576, mebibyte: 1_048_576, mebibytes: 1_048_576,
+  Gi: 1_073_741_824, GiB: 1_073_741_824, gibibyte: 1_073_741_824, gibibytes: 1_073_741_824,
+  Ti: 1_099_511_627_776, TiB: 1_099_511_627_776, tebibyte: 1_099_511_627_776, tebibytes: 1_099_511_627_776,
+  Pi: 1_024 ** 5, PiB: 1_024 ** 5, pebibyte: 1_024 ** 5, pebibytes: 1_024 ** 5,
+  Ei: 1_024 ** 6, EiB: 1_024 ** 6, exbibyte: 1_024 ** 6, exbibytes: 1_024 ** 6,
+  Zi: 1_024 ** 7, ZiB: 1_024 ** 7, zebibyte: 1_024 ** 7, zebibytes: 1_024 ** 7,
+  Yi: 1_024 ** 8, YiB: 1_024 ** 8, yobibyte: 1_024 ** 8, yobibytes: 1_024 ** 8,
+  // S21.4 — single-letter abbreviations → powers of two (java -Xmx
+  // convention); Lightbend accepts BOTH cases here, through the full ladder.
   K: 1_024, k: 1_024,
   M: 1_024 ** 2, m: 1_024 ** 2,
   G: 1_024 ** 3, g: 1_024 ** 3,
   T: 1_024 ** 4, t: 1_024 ** 4,
   P: 1_024 ** 5, p: 1_024 ** 5,
   E: 1_024 ** 6, e: 1_024 ** 6,
-  // lowercase short-form aliases
-  b: 1,
-  kb: 1_000, kib: 1_024,
-  mb: 1_000_000, mib: 1_048_576,
-  gb: 1_000_000_000, gib: 1_073_741_824,
-  tb: 1_000_000_000_000, tib: 1_099_511_627_776,
+  Z: 1_024 ** 7, z: 1_024 ** 7,
+  Y: 1_024 ** 8, y: 1_024 ** 8,
 }
 
 const OUTPUT_BYTE_UNITS: Record<string, number> = {
@@ -153,12 +166,9 @@ export function parseBytes(value: string, outputUnit: ByteUnit = 'B'): number {
     }
     return bytes / divisor
   }
-  // Try exact match first (preserves KB vs KiB distinction)
-  let mult = BYTE_UNITS[unit]
-  // Try lowercase for long-form names (megabytes, Megabytes, MEGABYTES)
-  if (mult === undefined) {
-    mult = BYTE_UNITS[unit.toLowerCase()]
-  }
+  // Exact, case-sensitive match — Lightbend's unit table is case-sensitive
+  // (`kB` parses, `KB`/`kb`/`Megabytes` are errors), so no case folding.
+  const mult = BYTE_UNITS[unit]
   if (mult === undefined) return NaN
   const bytes = num * mult
   // S21.4 overflow guard: JS number is float64 (MAX_SAFE_INTEGER = 2^53-1 ≈ 9.0e15).
