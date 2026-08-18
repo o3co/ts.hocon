@@ -452,7 +452,7 @@ describe('getBytes', () => {
     // case-insensitive fallback accepted spellings the reference rejects.
     for (const bad of ['10KB', '10kb', '10Kb', '512mb', '1mB', '1Kilobyte', '1MEGABYTES', '1kiB', '1ki']) {
       const c = parse(`size = "${bad}"`)
-      expect(() => c.getBytes('size'), bad).toThrow()
+      expect(() => c.getBytes('size'), bad).toThrow(ConfigError)
     }
   })
 

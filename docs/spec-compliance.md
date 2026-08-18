@@ -789,9 +789,10 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
 - **S21.4** Single-letter abbreviations → powers of 2 (java -Xmx convention) — §Size in bytes format (L1385)
   tests: tests/spec-s21-4-single-letter-bytes.test.ts; tests/conformance/byte-single-letter.test.ts; tests/config.test.ts (S21.4 block); tests/s18-units-default.test.ts (ub05); tests/s19-s21-lightbend-units.test.ts (Z/z/Y/y)
   status: ✅ — the ladder now runs through `Z`/`Y` (both cases, matching Lightbend); the old "Z/Y deferred" note is resolved via fractional-count pins under the 2^53 guard.
-  notes: Fixed in Phase 6 #3h. `BYTE_UNITS` in `src/coerce.ts` now includes K/k/M/m/G/g/T/t/P/p/E/e
-  as powers-of-two per HOCON.md L1385 (Lightbend typesafe-config 1.4.3 verified). Values exceeding
-  `Number.MAX_SAFE_INTEGER` (e.g. 1E = 2^60) throw `RangeError`. Z/Y deferred (overflow BigInt scope).
+  notes: Fixed in Phase 6 #3h; completed 2026-08-18. `BYTE_UNITS` in `src/coerce.ts` includes the
+  full single-letter ladder K/k…Y/y as powers-of-two per HOCON.md L1385. Values exceeding
+  `Number.MAX_SAFE_INTEGER` (e.g. 1E = 2^60, any count ≥ 1 of Z/Y) throw `RangeError`; Z/z/Y/y are
+  recognised units whose valid uses are fractional counts under the guard.
 - **S21.5** Fractional values supported (`0.5M`) — §Units format (L1281-1294) + §Size in bytes (L1335-1342)
   tests: tests/config.test.ts:384
   status: ✅
