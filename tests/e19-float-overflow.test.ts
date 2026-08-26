@@ -33,6 +33,12 @@ describe('E19 — overflowing float literal is a parse error', () => {
     expect(() => parse('a = [1, 1e999]')).toThrow(ParseError)
   })
 
+  it('rejects an integer-form literal beyond the double range', () => {
+    // E19 is keyed on the lexeme's value, not its spelling: 400 nines
+    // overflow Number the same way an exponent form does.
+    expect(() => parse(`a = ${'9'.repeat(400)}`)).toThrow(ParseError)
+  })
+
   it('accepts underflow as 0 (1e-400)', () => {
     const cfg = parse('a = 1e-400')
     expect(cfg.getNumber('a')).toBe(0)
