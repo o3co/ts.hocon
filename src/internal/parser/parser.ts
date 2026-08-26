@@ -584,7 +584,7 @@ class Parser {
         node = { kind: 'scalar', raw: t.value, valueType: 'string', pos: { line: t.line, col: t.col } }
       } else if (t.kind === 'unquoted') {
         this.advance()
-        node = { kind: 'scalar', raw: t.value, valueType: this.scalarValueType(t.value), pos: { line: t.line, col: t.col } }
+        node = { kind: 'scalar', raw: t.value, valueType: this.scalarValueType(t.value, t.line, t.col), pos: { line: t.line, col: t.col } }
       } else if ((t.kind === 'colon' || t.kind === 'equals') && parts.length > 0) {
         // In value concat context, colon/equals after at least one part are plain string chars
         // e.g.  url = ${host}:/path  or  x = ${a}=b
@@ -632,13 +632,24 @@ class Parser {
     return { kind: 'array', items, pos: p }
   }
 
-  private scalarValueType(raw: string): ScalarValueType {
+  private scalarValueType(raw: string, line: number, col: number): ScalarValueType {
     if (raw === 'true' || raw === 'false') return 'boolean'
     if (raw === 'null') return 'null'
     // Number detection: first char must be 0-9 or - (Lightbend-aligned)
     // Use strict decimal regex matching coerceNumber to ensure consistency
     if (raw.length > 0 && (raw.charCodeAt(0) >= 0x30 && raw.charCodeAt(0) <= 0x39 || raw.charCodeAt(0) === 0x2d)) {
-      if (DECIMAL_NUMBER_RE.test(raw)) return 'number'
+      if (DECIMAL_NUMBER_RE.test(raw)) {
+        // E19: a numeric literal whose magnitude overflows the double range
+        // (`1e999`) is a parse error. Lightbend admits Infinity but cannot
+        // render or re-parse it as a number; erroring at the parse (as go
+        // always has via strconv.ParseFloat) is the documented divergence.
+        // Underflow (`1e-400`) stays accepted as 0 — the regex-passing raw
+        // can never yield NaN, so only the infinite case is checked.
+        if (!Number.isFinite(Number(raw))) {
+          throw new ParseError(`invalid float "${raw}"`, line, col)
+        }
+        return 'number'
+      }
     }
     return 'string'
   }
