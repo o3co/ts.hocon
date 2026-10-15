@@ -184,8 +184,8 @@ export function parseBytes(value: string, outputUnit: ByteUnit = 'B'): number {
 // ─── unit readers ─────────────────────────────────────────────────────────────
 // What a unit value accepts, as one rule per unit system: the grammar above plus
 // the unit system's own invariants. `text` is the value as written (a string
-// scalar, or a number in decimal form). Config.getDuration / getBytes and the
-// zod markers read through these.
+// scalar, or a number in decimal form). Config.getDuration / getBytes /
+// getPeriod and the zod markers read through these.
 
 /** Why a text is not a value of a unit system. */
 export type UnitProblem = 'invalid' | 'negative' | 'overflow'
