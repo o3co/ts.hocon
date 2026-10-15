@@ -10,6 +10,8 @@
 > **[Claude](https://claude.ai/)（Anthropic）による実装** — Claude Code を用いて設計・実装されました。
 > [GitHub Copilot](https://github.com/features/copilot) および [OpenAI Codex](https://openai.com/index/openai-codex/) によるレビュー。
 
+**ドキュメント:** [o3co.github.io/hocon](https://o3co.github.io/hocon/) — 4 実装・hocon2 CLI・共通の準拠コーパスをまとめた横断ハブです。
+
 [English](README.md)
 
 > **ライブラリの位置づけ:** ts.hocon は HOCON の設定ローダーです。`.hocon` 設定ファイルを読み、Config API（`getString`、`getNumber`、`getBoolean`、`getDuration`、`getBytes`、`getPeriod`、`toObject`）で型付きのアクセスを提供することが目的で、低レベルのパーサー API ではありません。`HoconValue` などの内部型はマイナーバージョン間で変わることがあります。
