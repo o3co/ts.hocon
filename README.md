@@ -450,18 +450,18 @@ Feature-level comparison with [node-config](https://github.com/node-config/node-
 
 | Feature | ts.hocon | node-config (JSON) |
 |---|---|---|
-| Comments | `//` `#` | No |
+| Comments | `//` `#` | Yes (`//`, `/* */`; `.json` is parsed as JSON5) |
 | Multi-line strings | `"""..."""` | No |
 | Substitution (`${path}`) | Yes | No |
 | Optional substitution (`${?path}`) | Yes | No |
 | Environment variable reference | Yes (via substitution) | Partial (`custom-environment-variables` file) |
 | Include | Yes | No |
-| Deep merge | Yes (arrays too) | Partial (arrays replaced) |
+| Deep merge | Yes (objects; arrays replaced, `+=` / concatenation to extend) | Yes (objects; arrays replaced) |
 | Append operator (`+=`) | Yes | No |
 | Environment-based config | Configurable via HOCON | Yes (filename convention) |
 | Schema validation | Zod integration | No |
 | Programmatic API | `parse(string)` | File-based initialization, then `get()` |
-| Typed getters | `getString`, `getNumber`, etc. | `get()` (any) |
+| Typed getters | `getString`, `getNumber`, etc. (checked at runtime) | `get<T>()` (type parameter only, no runtime check) |
 
 ## Browser Compatibility
 

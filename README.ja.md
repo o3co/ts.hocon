@@ -449,18 +449,18 @@ JSON の設定ファイルを読む [node-config](https://github.com/node-config
 
 | 機能 | ts.hocon | node-config (JSON) |
 |---|---|---|
-| コメント | `//` `#` | 非対応 |
+| コメント | `//` `#` | 対応（`//`、`/* */`。`.json` を JSON5 として解析） |
 | 複数行文字列 | `"""..."""` | 非対応 |
 | substitution（`${path}`） | 対応 | 非対応 |
 | optional substitution（`${?path}`） | 対応 | 非対応 |
 | 環境変数参照 | 対応（substitution経由） | 部分対応（`custom-environment-variables` ファイル） |
 | include | 対応 | 非対応 |
-| ディープマージ | 対応（配列も対応） | 部分対応（配列は置換） |
+| ディープマージ | 対応（オブジェクト。配列は置換、`+=` や連結で追加） | 対応（オブジェクト。配列は置換） |
 | 追加演算子（`+=`） | 対応 | 非対応 |
 | 環境別設定 | HOCON仕様で自由に構成可 | 対応（ファイル名規約） |
 | スキーマ検証 | Zod 統合 | 非対応 |
 | プログラマティック API | `parse(string)` | ファイルベース初期化後に `get()` |
-| 型付きゲッター | `getString`, `getNumber` 等 | `get()`（any） |
+| 型付きゲッター | `getString`, `getNumber` 等（実行時に検査） | `get<T>()`（型パラメータのみ、実行時の検査なし） |
 
 ## ブラウザ対応
 
