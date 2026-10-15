@@ -190,10 +190,17 @@ export function parseBytes(value: string, outputUnit: ByteUnit = 'B'): number {
 /** Why a text is not a value of a unit system. */
 export type UnitProblem = 'invalid' | 'negative' | 'overflow'
 
-export type UnitReading<T = number> = { ok: true; value: T } | { ok: false; problem: UnitProblem }
+/**
+ * A reader's answer: the value, or why the text is not one. `P` is the
+ * problems the reader can report, so a caller that maps them can be checked
+ * for completeness.
+ */
+export type UnitReading<T = number, P extends UnitProblem = UnitProblem> =
+  | { ok: true; value: T }
+  | { ok: false; problem: P }
 
 /** A duration in `outputUnit` (default `ms`; a bare number is milliseconds). */
-export function readDuration(text: string, outputUnit?: DurationUnit): UnitReading {
+export function readDuration(text: string, outputUnit?: DurationUnit): UnitReading<number, 'invalid'> {
   const value = parseDuration(text, outputUnit)
   return Number.isNaN(value) ? { ok: false, problem: 'invalid' } : { ok: true, value }
 }
@@ -244,7 +251,7 @@ const I32_MAX = 2 ** 31 - 1
  * A period. Integer only (Lightbend `Integer.parseInt`), so `7.5` is invalid,
  * unlike a duration or a byte size; a bare number is days.
  */
-export function readPeriod(text: string): UnitReading<Period> {
+export function readPeriod(text: string): UnitReading<Period, 'invalid'> {
   const trimmed = trimHoconWs(text)
   let i = 0
   while (i < trimmed.length && '+-0123456789'.includes(trimmed[i])) i++
