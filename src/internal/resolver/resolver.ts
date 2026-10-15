@@ -80,7 +80,7 @@ export function buildPartialHoconFromResObj(tree: ResObj): HoconValue & { kind: 
         // elements — otherwise getList would silently return undefined for those
         // elements instead of throwing NotResolvedError (array placeholder leak).
         if (!valContainsPlaceholders(v)) {
-          fields.set(k, v as HoconValue)
+          fields.set(k, partialValue(v as HoconValue))
         }
         // Fields with array-contained placeholders are omitted so lookupNode returns
         // undefined → getters throw NotResolvedError.
@@ -89,6 +89,18 @@ export function buildPartialHoconFromResObj(tree: ResObj): HoconValue & { kind: 
     // Placeholder fields are intentionally omitted so lookupNode returns undefined.
   }
   return { kind: 'object', fields }
+}
+
+/**
+ * A placeholder-free value from a ResObj tree as a HoconValue. An array keeps
+ * its object elements as ResObj (phase 1 builds them that way), so convert
+ * them, through nested arrays too; returning the array as is made every object
+ * element read as undefined.
+ */
+function partialValue(v: HoconValue | ResObj): HoconValue {
+  if (isResObj(v)) return buildPartialHoconFromResObj(v)
+  if (v.kind === 'array') return { kind: 'array', items: v.items.map((item) => partialValue(item)) }
+  return v
 }
 
 /**

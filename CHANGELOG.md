@@ -42,6 +42,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   unresolved `Config` (E12), and the `Config` did not carry
   `originDescription`. They now behave like `parse` / `parseFile`; includes
   are still loaded asynchronously (through `readFile` when given).
+- **`resolveSubstitutions: false` kept objects inside arrays.** A deferred
+  parse turned each object element of an array (also inside nested arrays) into
+  `undefined` when the field had no substitution: `items = [{ x = 1 }]` read as
+  `[undefined]`, in `parse` and now `parseAsync`, and `resolve()` kept it. The
+  elements are now converted like the object fields around them.
 - **Unit arithmetic is exact decimal (E20,
   [o3co/xx.hocon#102](https://github.com/o3co/xx.hocon/issues/102)).** The
   number in a duration or byte size is read from its text as an exact decimal

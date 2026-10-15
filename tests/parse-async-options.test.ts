@@ -43,6 +43,22 @@ describe('parseAsync options', () => {
     await expect(parseAsync(deep, { resolveSubstitutions: false, originDescription: 'deep' })).rejects.toThrow(ParseError)
   })
 
+  // Copilot on #204: the deferred path dropped objects inside arrays (shared
+  // with parse), so the expected value is spelled out, not taken from parse.
+  it('keeps objects inside arrays on the deferred path, sync and async', async () => {
+    const text = 'items = [{ x = 1 }, [{ y = 2 }, []], 3, { z { w = [{ v = 4 }] } }]'
+    const expected = { items: [{ x: 1 }, [{ y: 2 }, []], 3, { z: { w: [{ v: 4 }] } }] }
+    for (const c of [
+      parse(text, { resolveSubstitutions: false }),
+      await parseAsync(text, { resolveSubstitutions: false }),
+    ]) {
+      expect(c.isResolved()).toBe(true)
+      expect(c.toObject()).toEqual(expected)
+      expect(c.getList('items')).toEqual(expected.items)
+      expect(c.resolve().toObject()).toEqual(expected)
+    }
+  })
+
   it('carries originDescription on the Config, resolved or not', async () => {
     expect((await parseAsync('a = 1', { originDescription: 'unit-test' }))._originDescription).toBe('unit-test')
     const deferred = await parseAsync('a = ${b}', { originDescription: 'unit-test', resolveSubstitutions: false })
