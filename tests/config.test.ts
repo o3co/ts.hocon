@@ -482,6 +482,16 @@ describe('getBytes', () => {
     expect(c.getBytes('b')).toBe(1024)
   })
 
+  // The getters read through readDuration / readBytes (coerce.ts); each reader
+  // problem keeps the error type and message the getter threw before.
+  it('maps each reader problem to the same error type and message', () => {
+    const c = parse('d = "5 parsecs", b = "5 parsecs", n = "-1", o = "1E"')
+    expect(() => c.getDuration('d')).toThrow(new ConfigError('invalid duration at d: "5 parsecs"', 'd'))
+    expect(() => c.getBytes('b')).toThrow(new ConfigError('invalid byte size at b: "5 parsecs"', 'b'))
+    expect(() => c.getBytes('n')).toThrow(new ConfigError('byte size must be non-negative at n: "-1"', 'n'))
+    expect(() => c.getBytes('o')).toThrow(new RangeError('byte size overflows representable range (max 2^53-1 bytes)'))
+  })
+
   // S21.4 — single-letter byte abbreviations map to powers of 2 (java -Xmx convention)
   // Fixed in Phase 6 #3h: BYTE_UNITS now includes K/k/M/m/G/g/T/t/P/p/E/e entries.
   it('S21.4: parses single-letter K as kibibytes (1024)', () => {

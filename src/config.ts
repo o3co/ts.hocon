@@ -1,4 +1,4 @@
-import { coerceBoolean, coerceNumber, parseBytes, parseDuration } from './coerce.js'
+import { coerceBoolean, coerceNumber, readBytes, readDuration } from './coerce.js'
 import type { ByteUnit, DurationUnit } from './coerce.js'
 import { ConfigError, NotResolvedError } from './errors.js'
 import {
@@ -150,9 +150,9 @@ export class Config {
     if (v.valueType !== 'string' && v.valueType !== 'number') {
       throw new ConfigError(`expected duration at ${path}, got ${v.valueType}`, path)
     }
-    const result = parseDuration(v.raw, unit)
-    if (Number.isNaN(result)) throw new ConfigError(`invalid duration at ${path}: ${JSON.stringify(v.raw)}`, path)
-    return result
+    const reading = readDuration(v.raw, unit)
+    if (!reading.ok) throw new ConfigError(`invalid duration at ${path}: ${JSON.stringify(v.raw)}`, path)
+    return reading.value
   }
 
   getBytes(path: string, unit?: ByteUnit): number {
@@ -160,11 +160,17 @@ export class Config {
     if (v.valueType !== 'string' && v.valueType !== 'number') {
       throw new ConfigError(`expected byte size at ${path}, got ${v.valueType}`, path)
     }
-    const result = parseBytes(v.raw, unit)
-    if (Number.isNaN(result)) throw new ConfigError(`invalid byte size at ${path}: ${JSON.stringify(v.raw)}`, path)
-    // Lightbend getBytesBigInteger positive-only invariant: byte sizes must be non-negative.
-    if (result < 0) throw new ConfigError(`byte size must be non-negative at ${path}: ${JSON.stringify(v.raw)}`, path)
-    return result
+    const reading = readBytes(v.raw, unit)
+    if (reading.ok) return reading.value
+    switch (reading.problem) {
+      case 'invalid':
+        throw new ConfigError(`invalid byte size at ${path}: ${JSON.stringify(v.raw)}`, path)
+      case 'negative':
+        throw new ConfigError(`byte size must be non-negative at ${path}: ${JSON.stringify(v.raw)}`, path)
+      case 'overflow':
+        // A RangeError without the path, as getBytes has always thrown here.
+        throw new RangeError('byte size overflows representable range (max 2^53-1 bytes)')
+    }
   }
 
   getConfig(path: string): Config {
