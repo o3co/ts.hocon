@@ -184,13 +184,13 @@ export function parseBytes(value: string, outputUnit: ByteUnit = 'B'): number {
 // ─── unit readers ─────────────────────────────────────────────────────────────
 // What a unit value accepts, as one rule per unit system: the grammar above plus
 // the unit system's own invariants. `text` is the value as written (a string
-// scalar, or a number in decimal form). Config.getDuration / getBytes and the
-// zod markers read through these.
+// scalar, or a number in decimal form). Config.getDuration / getBytes /
+// getPeriod and the zod markers read through these.
 
 /** Why a text is not a value of a unit system. */
 export type UnitProblem = 'invalid' | 'negative' | 'overflow'
 
-export type UnitReading = { ok: true; value: number } | { ok: false; problem: UnitProblem }
+export type UnitReading<T = number> = { ok: true; value: T } | { ok: false; problem: UnitProblem }
 
 /** A duration in `outputUnit` (default `ms`; a bare number is milliseconds). */
 export function readDuration(text: string, outputUnit?: DurationUnit): UnitReading {
@@ -210,5 +210,50 @@ export function readBytes(text: string, outputUnit?: ByteUnit): UnitReading {
   if (Number.isNaN(value)) return { ok: false, problem: 'invalid' }
   // Lightbend getBytesBigInteger: byte sizes are non-negative.
   if (value < 0) return { ok: false, problem: 'negative' }
+  return { ok: true, value }
+}
+
+/**
+ * A calendar period, as {@link Config.getPeriod} returns it. Weeks are folded
+ * into days (`2w` is 14 days). A component may be negative.
+ */
+export interface Period {
+  readonly years: number
+  readonly months: number
+  readonly days: number
+}
+
+// S20.1–S20.4 — the period units (HOCON.md L1324–L1333), case-sensitive like
+// the duration units (L1304). No unit means days (L1321). A Map, not a Record,
+// so that a unit spelled like an Object.prototype member does not match.
+const PERIOD_UNITS = new Map<string, { field: keyof Period; factor: number }>([
+  ['', { field: 'days', factor: 1 }],
+  ['d', { field: 'days', factor: 1 }], ['day', { field: 'days', factor: 1 }], ['days', { field: 'days', factor: 1 }],
+  ['w', { field: 'days', factor: 7 }], ['week', { field: 'days', factor: 7 }], ['weeks', { field: 'days', factor: 7 }],
+  ['m', { field: 'months', factor: 1 }], ['mo', { field: 'months', factor: 1 }],
+  ['month', { field: 'months', factor: 1 }], ['months', { field: 'months', factor: 1 }],
+  ['y', { field: 'years', factor: 1 }], ['year', { field: 'years', factor: 1 }], ['years', { field: 'years', factor: 1 }],
+])
+
+// Lightbend reads the number with Integer.parseInt, and rs / py hold each
+// component in an i32, so a component outside the i32 range is invalid.
+const I32_MIN = -(2 ** 31)
+const I32_MAX = 2 ** 31 - 1
+
+/**
+ * A period. Integer only (Lightbend `Integer.parseInt`), so `7.5` is invalid,
+ * unlike a duration or a byte size; a bare number is days.
+ */
+export function readPeriod(text: string): UnitReading<Period> {
+  const trimmed = trimHoconWs(text)
+  let i = 0
+  while (i < trimmed.length && '+-0123456789'.includes(trimmed[i])) i++
+  const digits = trimmed.slice(0, i)
+  const unit = PERIOD_UNITS.get(trimHoconWs(trimmed.slice(i)))
+  if (!/^[+-]?\d+$/.test(digits) || unit === undefined) return { ok: false, problem: 'invalid' }
+  const n = Number(digits) * unit.factor
+  if (n < I32_MIN || n > I32_MAX) return { ok: false, problem: 'invalid' }
+  // `-0` reads as 0, as in rs / py, where the components are integers.
+  const value: Period = { years: 0, months: 0, days: 0, [unit.field]: n === 0 ? 0 : n }
   return { ok: true, value }
 }

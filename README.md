@@ -85,7 +85,7 @@ On top of that, HOCON combines the readability of YAML with the structure of JSO
 - `+=` append operator
 - `include "file.conf"` and `include file("file.conf")` directives
 - Triple-quoted strings (`"""..."""`)
-- Duration and byte size parsing (`getDuration()`, `getBytes()`)
+- Duration, byte size and period parsing (`getDuration()`, `getBytes()`, `getPeriod()`)
 - HOCON emitter (`renderHocon()`) — renders a resolved `Config` back to HOCON text; re-parsing yields the same value tree (E18 round-trip contract)
 - Sync and async API (`parse` / `parseAsync` / `parseFile` / `parseFileAsync`)
 - ESM + CJS dual package (every entrypoint smoke-tested in both formats on each CI run)
@@ -128,6 +128,7 @@ parseFileAsync(path: string, opts?: ParseOptions): Promise<Config>
 | `getList(path)` | `unknown[]` | missing, not an array, or unresolved |
 | `getDuration(path, unit?)` | `number` | missing, not a string, or invalid duration format |
 | `getBytes(path, unit?)` | `number` | missing, not a string, or invalid byte size format |
+| `getPeriod(path)` | `Period` | missing, not a string or number, or invalid period format |
 | `has(path)` | `boolean` | — |
 | `keys()` | `string[]` | — |
 | `withFallback(fallback)` | `Config` | — |
@@ -210,7 +211,18 @@ const Session = z.object({
 getValidated(cfg, 'session', Session) // { lifetime: 1800, maxBody: 65536 }
 ```
 
-An invalid duration or size fails validation with the key's path. The markers are ordinary Zod schemas, so they work in `validate`, `getValidated`, `parseWithSchema`, `parseFileWithSchema` and anywhere else Zod runs them. A marker reads a number through its JavaScript value, so a number literal in exponent form (`1e3`, or one JavaScript prints that way, below 1e-6 or from 1e21) can read differently from the getters (accepted where the getter refuses it, or the reverse); write durations and sizes with a unit to avoid this.
+`hocon.period()` reads a period the way `getPeriod()` does and gives a `Period` (`{ years, months, days }`); refine it in the schema:
+
+```ts
+const Backup = z.object({
+  keep: hocon.period().refine((p) => p.years === 0, 'use months or days'),
+})
+
+// backup { keep = 2w }
+getValidated(cfg, 'backup', Backup) // { keep: { years: 0, months: 0, days: 14 } }
+```
+
+An invalid duration, size or period fails validation with the key's path. The markers are ordinary Zod schemas, so they work in `validate`, `getValidated`, `parseWithSchema`, `parseFileWithSchema` and anywhere else Zod runs them. A marker reads a number through its JavaScript value, so a number literal in exponent form (`1e3`, or one JavaScript prints that way, below 1e-6 or from 1e21) can read differently from the getters (accepted where the getter refuses it, or the reverse); a period marker also reads a literal with a decimal point (`7.0`) as an integer, which `getPeriod()` refuses. Write unit values with a unit (`30s`, `7d`) to avoid both.
 
 Install Zod as a peer dependency:
 ```bash
@@ -281,13 +293,31 @@ c.getBytes('max-size', 'MiB')  // 512
 Supported duration units: `ns`, `us`, `ms`, `s`, `m`, `h`, `d` (and long forms like `seconds`, `minutes`). Duration unit names are case-sensitive and must be lowercase (HOCON spec). Byte units are more case-tolerant: the canonical forms below plus lowercase aliases (`kb`, `kib`, …), any-case long forms (`megabytes`), and single-letter powers-of-two in both cases (`K`/`k`, per Lightbend).
 Supported byte units: `B`, `KB`/`KiB`, `MB`/`MiB`, `GB`/`GiB`, `TB`/`TiB` (and long forms like `megabytes`, `mebibytes`).
 
+### Periods
+
+```ts
+const c = parse(`
+  retention = 2w
+  billing   = "1 month"
+  archive   = 1y
+  grace     = 3       // a bare integer is days
+`)
+
+c.getPeriod('retention') // { years: 0, months: 0, days: 14 }
+c.getPeriod('billing')   // { years: 0, months: 1, days: 0 }
+c.getPeriod('archive')   // { years: 1, months: 0, days: 0 }
+c.getPeriod('grace')     // { years: 0, months: 0, days: 3 }
+```
+
+Supported period units: `d`/`day`/`days`, `w`/`week`/`weeks` (folded into days), `m`/`mo`/`month`/`months`, `y`/`year`/`years`. Unit names are case-sensitive and must be lowercase (`m` is months here, not minutes). A period is integer only (`7.5` is an error, unlike durations and sizes), may be negative, and each component must fit in a 32-bit signed integer, as in Lightbend (`java.time.Period`), rs.hocon and py.hocon.
+
 ## Spec Compliance
 
 Conformance against the [Lightbend HOCON specification](https://github.com/lightbend/config/blob/main/HOCON.md) is tracked at item granularity in [`docs/spec-compliance.md`](docs/spec-compliance.md), which is the source these rates are computed from — `tests/docs.test.ts` recomputes them and fails the build if this table drifts. See [`xx.hocon/docs/compliance-matrix.md`](https://github.com/o3co/xx.hocon/blob/main/docs/compliance-matrix.md) for the cross-implementation roll-up.
 
 | Metric                                | Status        |
 | ------------------------------------- | ------------- |
-| Spec total (incl. out-of-scope)       | **90.0%**     |
+| Spec total (incl. out-of-scope)       | **91.9%**     |
 | In-scope only                         | **100.0%**    |
 | Lightbend `test01`–`test13` suite     | 13/13 passing |
 

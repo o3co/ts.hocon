@@ -1,18 +1,19 @@
 // tests/zod-unit-markers.test.ts
-// hocon.duration() / hocon.bytes() — Zod schema markers for HOCON unit values
-// (ts.hocon#195). A marker must read what the matching Config getter reads, so
-// the parity tables below run each input through both. The one documented
-// difference — number literals in exponent form — is pinned separately.
+// hocon.duration() / hocon.bytes() / hocon.period() — Zod schema markers for
+// HOCON unit values (ts.hocon#195, o3co/xx.hocon#102). A marker must read what
+// the matching Config getter reads, so the parity tables below run each input
+// through both. The documented differences — number literals in exponent form,
+// and for a period also with a decimal point — are pinned separately.
 
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
 import { parse } from '../src/parse.js'
 import { getValidated, hocon, parseWithSchema, validate } from '../src/zod.js'
 import { readBytes, readDuration } from '../src/coerce.js'
-import type { ByteUnit, DurationUnit } from '../src/coerce.js'
+import type { ByteUnit, DurationUnit, Period } from '../src/coerce.js'
 
-/** The getter's answer: a number, or 'error' when it throws. */
-function viaGetter(read: () => number): number | 'error' {
+/** The getter's answer: its value, or 'error' when it throws. */
+function viaGetter<T>(read: () => T): T | 'error' {
   try {
     return read()
   } catch {
@@ -20,8 +21,8 @@ function viaGetter(read: () => number): number | 'error' {
   }
 }
 
-/** The marker's answer through getValidated: a number, or 'error' when validation fails. */
-function viaMarker(schema: z.ZodType<number>, input: string, path = 'v'): number | 'error' {
+/** The marker's answer through getValidated: its value, or 'error' when validation fails. */
+function viaMarker<T>(schema: z.ZodType<T>, input: string, path = 'v'): T | 'error' {
   try {
     return getValidated(parse(input), path, schema)
   } catch {
@@ -190,6 +191,58 @@ describe('hocon.bytes()', () => {
       path: ['limits', 'body'],
       message: 'byte size overflows the representable range: "1E"',
     })
+  })
+})
+
+describe('hocon.period()', () => {
+  const inputs = [
+    'v = 7', 'v = "7"', 'v = " 7 "', 'v = 7d', 'v = 2w', 'v = "3 months"', 'v = 3mo', 'v = 1y', 'v = -7',
+    'v = "-2w"', 'v = "+7d"', 'v = "-0"', 'v = 7.5', 'v = 7.0d', 'v = "7D"', 'v = 2147483648',
+    'v = 306783379w', 'v = 7 parsecs',
+    'v = abc', 'v = ""', 'v = true', 'v = null', 'v = [1]', 'v { a = 1 }',
+  ]
+
+  it('agrees with getPeriod', () => {
+    for (const input of inputs) {
+      const expected = viaGetter(() => parse(input).getPeriod('v'))
+      expect([input, viaMarker(hocon.period(), input)]).toEqual([input, expected])
+    }
+  })
+
+  it('gives a Period, refined by the piped schema', () => {
+    const schema = z.object({
+      retention: hocon.period().refine((p) => p.years === 0, 'use months, not years'),
+    })
+    const parsed: { retention: Period } = validate(parse('retention = 6 months'), schema)
+    expect(parsed).toEqual({ retention: { years: 0, months: 6, days: 0 } })
+    expect(() => validate(parse('retention = 1y'), schema)).toThrow(/use months, not years/)
+  })
+
+  it('fails with the key path on an invalid period', () => {
+    try {
+      validate(parse('backup.keep = 7.5'), z.object({ backup: z.object({ keep: hocon.period() }) }))
+      expect.unreachable()
+    } catch (err) {
+      expect((err as z.ZodError).issues[0]).toMatchObject({
+        path: ['backup', 'keep'],
+        message: 'invalid period: "7.5"',
+      })
+    }
+  })
+
+  // Documented difference: the getter reads the source text and refuses a
+  // number literal with a decimal point or an exponent (integer only); the
+  // marker reads the JS number, so `7.0` is 7 and `1e2` is 100.
+  it('reads a number literal with a decimal point or an exponent through its JS value', () => {
+    for (const [input, days] of [['v = 7.0', 7], ['v = -7.00', -7], ['v = 1e2', 100]] as const) {
+      expect([input, viaGetter(() => parse(input).getPeriod('v'))]).toEqual([input, 'error'])
+      expect([input, viaMarker(hocon.period(), input)]).toEqual([input, { years: 0, months: 0, days }])
+    }
+  })
+
+  it('names the type it got for a non-scalar or boolean', () => {
+    expect(() => getValidated(parse('p = true'), 'p', hocon.period())).toThrow(/expected period, got boolean/)
+    expect(() => getValidated(parse('p = [1]'), 'p', hocon.period())).toThrow(/expected period, got array/)
   })
 })
 

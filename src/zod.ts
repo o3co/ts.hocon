@@ -1,8 +1,8 @@
 import { z } from 'zod'
 import type { ZodTransform, ZodType } from 'zod'
 
-import { coerceBoolean, coerceNumber, readBytes, readDuration } from './coerce.js'
-import type { ByteUnit, DurationUnit, UnitProblem, UnitReading } from './coerce.js'
+import { coerceBoolean, coerceNumber, readBytes, readDuration, readPeriod } from './coerce.js'
+import type { ByteUnit, DurationUnit, Period, UnitProblem, UnitReading } from './coerce.js'
 import type { Config } from './config.js'
 // NOTE: parse/parseFile are imported at module level. This means importing
 // '@o3co/ts.hocon/zod' pulls in Node.js built-ins (fs, path). Consumers
@@ -25,18 +25,22 @@ export function getValidated<T>(config: Config, path: string, schema: ZodType<T>
 
 // ─── unit markers ─────────────────────────────────────────────────────────────
 // A unit marker is a Zod schema that reads a HOCON unit value (a duration, a
-// byte size) and gives a number. ts.hocon owns the unit rules (the readers in
-// coerce.ts); the schema the marker is piped into owns the constraints (range,
-// integer, …). A marker is a plain transform, so it works wherever Zod runs it.
+// byte size, a period) and gives a number, or a Period for a period. ts.hocon
+// owns the unit rules (the readers in coerce.ts); the schema the marker is piped
+// into owns the constraints (range, integer, …). A marker is a plain transform,
+// so it works wherever Zod runs it.
 //
 // It reads the plain value: a string as written, a number through String(n).
-// String(n) is the literal's own text except for exponent forms (and -0), so a
-// number literal written with an exponent (`1e3`) or printed with one (below
-// 1e-6, at or above 1e21) can read differently from the getters, which read the
-// source text: a marker can accept a value the getter refuses, and the reverse.
+// The getters read the literal's source text instead, and String(n) drops what
+// the number does not keep: trailing fraction zeros (`7.0` → "7"), leading
+// zeros, and the exponent form (`1e3` → "1000"; JavaScript prints values below
+// 1e-6 or from 1e21 with one). So a marker can accept a value the getter
+// refuses, and the reverse: a number literal in exponent form for every unit
+// system, and a literal with a decimal point (`7.0`) for an integer-only one
+// (a period). A value written with a unit is a string and reads the same.
 
-function unitMarker(what: string, read: (text: string) => UnitReading): ZodTransform<number, unknown> {
-  return z.transform((input: unknown, ctx): number => {
+function unitMarker<T>(what: string, read: (text: string) => UnitReading<T>): ZodTransform<T, unknown> {
+  return z.transform((input: unknown, ctx): T => {
     if (typeof input !== 'string' && typeof input !== 'number') {
       ctx.issues.push({ code: 'custom', message: `expected ${what}, got ${describeInput(input)}`, input })
       return z.NEVER
@@ -65,8 +69,9 @@ function describeInput(input: unknown): string {
 
 /**
  * Zod schema markers for HOCON unit values. Each reads the forms the matching
- * Config getter reads and gives a number in the requested unit; pipe it into a
- * number schema for the constraints:
+ * Config getter reads and gives what the getter gives (a number in the
+ * requested unit, or a {@link Period}); pipe it into a schema for the
+ * constraints:
  *
  * ```ts
  * const Session = z.object({
@@ -89,6 +94,15 @@ export const hocon = {
    */
   bytes(unit?: ByteUnit): ZodTransform<number, unknown> {
     return unitMarker('byte size', (text) => readBytes(text, unit))
+  },
+  /**
+   * A calendar period, read as {@link Config.getPeriod} reads it (a bare
+   * integer is days), except that a number literal with a decimal point or in
+   * exponent form (`7.0`, `1e2`) can read differently: the getter refuses it,
+   * the marker reads the JS number.
+   */
+  period(): ZodTransform<Period, unknown> {
+    return unitMarker('period', readPeriod)
   },
 }
 
