@@ -60,6 +60,10 @@ export function valContainsPlaceholders(v: unknown): boolean {
   if (hv?.kind === 'array') {
     return hv.items.some((item) => valContainsPlaceholders(item))
   }
+  // An object inside an array is a HoconValue, not a ResObj.
+  if (hv?.kind === 'object') {
+    for (const field of hv.fields.values()) if (valContainsPlaceholders(field)) return true
+  }
   return false
 }
 

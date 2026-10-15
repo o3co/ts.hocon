@@ -36,6 +36,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A partially resolved Config answers from what is still unresolved.** After
+  `resolve({ allowUnresolved: true })` or `resolveWith(…, { allowUnresolved:
+  true })`:
+  - `getConfig` / `getValue` (and `getList` for arrays) checked the tree from
+    *before* the resolve, so a subtree whose substitutions had been resolved
+    threw `NotResolvedError` (`a { x = ${v} }` with `v` defined: `getConfig('a')`
+    threw while `getNumber('a.x')` worked). They now check what is left.
+  - A substitution left inside an array was dropped to `null` and the Config
+    reported `isResolved() === true` (`arr = [1, ${y}]` read as `[1, null]`).
+    Such an array is now unresolved: `getList` throws `NotResolvedError`, as it
+    does after a deferred parse, and a later `resolve()` with a fallback fills
+    it in.
 - **BREAKING: `getBytes` reports an overflowing byte size as `ConfigError`.** A
   size beyond 2^53-1 bytes (`1E`, `1ZB`, `9007199254740993`) threw a
   `RangeError` without the path, unlike every other getter error and unlike
