@@ -223,9 +223,30 @@ describe('Config._renderJSONForTest', () => {
 })
 
 // ─── E11 package include with deferred (dr17, programmatic) ──────────────────
-// YAML runner cannot register packages, so this is covered programmatically only.
-// Skipped here since E11 package registry is not in ts.hocon's current scope.
-// Un-skip when ts.hocon gains package include support.
-it.skip('dr17: E11 package-include + deferred — programmatic (package registry not yet in ts.hocon)', () => {
-  // TODO: implement when ts.hocon gains RegisterPackage / UnregisterPackage
+// The YAML runner cannot register packages, so dr17 runs here: an in-memory
+// packageResolver + readFileSync stand in for the package registry. The
+// include is expanded at parse time (E12 include timing); the substitution in
+// the included file stays deferred until resolve.
+it('dr17: E11 package-include + deferred — expanded at parse, resolved later', () => {
+  const files: Record<string, string> = { '/pkgs/github.com/example/test-pkg/ref.conf': 'inner = ${EXTERNAL}' }
+  const reads: string[] = []
+  const receiver = parse('outer = "top"\ninclude package("github.com/example/test-pkg", "ref.conf")', {
+    resolveSubstitutions: false,
+    packageResolver: (id, file) => `/pkgs/${id}/${file}`,
+    readFileSync: (p) => {
+      reads.push(p)
+      return files[p]
+    },
+  })
+  expect(receiver.isResolved()).toBe(false)
+  expect(reads).toEqual(['/pkgs/github.com/example/test-pkg/ref.conf'])
+  const result = receiver
+    .withFallback(fromMap({ EXTERNAL: 'injected' }))
+    .resolve({ allowUnresolved: false, useSystemEnvironment: false })
+  expect(result.isResolved()).toBe(true)
+  expect(result.toObject()).toEqual({ EXTERNAL: 'injected', inner: 'injected', outer: 'top' })
+  expect(result.getString('outer')).toBe('top')
+  expect(result.getString('inner')).toBe('injected')
+  // No file is read after parse.
+  expect(reads).toHaveLength(1)
 })

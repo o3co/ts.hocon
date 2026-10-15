@@ -12,26 +12,24 @@
 //                       the basename case-check in defaultPackageResolver handles it,
 //                       but the custom resolver in tests enforces strict equality directly.
 //
-// Fixture source: xx.hocon worktree (read-only reference)
-// Package content: xx.hocon testdata/hocon/include-package/_packages/
+// Fixtures: xx.hocon testdata/hocon/include-package/ (package content in
+// _packages/), copied to tests/lightbend/testdata/hocon/include-package/ by
+// `make testdata`.
 
 import { existsSync, readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import type { PackageResolver } from '../../src/index.js'
 import { PackageLookupError, ParseError, ResolveError, parse } from '../../src/index.js'
 
 // ---- Paths ----------------------------------------------------------------
 
-// The xx.hocon worktree is a sibling of this worktree under .claude/worktrees/.
-// Vitest sets process.cwd() to the project root (worktree root), so we navigate
-// from there: ../incl-pkg-xx/... resolves sibling worktree.
-const XX_FIXTURE_DIR = join(
-  process.cwd(),
-  '../incl-pkg-xx/testdata/hocon/include-package',
+const FIXTURE_DIR = join(
+  dirname(fileURLToPath(import.meta.url)),
+  '../lightbend/testdata/hocon/include-package',
 )
-const FIXTURE_DIR = XX_FIXTURE_DIR
-const PACKAGES_DIR = join(XX_FIXTURE_DIR, '_packages')
+const PACKAGES_DIR = join(FIXTURE_DIR, '_packages')
 
 // ---- Registry builder -----------------------------------------------------
 
@@ -105,12 +103,12 @@ function parseFixture(name: string, registry: Registry): ReturnType<typeof parse
 
 describe('E11 conformance — include-package fixtures (ipk01-ipk14)', () => {
 
-  // The xx.hocon sibling worktree must be present. Skip the suite in clean
-  // checkouts (no sibling worktree) so missing fixtures produce an actionable
-  // skip message rather than confusing ENOENT errors.
-  // Same skip-guard pattern as tests/conformance/properties-conflict.test.ts.
+  // Missing fixtures fail loudly instead of skipping: this suite used to read a
+  // sibling checkout that no clone has, so it skipped silently, CI included.
   if (!existsSync(FIXTURE_DIR) || !existsSync(PACKAGES_DIR)) {
-    it.skip('fixtures unavailable — xx.hocon sibling worktree (incl-pkg-xx) not present', () => {})
+    it('fixtures present (run `make testdata`)', () => {
+      expect.fail(`include-package fixtures not found at ${FIXTURE_DIR}; run \`make testdata\``)
+    })
     return
   }
 

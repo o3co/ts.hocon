@@ -36,5 +36,8 @@ tests/lightbend/testdata/expected/
 # Deferred-resolution fixtures fetched from xx.hocon via `make testdata`
 tests/lightbend/testdata/hocon/deferred-resolution/
 
+# E11 include-package fixtures (ipk01-ipk14, _packages/) fetched from xx.hocon via `make testdata`
+tests/lightbend/testdata/hocon/include-package/
+
 # E18 emitter round-trip corpus fetched from xx.hocon via `make testdata`
 tests/testdata/emitter-roundtrip/
