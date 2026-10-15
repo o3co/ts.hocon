@@ -36,7 +36,10 @@ import {
  *    `createRequire(undefined)` — an ERR_INVALID_ARG_VALUE thrown at module
  *    load, which is what shipped in 1.10.0. The build now shims
  *    `import.meta.url` for CJS (tsup.config.ts), but the cwd anchor keeps a
- *    bundler shape we have not seen yet from reintroducing it.
+ *    bundler shape we have not seen yet from reintroducing it. In the CJS
+ *    build the real `require` is the candidate that wins; the shimmed URL
+ *    (`file:` + the chunk's path, not percent-encoded) is only a fallback and
+ *    is not reliable for paths containing `#` or `?`.
  *  - **Stay lazy.** Resolution happens on first use, so no bundling artifact of
  *    these lines can crash `require()`/`import()` of an entrypoint.
  *

@@ -8,7 +8,7 @@
 // throwing at load, and the ESM `include package(...)` regression that briefly
 // replaced it.
 //
-// So this gate runs against the built output, and does three things:
+// So this gate runs against the built output, and does four things:
 //
 //   1. LOADs every subpath in package.json "exports" under both module systems.
 //   2. USEs it — calls the entrypoint's real function and checks the answer.
@@ -125,10 +125,12 @@ const thrown = (fn) => {
   throw new Error('expected a throw')
 }
 const isA = (value, cls, what) => {
-  if (!(value instanceof cls)) {
-    const got = value?.constructor?.name ?? typeof value
-    throw new Error(`${what}: not an instance of the root ${cls.name} (got a ${got} from another copy of the class)`)
-  }
+  if (value instanceof cls) return
+  const got = value?.constructor?.name ?? typeof value
+  const detail = got === cls.name
+    ? `got a ${got} from another copy of the class`
+    : `got a ${got}: ${String(value?.message ?? value).split('\n')[0]}`
+  throw new Error(`${what}: not an instance of the root ${cls.name} (${detail})`)
 }
 // The Config an adapter returns is the root's Config, and its getters throw the
 // root's ConfigError.
@@ -264,4 +266,4 @@ if (failures > 0) {
   console.error(`\nsmoke-entrypoints: ${failures} check(s) FAILED — the artifact is broken, do not ship`)
   process.exit(1)
 }
-console.log(`\nsmoke-entrypoints: all ${subpaths.length} exports load, work, and declare types under require() and import()`)
+console.log(`\nsmoke-entrypoints: all ${subpaths.length} exports load, work, share the root's classes, and declare types under require() and import()`)
