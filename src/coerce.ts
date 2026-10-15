@@ -139,6 +139,17 @@ const OUTPUT_BYTE_UNITS: Record<string, number> = {
 
 export type ByteUnit = 'B' | 'KB' | 'KiB' | 'MB' | 'MiB' | 'GB' | 'GiB' | 'TB' | 'TiB'
 
+const BYTE_SIZE_OVERFLOW = 'byte size overflows representable range (max 2^53-1 bytes)'
+
+/**
+ * The error a byte size that does not fit a JS number (beyond 2^53-1 bytes)
+ * throws from parseBytes and Config.getBytes. readBytes reports it as the
+ * 'overflow' problem.
+ */
+export function byteSizeOverflow(): RangeError {
+  return new RangeError(BYTE_SIZE_OVERFLOW)
+}
+
 export function parseBytes(value: string, outputUnit: ByteUnit = 'B'): number {
   const trimmed = trimHoconWs(value)
   let i = 0
@@ -162,7 +173,7 @@ export function parseBytes(value: string, outputUnit: ByteUnit = 'B'): number {
   if (unit === '') {
     const bytes = Math.trunc(num)
     if (Math.abs(bytes) > Number.MAX_SAFE_INTEGER) {
-      throw new RangeError('byte size overflows representable range (max 2^53-1 bytes)')
+      throw byteSizeOverflow()
     }
     return bytes / divisor
   }
@@ -175,7 +186,7 @@ export function parseBytes(value: string, outputUnit: ByteUnit = 'B'): number {
   // Values like 1E (2^60 ≈ 1.15e18) exceed MAX_SAFE_INTEGER and cannot be represented
   // exactly — throw rather than silently return an imprecise result.
   if (Math.abs(bytes) > Number.MAX_SAFE_INTEGER) {
-    throw new RangeError('byte size overflows representable range (max 2^53-1 bytes)')
+    throw byteSizeOverflow()
   }
   const result = bytes / divisor
   return outputUnit === 'B' ? Math.round(result) : result
@@ -211,7 +222,10 @@ export function readBytes(text: string, outputUnit?: ByteUnit): UnitReading {
   try {
     value = parseBytes(text, outputUnit)
   } catch (err) {
-    if (err instanceof RangeError) return { ok: false, problem: 'overflow' }
+    // Only parseBytes' own overflow; any other RangeError is not a reading.
+    if (err instanceof RangeError && err.message === BYTE_SIZE_OVERFLOW) {
+      return { ok: false, problem: 'overflow' }
+    }
     throw err
   }
   if (Number.isNaN(value)) return { ok: false, problem: 'invalid' }
