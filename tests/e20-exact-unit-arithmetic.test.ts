@@ -234,6 +234,13 @@ describe('E20 — exponent forms in unit values', () => {
     expect(parse('b = "0.000001E"').getBytes('b')).toBe(Number(1024n ** 6n / 1_000_000n))
   })
 
+  it('reads an exponent with leading zeros by its value (Codex)', () => {
+    expect(parse('t = "1e0000000000003ms"').getDuration('t')).toBe(1000)
+    expect(parse('t = "1e-0000000000003s"').getDuration('t')).toBe(1)
+    expect(parse('b = "1e-0000000000000B"').getBytes('b')).toBe(1)
+    expect(parse('b = "1e+00000000000003"').getBytes('b')).toBe(1000)
+  })
+
   it('decides a huge exponent without building the power', () => {
     const start = performance.now()
     expect(() => parse('t = "1e999999999999s"').getDuration('t')).toThrow(/overflows/)

@@ -102,7 +102,8 @@ function splitUnitText(value: string): UnitText | undefined {
       while (isDigitChar(t[j])) j++
       // Past ±10^12 the bounds in the parsers decide anyway; clamp so the
       // exponent stays an exact integer.
-      const digits = t.slice(expStart, j)
+      // Leading zeros carry no magnitude (`1e0000000000003` is 1e3).
+      const digits = t.slice(expStart, j).replace(/^0+(?=\d)/, '')
       const magnitude = digits.length > 12 ? 1e12 : Number(digits)
       exponent = t[i + 1] === '-' ? -magnitude : magnitude
       i = j
