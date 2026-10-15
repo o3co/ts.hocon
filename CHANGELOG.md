@@ -56,6 +56,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     2^53-1 overflow guard applies to the truncated value, so
     `9007199254740991.5` reads `9007199254740991` (it threw); and a negative
     zero (`-0`, `-0.5`) reads `0`, not `-0`, for byte sizes and durations.
+  - The getters read the literal's text exactly; the markers still read a
+    number literal through its JavaScript value, so a bare number with more
+    significant digits than a double holds can now read differently through
+    a marker (`1.99999999999999999` B: `getBytes()` gives 1, `hocon.bytes()`
+    gives 2). Written with a unit, it reads the same.
 - **A duration that is not a finite number is an error (E21,
   [o3co/xx.hocon#102](https://github.com/o3co/xx.hocon/issues/102)).** A
   value too large for a double in the output unit (`10^400` days, integer or

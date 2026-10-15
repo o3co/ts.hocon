@@ -222,7 +222,7 @@ const Backup = z.object({
 getValidated(cfg, 'backup', Backup) // { keep: { years: 0, months: 0, days: 14 } }
 ```
 
-An invalid duration, size or period fails validation with the key's path. The markers are ordinary Zod schemas, so they work in `validate`, `getValidated`, `parseWithSchema`, `parseFileWithSchema` and anywhere else Zod runs them. A marker reads a number through its JavaScript value, so a number literal in exponent form (`1e3`, or one JavaScript prints that way, below 1e-6 or from 1e21) can read differently from the getters (accepted where the getter refuses it, or the reverse); a period marker also reads a literal with a decimal point (`7.0`) as an integer, which `getPeriod()` refuses. Write unit values with a unit (`30s`, `7d`) to avoid both.
+An invalid duration, size or period fails validation with the key's path. The markers are ordinary Zod schemas, so they work in `validate`, `getValidated`, `parseWithSchema`, `parseFileWithSchema` and anywhere else Zod runs them. A marker reads a number through its JavaScript value, so a number literal with more significant digits than a double holds (`1.99999999999999999` B is 1 through `getBytes()`, 2 through the marker) or in exponent form (`1e3`, or one JavaScript prints that way, below 1e-6 or from 1e21) can read differently from the getters, which read the literal's text exactly (accepted where the getter refuses it, or the reverse); a period marker also reads a literal with a decimal point (`7.0`) as an integer, which `getPeriod()` refuses. Write unit values with a unit (`30s`, `7d`) to avoid both.
 
 Install Zod as a peer dependency:
 ```bash
