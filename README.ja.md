@@ -398,9 +398,9 @@ period の単位は `d`/`day`/`days`、`w`/`week`/`weeks`（日数に畳み込�
 | E11  | `include package(...)` によるサービスロケーター型の include | ✅ v1.4.0 |
 | E12  | 遅延解決（`parse → withFallback → resolve()` のライフサイクル） | ✅ v1.4.0 |
 | E18  | HOCON エミッタのラウンドトリップ契約（`renderHocon()`） | ✅ v1.13.0 |
-| E19  | double の範囲を超える浮動小数点リテラル（`1e999`）はパースエラー | ✅ |
-| E20  | 単位値の計算は正確な 10 進数（duration は Lightbend からの意図的な乖離） | ✅ |
-| E21  | 実装が表現できない duration はエラー | ✅ |
+| E19  | double の範囲を超える浮動小数点リテラル（`1e999`）はパースエラー | ✅ v1.14.0 |
+| E20  | 単位値の計算は正確な 10 進数（duration は Lightbend からの意図的な乖離） | ✅ v1.14.0 |
+| E21  | 実装が表現できない duration はエラー | ✅ v1.14.0 |
 
 E シリーズは、HOCON.md の外で o3co の各実装が共有する規約です。[`xx.hocon/docs/extra-spec-conventions.md`](https://github.com/o3co/xx.hocon/blob/main/docs/extra-spec-conventions.md) を参照してください。
 
@@ -445,7 +445,7 @@ JSON.parse は V8 のネイティブ C++ 実装であり、最速の基準線で
 
 ### node-config との機能比較
 
-JSON の設定ファイルを読む [node-config](https://github.com/node-config/node-config) **v4.4.2** との機能比較（2026-07-26 時点）:
+JSON の設定ファイルを読む [node-config](https://github.com/node-config/node-config) **v5.0.1** との機能比較（2026-10-16 時点）:
 
 | 機能 | ts.hocon | node-config (JSON) |
 |---|---|---|

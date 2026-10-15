@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.14.0] - 2026-10-16
+
+This minor release contains behavior changes marked **BREAKING** below: a
+config or a call that worked on 1.13.0 can fail now. Each entry gives the
+workaround.
+
 ### Added
 
 - **`Config.getPeriod(path)` and the Zod marker `hocon.period()` (S20,
@@ -84,6 +90,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `+=` operator is unaffected. This includes an unquoted timestamp with a
   positive offset (`at = 2020-01-01T00:00:00+09:00`), which the lexer's colon
   leniency used to accept as a string (Lightbend rejects it for the `:`).
+  A number key written right before `+=` (`1+= 2`) is an error too, since the
+  number run takes the `+`; put a space before the operator (`1 += 2`).
   Workaround: quote the value (`version = "1.2.3+build"`,
   `at = "2020-01-01T00:00:00+09:00"`).
   `+=` operator is unaffected. Workaround: quote the value

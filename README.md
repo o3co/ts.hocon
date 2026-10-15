@@ -399,9 +399,9 @@ Conformance against the [Lightbend HOCON specification](https://github.com/light
 | E11  | `include package(...)` service-locator includes | ✅ v1.4.0 |
 | E12  | Deferred substitution resolution (`parse → withFallback → resolve()` lifecycle) | ✅ v1.4.0 |
 | E18  | HOCON emitter round-trip contract (`renderHocon()`) | ✅ v1.13.0 |
-| E19  | A float literal that overflows the double range (`1e999`) is a parse error | ✅ |
-| E20  | Unit arithmetic is exact decimal (durations: a deliberate divergence from Lightbend) | ✅ |
-| E21  | A duration the implementation cannot represent is an error | ✅ |
+| E19  | A float literal that overflows the double range (`1e999`) is a parse error | ✅ v1.14.0 |
+| E20  | Unit arithmetic is exact decimal (durations: a deliberate divergence from Lightbend) | ✅ v1.14.0 |
+| E21  | A duration the implementation cannot represent is an error | ✅ v1.14.0 |
 
 The E-series items are conventions shared by the o3co implementations beyond HOCON.md; see [`xx.hocon/docs/extra-spec-conventions.md`](https://github.com/o3co/xx.hocon/blob/main/docs/extra-spec-conventions.md).
 
@@ -446,7 +446,7 @@ For typical application configs (loaded once at startup), the parsing cost is ne
 
 ### Feature Comparison with node-config
 
-Feature-level comparison with [node-config](https://github.com/node-config/node-config) **v4.4.2** reading JSON config files, as of 2026-07-26:
+Feature-level comparison with [node-config](https://github.com/node-config/node-config) **v5.0.1** reading JSON config files, as of 2026-10-16:
 
 | Feature | ts.hocon | node-config (JSON) |
 |---|---|---|
