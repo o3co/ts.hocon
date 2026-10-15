@@ -482,14 +482,16 @@ describe('getBytes', () => {
     expect(c.getBytes('b')).toBe(1024)
   })
 
-  // The getters read through readDuration / readBytes (coerce.ts); each reader
-  // problem keeps the error type and message the getter threw before.
-  it('maps each reader problem to the same error type and message', () => {
+  // The getters read through readDuration / readBytes (coerce.ts) and map each
+  // reader problem to a ConfigError with the path.
+  it('maps each reader problem to a ConfigError with the path', () => {
     const c = parse('d = "5 parsecs", b = "5 parsecs", n = "-1", o = "1E"')
     expect(() => c.getDuration('d')).toThrow(new ConfigError('invalid duration at d: "5 parsecs"', 'd'))
     expect(() => c.getBytes('b')).toThrow(new ConfigError('invalid byte size at b: "5 parsecs"', 'b'))
     expect(() => c.getBytes('n')).toThrow(new ConfigError('byte size must be non-negative at n: "-1"', 'n'))
-    expect(() => c.getBytes('o')).toThrow(new RangeError('byte size overflows representable range (max 2^53-1 bytes)'))
+    expect(() => c.getBytes('o')).toThrow(
+      new ConfigError('byte size overflows the representable range (max 2^53-1 bytes) at o: "1E"', 'o'),
+    )
   })
 
   // S21.4 — single-letter byte abbreviations map to powers of 2 (java -Xmx convention)

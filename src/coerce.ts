@@ -164,11 +164,10 @@ export type ByteUnit = 'B' | 'KB' | 'KiB' | 'MB' | 'MiB' | 'GB' | 'GiB' | 'TB' |
 const BYTE_SIZE_OVERFLOW = 'byte size overflows representable range (max 2^53-1 bytes)'
 
 /**
- * The error a byte size that does not fit a JS number (beyond 2^53-1 bytes)
- * throws from parseBytes and Config.getBytes. readBytes reports it as the
- * 'overflow' problem.
+ * The error parseBytes throws for a byte size that does not fit a JS number
+ * (beyond 2^53-1 bytes). readBytes reports it as the 'overflow' problem.
  */
-export function byteSizeOverflow(): RangeError {
+function byteSizeOverflow(): RangeError {
   return new RangeError(BYTE_SIZE_OVERFLOW)
 }
 

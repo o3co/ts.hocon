@@ -794,8 +794,10 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
   status: ✅ — the ladder now runs through `Z`/`Y` (both cases, matching Lightbend); the old "Z/Y deferred" note is resolved via fractional-count pins under the 2^53 guard.
   notes: Fixed in Phase 6 #3h; completed 2026-08-18. `BYTE_UNITS` in `src/coerce.ts` includes the
   full single-letter ladder K/k…Y/y as powers-of-two per HOCON.md L1385. Values exceeding
-  `Number.MAX_SAFE_INTEGER` (e.g. 1E = 2^60, any count ≥ 1 of Z/Y) throw `RangeError`; Z/z/Y/y are
-  recognised units whose valid uses are fractional counts under the guard.
+  `Number.MAX_SAFE_INTEGER` (e.g. 1E = 2^60, any count ≥ 1 of Z/Y) are an error: `getBytes` throws
+  `ConfigError` with the path (it threw `RangeError` before; see CHANGELOG), and
+  the Zod marker fails validation. Z/z/Y/y are recognised units whose valid uses are fractional
+  counts under the guard.
 - **S21.5** Fractional values supported (`0.5M`) — §Units format (L1281-1294) + §Size in bytes (L1335-1342)
   tests: tests/config.test.ts:384
   status: ✅

@@ -11,7 +11,7 @@
 //   bsl04-1G.conf      → getBytes("b") = 1073741824 (2^30)
 //   bsl05-1T.conf      → getBytes("b") = 1099511627776 (2^40)
 //   bsl06-1P.conf      → getBytes("b") = 1125899906842624 (2^50)
-//   bsl07-1E.conf      → getBytes("b") throws RangeError (2^60 > MAX_SAFE_INTEGER)
+//   bsl07-1E.conf      → getBytes("b") throws ConfigError (2^60 > MAX_SAFE_INTEGER)
 //   bsl08-1024K.conf   → getBytes("b") = 1048576    (1024 × 1024)
 //   bsl09-05K.conf     → getBytes("b") = 512        (0.5 × 1024)
 //
@@ -21,7 +21,7 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { parse } from '../../src/index.js'
+import { ConfigError, parse } from '../../src/index.js'
 
 const fixtureDir = fileURLToPath(
   new URL('../lightbend/testdata/hocon/byte-single-letter', import.meta.url)
@@ -63,10 +63,10 @@ describe('S21.4 conformance — byte-single-letter fixtures (bsl01-bsl09)', () =
     expect(c.getBytes('b')).toBe(1_125_899_906_842_624)
   })
 
-  it('bsl07-1E.conf → getBytes("b") throws RangeError (2^60 > MAX_SAFE_INTEGER)', () => {
+  it('bsl07-1E.conf → getBytes("b") throws ConfigError (2^60 > MAX_SAFE_INTEGER)', () => {
     const c = loadConf('bsl07-1E.conf')
     // 1E = 2^60 = 1.15e18 overflows Number.MAX_SAFE_INTEGER (2^53-1 = 9.0e15)
-    expect(() => c.getBytes('b')).toThrow(RangeError)
+    expect(() => c.getBytes('b')).toThrow(ConfigError)
   })
 
   it('bsl08-1024K.conf → getBytes("b") = 1048576 (1024 × 1024)', () => {
