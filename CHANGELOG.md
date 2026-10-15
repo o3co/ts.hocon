@@ -36,6 +36,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The CJS build no longer crashes at load in a browser bundle.** Since
+  splitting was turned on (#199), tsup's shim built `import.meta.url` from
+  `__filename` when the shared CJS chunk loaded, so a browser bundle that took
+  the `require` condition failed on every entrypoint with
+  `__filename is not defined` (the ESM build was unaffected). The CJS build
+  now reads `import.meta.url` as `undefined`, which the include loader already
+  handles: it uses the real `require` in CJS. The smoke gate checks that the
+  CJS output names no `__filename`, `__dirname` or `import.meta`. The README's
+  browser section now says what a browser bundle needs: the Node built-ins
+  the package imports (`fs`, `path`, `module`, `url`) must be stubbed, as Vite
+  does by default. That was already true before #199.
 - **`parseAsync` / `parseFileAsync` honour `resolveSubstitutions` and
   `originDescription`.** They always resolved, so `resolveSubstitutions: false`
   threw `ResolveError` on an unresolved substitution instead of returning an

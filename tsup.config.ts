@@ -23,7 +23,15 @@ export default defineConfig({
   // formats on every CI run.
   splitting: true,
   // With CJS splitting, `import.meta` reaches the CJS chunk unchanged (a
-  // SyntaxError at load); the shim turns `import.meta.url` into the chunk's own
-  // file URL.
-  shims: true,
+  // SyntaxError at load). tsup's `shims` would replace it with a URL built from
+  // `__filename` at chunk load, which a browser bundler consuming the CJS
+  // output does not provide, so every entrypoint crashed there. Instead the CJS
+  // build reads `import.meta.url` as undefined: the include loader uses the
+  // real `require` in CJS and only falls back to the URL (src/internal/
+  // resolver/include-loader.ts), so nothing is lost.
+  esbuildOptions(options, context) {
+    if (context.format === 'cjs') {
+      options.define = { ...options.define, 'import.meta.url': 'undefined' }
+    }
+  },
 })

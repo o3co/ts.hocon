@@ -31,15 +31,12 @@ import {
  *    so a `typeof` guard picks it and every package include fails with a
  *    misleading "module not found". Asking for `.resolve` directly is the only
  *    check that describes what this code actually needs.
- *  - **Never call `createRequire(import.meta.url)` unguarded.** A *CJS*
- *    bundle without tsup's shims rewrites `import.meta` to `{}`, making that
- *    `createRequire(undefined)` — an ERR_INVALID_ARG_VALUE thrown at module
- *    load, which is what shipped in 1.10.0. The build now shims
- *    `import.meta.url` for CJS (tsup.config.ts), but the cwd anchor keeps a
- *    bundler shape we have not seen yet from reintroducing it. In the CJS
- *    build the real `require` is the candidate that wins; the shimmed URL
- *    (`file:` + the chunk's path, not percent-encoded) is only a fallback and
- *    is not reliable for paths containing `#` or `?`.
+ *  - **Never call `createRequire(import.meta.url)` unguarded.** The *CJS*
+ *    build has no `import.meta`: tsup.config.ts defines `import.meta.url` as
+ *    `undefined` there (a load-time shim from `__filename` broke browser
+ *    bundles of the CJS output). `createRequire(undefined)` is an
+ *    ERR_INVALID_ARG_VALUE, which is what shipped in 1.10.0, so the cwd anchor
+ *    stays. In CJS the real `require` is the candidate that wins anyway.
  *  - **Stay lazy.** Resolution happens on first use, so no bundling artifact of
  *    these lines can crash `require()`/`import()` of an entrypoint.
  *
