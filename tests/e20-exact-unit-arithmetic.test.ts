@@ -150,7 +150,7 @@ describe('E21 — a duration that is not a finite number is an error', () => {
     const big = `1${'0'.repeat(290)}`
     expect(readDuration(`${big}d`)).toEqual({ ok: true, value: 8.64e297 })
     expect(readDuration(`${huge}ns`, 'd')).toEqual({ ok: false, problem: 'overflow' })
-    expect(readDuration(`1${'0'.repeat(300)}ns`, 'd')).toEqual({ ok: true, value: 1e300 / 8.64e13 })
+    expect(readDuration(`1${'0'.repeat(300)}ns`, 's')).toEqual({ ok: true, value: Number('1e291') })
   })
 
   it('makes the getter throw ConfigError with the path', () => {

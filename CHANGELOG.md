@@ -51,7 +51,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     zero (`BigDecimal.toBigInteger`) and then converted to the output unit with
     one rounding, for every output unit: `1.0009kB` is `1000` (the unit path
     rounded it to `1001`), and `getBytes(path, 'KB')` truncates to whole bytes
-    first.
+    first. Visible edge cases: `0.5B` / `1.5B` read `0` / `1` (were `1` / `2`);
+    `-0.6B` reads `0` (it rounded to `-1` and was refused as negative); the
+    2^53-1 overflow guard applies to the truncated value, so
+    `9007199254740991.5` reads `9007199254740991` (it threw); and a negative
+    zero (`-0`, `-0.5`) reads `0`, not `-0`, for byte sizes and durations.
 - **A duration that is not a finite number is an error (E21,
   [o3co/xx.hocon#102](https://github.com/o3co/xx.hocon/issues/102)).** A
   value too large for a double in the output unit (`10^400` days, integer or

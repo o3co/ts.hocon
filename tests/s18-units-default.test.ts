@@ -55,7 +55,7 @@ describe('S18.4 + S18.1 — duration no-unit fallthrough (ud01-ud08)', () => {
   it('ud05: "500.5" fractional string → getDuration("t") = 500.5 ms (Lightbend double-parse)', () => {
     // Per-family Lightbend-faithful: duration accepts fractional; default unit is ms.
     const c = loadConf('ud05-duration-fractional.conf')
-    expect(c.getDuration('t')).toBeCloseTo(500.5)
+    expect(c.getDuration('t')).toBe(500.5)
   })
 
   it('ud06: "-500" negative string → getDuration("t") = -500 ms (negative allowed at accessor)', () => {
@@ -111,9 +111,6 @@ describe('S18.4 + S18.1 — bytes no-unit fallthrough (ub01-ub06)', () => {
 })
 
 // ---------------------------------------------------------------------------
-// Negative edge cases (un01-un03): empty / ws-only / unit-only strings
-// ---------------------------------------------------------------------------
-// ---------------------------------------------------------------------------
 // E20 fixtures (ud09-ud11, ub07-ub08): exact decimal unit arithmetic
 // ---------------------------------------------------------------------------
 describe('E20 — exact decimal unit arithmetic (ud09-ud11, ub07-ub08)', () => {
@@ -146,6 +143,9 @@ describe('E20 — exact decimal unit arithmetic (ud09-ud11, ub07-ub08)', () => {
   })
 })
 
+// ---------------------------------------------------------------------------
+// E21 fixtures (ud12-ud13): an unrepresentable duration is an error
+// ---------------------------------------------------------------------------
 describe('E21 — unrepresentable duration (ud12-ud13)', () => {
   it('ud12: 10^400 days → getDuration("t") throws ConfigError (not Infinity)', () => {
     const c = loadConf('ud12-duration-overflow-rejected.conf')
@@ -158,6 +158,9 @@ describe('E21 — unrepresentable duration (ud12-ud13)', () => {
   })
 })
 
+// ---------------------------------------------------------------------------
+// Negative edge cases (un01-un03): empty / ws-only / unit-only strings
+// ---------------------------------------------------------------------------
 describe('S18.4 — negative edge cases (un01-un03)', () => {
   it('un01: "" empty string → getDuration("t") throws ConfigError', () => {
     const c = loadConf('un01-empty-duration.conf')
