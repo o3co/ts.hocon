@@ -90,7 +90,7 @@ On top of that, HOCON combines the readability of YAML with the structure of JSO
 - Sync and async API (`parse` / `parseAsync` / `parseFile` / `parseFileAsync`)
 - ESM + CJS dual package (every entrypoint smoke-tested in both formats on each CI run)
 - Optional [Zod](https://zod.dev/) integration for schema validation
-- Browser compatible (`parse`/`parseAsync` — no Node.js required)
+- Runs in browsers (`parse`/`parseAsync`; the bundler must stub Node built-ins, see [Browser Compatibility](#browser-compatibility))
 
 ## API
 
@@ -398,7 +398,9 @@ Feature-level comparison with [node-config](https://github.com/node-config/node-
 
 ## Browser Compatibility
 
-`parse()` and `parseAsync()` work in browsers. `parseFile()` and `parseFileAsync()` require Node.js (or a custom `readFileSync`/`readFile` option).
+`parse()` and `parseAsync()` work in browsers, as do the adapters and the Zod integration. `parseFile()` and `parseFileAsync()` require Node.js (or a custom `readFileSync`/`readFile` option).
+
+The package still imports the Node built-ins `fs`, `path`, `module` and `url` (for file reading and `include package(...)`) and calls them only on those paths. So a browser bundle needs them replaced by stubs, modules whose exports exist but throw if used. Vite does this by default (its browser-external modules), so nothing needs configuring there. With a bundler that fails on Node built-ins instead, configure the equivalent stubs. Marking them external is not enough, because the browser cannot load `fs`.
 
 ```ts
 // Browser usage with custom file loader

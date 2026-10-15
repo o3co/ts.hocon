@@ -84,7 +84,7 @@ HOCON は単なるシリアライズ形式ではなく、**プログラムに注
 - 同期・非同期 API（`parse` / `parseAsync` / `parseFile` / `parseFileAsync`）
 - ESM + CJS デュアルパッケージ（全エントリポイントを CI で両形式ロード検証）
 - [Zod](https://zod.dev/) スキーマバリデーション統合（オプション）
-- ブラウザ対応（`parse`/`parseAsync` — Node.js 不要）
+- ブラウザで動作（`parse`/`parseAsync`。bundler で Node の組み込みモジュールを stub する必要あり。[ブラウザ対応](#ブラウザ対応)を参照）
 
 ## API
 
@@ -289,7 +289,9 @@ ts.hocon は [node-config](https://github.com/node-config/node-config)（JSON）
 
 ## ブラウザ対応
 
-`parse()` と `parseAsync()` はブラウザで動作します。`parseFile()` と `parseFileAsync()` は Node.js（またはカスタムの `readFileSync`/`readFile` オプション）が必要です。
+`parse()` と `parseAsync()` はブラウザで動作します。adapter と Zod 連携も同じです。`parseFile()` と `parseFileAsync()` は Node.js（またはカスタムの `readFileSync`/`readFile` オプション）が必要です。
+
+パッケージは Node の組み込みモジュール `fs`・`path`・`module`・`url` を import しています（ファイルの読み込みと `include package(...)` のため）。呼び出すのはその経路だけです。そのため、ブラウザ向けの bundle ではこれらを stub（export はあるが、使うと例外を投げるモジュール）に置き換える必要があります。Vite は既定でそうするので（browser-external）、設定は不要です。Node の組み込みモジュールでエラーになる bundler では、同等の stub を設定してください。external にするだけでは足りません。ブラウザは `fs` を読み込めないからです。
 
 ```ts
 // カスタムファイルローダーを使ったブラウザ利用
