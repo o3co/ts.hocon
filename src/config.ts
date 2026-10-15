@@ -1,4 +1,4 @@
-import { coerceBoolean, coerceNumber, readBytes, readDuration, readPeriod } from './coerce.js'
+import { byteSizeOverflow, coerceBoolean, coerceNumber, readBytes, readDuration, readPeriod } from './coerce.js'
 import type { ByteUnit, DurationUnit, Period } from './coerce.js'
 import { ConfigError, NotResolvedError } from './errors.js'
 import {
@@ -151,8 +151,12 @@ export class Config {
       throw new ConfigError(`expected duration at ${path}, got ${v.valueType}`, path)
     }
     const reading = readDuration(v.raw, unit)
-    if (!reading.ok) throw new ConfigError(`invalid duration at ${path}: ${JSON.stringify(v.raw)}`, path)
-    return reading.value
+    if (reading.ok) return reading.value
+    // One case per problem readDuration reports; tsc flags a problem it starts reporting.
+    switch (reading.problem) {
+      case 'invalid':
+        throw new ConfigError(`invalid duration at ${path}: ${JSON.stringify(v.raw)}`, path)
+    }
   }
 
   getBytes(path: string, unit?: ByteUnit): number {
@@ -169,7 +173,7 @@ export class Config {
         throw new ConfigError(`byte size must be non-negative at ${path}: ${JSON.stringify(v.raw)}`, path)
       case 'overflow':
         // A RangeError without the path, as getBytes has always thrown here.
-        throw new RangeError('byte size overflows representable range (max 2^53-1 bytes)')
+        throw byteSizeOverflow()
     }
   }
 
@@ -183,8 +187,12 @@ export class Config {
       throw new ConfigError(`expected period at ${path}, got ${v.valueType}`, path)
     }
     const reading = readPeriod(v.raw)
-    if (!reading.ok) throw new ConfigError(`invalid period at ${path}: ${JSON.stringify(v.raw)}`, path)
-    return reading.value
+    if (reading.ok) return reading.value
+    // One case per problem readPeriod reports; tsc flags a problem it starts reporting.
+    switch (reading.problem) {
+      case 'invalid':
+        throw new ConfigError(`invalid period at ${path}: ${JSON.stringify(v.raw)}`, path)
+    }
   }
 
   getConfig(path: string): Config {

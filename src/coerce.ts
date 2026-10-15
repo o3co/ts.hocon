@@ -139,6 +139,17 @@ const OUTPUT_BYTE_UNITS: Record<string, number> = {
 
 export type ByteUnit = 'B' | 'KB' | 'KiB' | 'MB' | 'MiB' | 'GB' | 'GiB' | 'TB' | 'TiB'
 
+const BYTE_SIZE_OVERFLOW = 'byte size overflows representable range (max 2^53-1 bytes)'
+
+/**
+ * The error a byte size that does not fit a JS number (beyond 2^53-1 bytes)
+ * throws from parseBytes and Config.getBytes. readBytes reports it as the
+ * 'overflow' problem.
+ */
+export function byteSizeOverflow(): RangeError {
+  return new RangeError(BYTE_SIZE_OVERFLOW)
+}
+
 export function parseBytes(value: string, outputUnit: ByteUnit = 'B'): number {
   const trimmed = trimHoconWs(value)
   let i = 0
@@ -162,7 +173,7 @@ export function parseBytes(value: string, outputUnit: ByteUnit = 'B'): number {
   if (unit === '') {
     const bytes = Math.trunc(num)
     if (Math.abs(bytes) > Number.MAX_SAFE_INTEGER) {
-      throw new RangeError('byte size overflows representable range (max 2^53-1 bytes)')
+      throw byteSizeOverflow()
     }
     return bytes / divisor
   }
@@ -175,7 +186,7 @@ export function parseBytes(value: string, outputUnit: ByteUnit = 'B'): number {
   // Values like 1E (2^60 ≈ 1.15e18) exceed MAX_SAFE_INTEGER and cannot be represented
   // exactly — throw rather than silently return an imprecise result.
   if (Math.abs(bytes) > Number.MAX_SAFE_INTEGER) {
-    throw new RangeError('byte size overflows representable range (max 2^53-1 bytes)')
+    throw byteSizeOverflow()
   }
   const result = bytes / divisor
   return outputUnit === 'B' ? Math.round(result) : result
@@ -190,10 +201,17 @@ export function parseBytes(value: string, outputUnit: ByteUnit = 'B'): number {
 /** Why a text is not a value of a unit system. */
 export type UnitProblem = 'invalid' | 'negative' | 'overflow'
 
-export type UnitReading<T = number> = { ok: true; value: T } | { ok: false; problem: UnitProblem }
+/**
+ * A reader's answer: the value, or why the text is not one. `P` is the
+ * problems the reader can report, so a caller that maps them can be checked
+ * for completeness.
+ */
+export type UnitReading<T = number, P extends UnitProblem = UnitProblem> =
+  | { ok: true; value: T }
+  | { ok: false; problem: P }
 
 /** A duration in `outputUnit` (default `ms`; a bare number is milliseconds). */
-export function readDuration(text: string, outputUnit?: DurationUnit): UnitReading {
+export function readDuration(text: string, outputUnit?: DurationUnit): UnitReading<number, 'invalid'> {
   const value = parseDuration(text, outputUnit)
   return Number.isNaN(value) ? { ok: false, problem: 'invalid' } : { ok: true, value }
 }
@@ -204,7 +222,10 @@ export function readBytes(text: string, outputUnit?: ByteUnit): UnitReading {
   try {
     value = parseBytes(text, outputUnit)
   } catch (err) {
-    if (err instanceof RangeError) return { ok: false, problem: 'overflow' }
+    // Only parseBytes' own overflow; any other RangeError is not a reading.
+    if (err instanceof RangeError && err.message === BYTE_SIZE_OVERFLOW) {
+      return { ok: false, problem: 'overflow' }
+    }
     throw err
   }
   if (Number.isNaN(value)) return { ok: false, problem: 'invalid' }
@@ -244,7 +265,7 @@ const I32_MAX = 2 ** 31 - 1
  * A period. Integer only (Lightbend `Integer.parseInt`), so `7.5` is invalid,
  * unlike a duration or a byte size; a bare number is days.
  */
-export function readPeriod(text: string): UnitReading<Period> {
+export function readPeriod(text: string): UnitReading<Period, 'invalid'> {
   const trimmed = trimHoconWs(text)
   let i = 0
   while (i < trimmed.length && '+-0123456789'.includes(trimmed[i])) i++
