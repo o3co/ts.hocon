@@ -12,13 +12,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Zod: `hocon.duration(unit?)` and `hocon.bytes(unit?)` schema markers**
   ([#195](https://github.com/o3co/ts.hocon/issues/195)). Exported from
   `@o3co/ts.hocon/zod`, they read a HOCON duration (`30m`) or byte size
-  (`64KiB`) with exactly the rules of `getDuration()` / `getBytes()` and give a
+  (`64KiB`) with the rules of `getDuration()` / `getBytes()` and give a
   number in the requested unit, so a schema can validate unit values without
   copying the unit grammar: `hocon.duration('s').pipe(z.number().int().min(60))`.
   An invalid, negative (bytes) or overflowing value fails validation with the
   key's path. A marker reads a number through its JavaScript value, so a number
   literal in exponent form can read differently from the getters, which read
-  the source text. `@o3co/ts.hocon/zod` now imports `zod` at runtime (it was a
+  the source text — it can accept a value the getter refuses, and the reverse. `@o3co/ts.hocon/zod` now imports `zod` at runtime (it was a
   type-only import before); zod stays an optional peer dependency.
 
 ### Fixed

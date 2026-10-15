@@ -137,8 +137,8 @@ describe('hocon.duration()', () => {
   })
 
   // Documented difference: a marker reads a number through String(n), the
-  // getters read the literal's source text, and the two differ only for
-  // exponent forms. Pinned so a change here is a deliberate one.
+  // getters read the literal's source text, and the two differ essentially only
+  // for exponent forms (and -0). Pinned so a change here is a deliberate one.
   it('reads a number literal in exponent form through its JS value', () => {
     expect(viaGetter(() => parse('v = 1e3').getDuration('v'))).toBe('error')
     expect(viaMarker(hocon.duration(), 'v = 1e3')).toBe(1000)

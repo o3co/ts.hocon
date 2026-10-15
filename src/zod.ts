@@ -30,10 +30,10 @@ export function getValidated<T>(config: Config, path: string, schema: ZodType<T>
 // integer, …). A marker is a plain transform, so it works wherever Zod runs it.
 //
 // It reads the plain value: a string as written, a number through String(n).
-// String(n) is the literal's own text except for exponent forms, so a number
-// literal written with an exponent (`1e3`) or printed with one (below 1e-6, at
-// or above 1e21) can read differently from the getters, which read the source
-// text.
+// String(n) is the literal's own text except for exponent forms (and -0), so a
+// number literal written with an exponent (`1e3`) or printed with one (below
+// 1e-6, at or above 1e21) can read differently from the getters, which read the
+// source text: a marker can accept a value the getter refuses, and the reverse.
 
 function unitMarker(what: string, read: (text: string) => UnitReading): ZodTransform<number, unknown> {
   return z.transform((input: unknown, ctx): number => {
@@ -76,11 +76,17 @@ function describeInput(input: unknown): string {
  * ```
  */
 export const hocon = {
-  /** A duration, read as {@link Config.getDuration} reads it (default unit `ms`). */
+  /**
+   * A duration, read as {@link Config.getDuration} reads it (default unit `ms`),
+   * except that a number literal in exponent form can read differently.
+   */
   duration(unit?: DurationUnit): ZodTransform<number, unknown> {
     return unitMarker('duration', (text) => readDuration(text, unit))
   },
-  /** A byte size, read as {@link Config.getBytes} reads it (default unit `B`). */
+  /**
+   * A byte size, read as {@link Config.getBytes} reads it (default unit `B`),
+   * except that a number literal in exponent form can read differently.
+   */
   bytes(unit?: ByteUnit): ZodTransform<number, unknown> {
     return unitMarker('byte size', (text) => readBytes(text, unit))
   },

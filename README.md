@@ -210,7 +210,7 @@ const Session = z.object({
 getValidated(cfg, 'session', Session) // { lifetime: 1800, maxBody: 65536 }
 ```
 
-An invalid duration or size fails validation with the key's path. The markers are ordinary Zod schemas, so they work in `validate`, `getValidated`, `parseWithSchema`, `parseFileWithSchema` and anywhere else Zod runs them. A marker reads a number through its JavaScript value, so a number literal in exponent form (`1e3`, or one JavaScript prints that way, below 1e-6 or from 1e21) can read differently from the getters; write durations and sizes with a unit to avoid this.
+An invalid duration or size fails validation with the key's path. The markers are ordinary Zod schemas, so they work in `validate`, `getValidated`, `parseWithSchema`, `parseFileWithSchema` and anywhere else Zod runs them. A marker reads a number through its JavaScript value, so a number literal in exponent form (`1e3`, or one JavaScript prints that way, below 1e-6 or from 1e21) can read differently from the getters (accepted where the getter refuses it, or the reverse); write durations and sizes with a unit to avoid this.
 
 Install Zod as a peer dependency:
 ```bash
