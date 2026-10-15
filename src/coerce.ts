@@ -243,9 +243,13 @@ export type UnitReading<T = number, P extends UnitProblem = UnitProblem> =
   | { ok: false; problem: P }
 
 /** A duration in `outputUnit` (default `ms`; a bare number is milliseconds). */
-export function readDuration(text: string, outputUnit?: DurationUnit): UnitReading<number, 'invalid'> {
+export function readDuration(text: string, outputUnit?: DurationUnit): UnitReading<number, 'invalid' | 'overflow'> {
   const value = parseDuration(text, outputUnit)
-  return Number.isNaN(value) ? { ok: false, problem: 'invalid' } : { ok: true, value }
+  if (Number.isNaN(value)) return { ok: false, problem: 'invalid' }
+  // E21: a duration that does not fit the representation (here, a finite
+  // double in the output unit) is an error, never Infinity.
+  if (!Number.isFinite(value)) return { ok: false, problem: 'overflow' }
+  return { ok: true, value }
 }
 
 /** A byte size in `outputUnit` (default `B`; a bare number is bytes). */

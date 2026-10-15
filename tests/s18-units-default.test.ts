@@ -6,6 +6,7 @@
 // Duration fixtures (ud01-ud08): getDuration default unit = ms.
 // Bytes fixtures (ub01-ub06): getBytes default unit = bytes (Math.trunc for fractional).
 // E20 fixtures (ud09-ud11, ub07-ub08): unit arithmetic is exact decimal.
+// E21 fixtures (ud12-ud13): a duration that cannot be represented is an error.
 // Negative edge cases (un01-un03): empty/ws-only/unit-only strings → error.
 //
 // Period fixtures (up01-up05): getPeriod default unit = days, integer only.
@@ -142,6 +143,18 @@ describe('E20 — exact decimal unit arithmetic (ud09-ud11, ub07-ub08)', () => {
   it('ub08: "1.001kB" → getBytes("b") = 1001 (exact before truncation)', () => {
     const c = loadConf('ub08-bytes-fractional-unit-exact.conf')
     expect(c.getBytes('b')).toBe(1001)
+  })
+})
+
+describe('E21 — unrepresentable duration (ud12-ud13)', () => {
+  it('ud12: 10^400 days → getDuration("t") throws ConfigError (not Infinity)', () => {
+    const c = loadConf('ud12-duration-overflow-rejected.conf')
+    expect(() => c.getDuration('t')).toThrow(ConfigError)
+  })
+
+  it('ud13: 10^400.5 days, fractional form → getDuration("t") throws ConfigError (not Infinity)', () => {
+    const c = loadConf('ud13-duration-overflow-fractional-rejected.conf')
+    expect(() => c.getDuration('t')).toThrow(ConfigError)
   })
 })
 

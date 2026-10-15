@@ -52,6 +52,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     one rounding, for every output unit: `1.0009kB` is `1000` (the unit path
     rounded it to `1001`), and `getBytes(path, 'KB')` truncates to whole bytes
     first.
+- **A duration that is not a finite number is an error (E21,
+  [o3co/xx.hocon#102](https://github.com/o3co/xx.hocon/issues/102)).** A
+  value too large for a double in the output unit (`10^400` days, integer or
+  fractional) made `getDuration` return `Infinity`; it now throws
+  `ConfigError` (`duration overflows the representable range at <path>`), and
+  `hocon.duration()` fails validation with the key's path. A deliberate
+  divergence from Lightbend, which saturates the fractional form at
+  `Long.MAX_VALUE` ns; byte sizes already errored on overflow.
 - **BREAKING: the Zod entry points refuse a key named `__proto__`,
   `constructor` or `prototype`
   ([#201](https://github.com/o3co/ts.hocon/issues/201)).** `validate`,

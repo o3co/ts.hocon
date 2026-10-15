@@ -7,11 +7,13 @@
 //   output unit (a deliberate divergence from Lightbend's double product).
 // - Byte size: the exact product, truncated toward zero, then converted to the
 //   output unit with one rounding (Lightbend parity, BigDecimal.toBigInteger).
-// The units-default fixtures ud09-ud11 / ub07-ub08 run in s18-units-default.
+// E21: a duration the implementation cannot represent is an error; here, a
+// result that is not a finite double.
+// The units-default fixtures ud09-ud13 / ub07-ub08 run in s18-units-default.
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
 import { parseBytes, parseDuration, readBytes, readDuration } from '../src/coerce.js'
-import { parse } from '../src/index.js'
+import { ConfigError, parse } from '../src/index.js'
 import { getValidated, hocon } from '../src/zod.js'
 
 describe('E20 — duration', () => {
@@ -115,5 +117,32 @@ describe('E20 — byte size', () => {
     const c = parse('b = 1.0009kB')
     expect(c.getBytes('b')).toBe(1000)
     expect(getValidated(c, 'b', hocon.bytes())).toBe(1000)
+  })
+})
+
+describe('E21 — a duration that is not a finite number is an error', () => {
+  const huge = `1${'0'.repeat(400)}`
+
+  it('reports overflow from readDuration, for either sign and either form', () => {
+    for (const text of [`${huge}d`, `${huge}.5d`, `-${huge}d`, `${huge}`, `${huge}ns`]) {
+      expect([text.length, readDuration(text)]).toEqual([text.length, { ok: false, problem: 'overflow' }])
+    }
+  })
+
+  it('reads the largest finite values', () => {
+    const big = `1${'0'.repeat(290)}`
+    expect(readDuration(`${big}d`)).toEqual({ ok: true, value: 8.64e297 })
+    expect(readDuration(`${huge}ns`, 'd')).toEqual({ ok: false, problem: 'overflow' })
+    expect(readDuration(`1${'0'.repeat(300)}ns`, 'd')).toEqual({ ok: true, value: 1e300 / 8.64e13 })
+  })
+
+  it('makes the getter throw ConfigError with the path', () => {
+    const c = parse(`t = "${huge}d"`)
+    expect(() => c.getDuration('t')).toThrow(new ConfigError(`duration overflows the representable range at t: "${huge}d"`, 't'))
+  })
+
+  it('fails the marker with the key path', () => {
+    const c = parse(`t = "${huge}.5d"`)
+    expect(() => getValidated(c, 't', hocon.duration())).toThrow(/duration overflows the representable range/)
   })
 })
