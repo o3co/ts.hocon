@@ -36,6 +36,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **BREAKING (S8.1 + E8 step 4, xx.hocon us15): a `+` outside quotes is a
+  parse error unless it is the exponent sign of a number**
+  ([#73](https://github.com/o3co/ts.hocon/issues/73)). HOCON.md forbids `+`
+  in unquoted strings, but the lexer kept any `+` not followed by `=` as text,
+  so `a = 1e+x`, `a = 1+2`, `version = 1.2.3+build`, `a = abc+1` and
+  `a+b = 1` read as strings. Now, as in Lightbend 1.4.6: where a token starts
+  like a number (a digit, or `-` and a digit), the leading run of digits, `.`,
+  `e`/`E`, `+` and `-` is read as a number, and a `+` in it is allowed only if
+  the run is one (`1e+5`, `1.e+5`; `1e+5ms` stays the string `"1e+5ms"`);
+  every other `+` is `ParseError: reserved character '+' is not allowed
+  outside quotes` (`1e+5.5`, `1e+5-`, `x1e+5`, `.5e+3`, `1x+2`, `abc+`). The
+  `+=` operator is unaffected. Workaround: quote the value
+  (`version = "1.2.3+build"`).
 - **BREAKING (E8 step 4, xx.hocon us15): a `+` inside a number-like
   unquoted value is a parse error** ([#73](https://github.com/o3co/ts.hocon/issues/73)).
   Where an unquoted value starts like a number (a digit, or `-` and a digit),

@@ -192,9 +192,16 @@ class Lexer {
       // (dotted segments) remain strict — they police path-element
       // composition, not value-position unquoted strings.
       if (isUnquotedStart(ch)) {
-        this.rejectPlusInNumberRun(sl, sc)
+        const plusAllowedUntil = this.numberRunEnd()
         let value = ''
         while (this.pos < this.input.length && isUnquotedContinue(this.peek(), () => this.peek(1))) {
+          if (this.peek() === '+' && this.pos >= plusAllowedUntil) {
+            throw new ParseError(
+              `reserved character '+' is not allowed outside quotes (in ${JSON.stringify(value + '+')}; quote the value)`,
+              this.line,
+              this.col,
+            )
+          }
           value += this.advance()
         }
         this.push('unquoted', value.trimEnd(), sl, sc)
@@ -209,26 +216,21 @@ class Lexer {
   }
 
   /**
-   * E8 step 4 (xx.hocon docs/extra-spec-conventions.md): where a token starts
-   * like a number (a digit, or `-` and a digit), Lightbend's `pullNumber`
-   * takes the maximal run of `[0-9.eE+-]`. A run that contains `+` and does not
-   * parse as a number is a reserved-character error, not an unquoted string
-   * (`a = 1e+x`, xx.hocon us15). A run without `+`, or a valid one (`1e+5`),
-   * goes on as an unquoted run, as before.
+   * S8.1 + E8 step 4: outside quotes, `+` is reserved except as the exponent
+   * sign of a numeric literal (Lightbend 1.4.6 and go.hocon agree). Where a
+   * token starts like a number (a digit, or `-` and a digit), Lightbend's
+   * `pullNumber` takes the maximal `[0-9.eE+-]` run; when that run is a number
+   * (`1e+5`), a `+` inside it is the exponent sign. Returns the input index up
+   * to which a `+` is allowed: the end of such a run, else the token start, so
+   * `1e+x`, `1+2`, `1.2.3+build`, `abc+1` and `1x+2` are all errors while
+   * `1e+5` and `1e+5ms` read as before.
    */
-  private rejectPlusInNumberRun(line: number, col: number): void {
+  private numberRunEnd(): number {
     const first = this.peek()
-    if (!isDigit(first) && !(first === '-' && isDigit(this.peek(1)))) return
+    if (!isDigit(first) && !(first === '-' && isDigit(this.peek(1)))) return this.pos
     let end = this.pos
     while (end < this.input.length && NUMBER_RUN_CHARS.includes(this.input[end]!)) end++
-    const run = this.input.slice(this.pos, end)
-    if (run.includes('+') && !JAVA_NUMBER_RE.test(run)) {
-      throw new ParseError(
-        `reserved character '+' is not allowed outside quotes (in ${JSON.stringify(run)}; quote the value)`,
-        line,
-        col,
-      )
-    }
+    return JAVA_NUMBER_RE.test(this.input.slice(this.pos, end)) ? end : this.pos
   }
 
   private peek(offset = 0): string { return this.input[this.pos + offset] ?? '' }
@@ -527,7 +529,9 @@ function isDecimalDigit(ch: string): boolean {
 const NUMBER_RUN_CHARS = '0123456789.eE+-'
 
 /** What Long.parseLong / Double.parseDouble accept from a `[0-9.eE+-]` run that starts with a digit or `-`. */
-const JAVA_NUMBER_RE = /^-?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/
+// The integer and fraction digits are separate groups so the match stays
+// linear on a long digit run (`\d+\.?\d*` backtracks quadratically).
+const JAVA_NUMBER_RE = /^-?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/
 
 function isDigit(ch: string): boolean {
   return ch >= '0' && ch <= '9'

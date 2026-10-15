@@ -91,33 +91,87 @@ describe('S8.6 — unquoted-starts conformance (post-E8 amendment)', () => {
     })
   }
 
-  // E8 step 4 beyond the fixture: the value-start number-lex run is the
-  // maximal [0-9.eE+-] run from a digit (or `-` + digit); a `+` in a run that
-  // is not a number is an error wherever an unquoted token starts that way.
+  // S8.1 + E8 step 4: outside quotes, `+` is allowed only as the exponent
+  // sign inside a number run; anywhere else it is a reserved-character error.
+  // Every row of the table measured on Lightbend 1.4.6 (2026-10-16), the
+  // baseline; go.hocon differs on the five ★ rows.
   it.each([
-    'a = 1e+x',
-    'a = 1+2',
-    'a = 1.2.3+build',
+    ['1e+x', 'error'],
+    ['1+2', 'error'],
+    ['1.2.3+build', 'error'],
+    ['1.0.0+abc', 'error'],
+    ['+1', 'error'],
+    ['1e+5', 100000],
+    ['1x+2', 'error'],
+    ['abc+1', 'error'],
+    ['abc+', 'error'],
+    ['a+b', 'error'],
+    ['1e+5ms', '1e+5ms'],
+    ['1e+5 ms', '1e+5 ms'],
+    ['1.5e+3s', '1.5e+3s'],
+    ['1e+5x', '1e+5x'],
+    ['1e-x', '1e-x'],
+    ['1e-5e5', '1e-5e5'],
+    ['-1.5e+3', -1500],
+    ['x1e+5', 'error'],
+    ['.5e+3', 'error'],
+    ['1e+5.5', 'error'], // ★ go: string
+    ['1e+5.2', 'error'], // ★ go: string
+    ['1e+5e5', 'error'], // ★ go: string
+    ['1e+5-', 'error'], // ★ go: string
+    ['1.e+5', 100000], // ★ go: error
+  ] as const)('a = %s → %j (Lightbend 1.4.6)', (text, expected) => {
+    if (expected === 'error') {
+      expect(() => parse(`a = ${text}`)).toThrow(/reserved character '\+'|unexpected character: "\+"/)
+    } else {
+      expect(parse(`a = ${text}`).get('a')).toBe(expected)
+    }
+  })
+
+  it.each([
+    ['1e+5 = 1', { '1e+5': 1 }],
+    ['1e+5x = 1', { '1e+5x': 1 }],
+    ['a+b = 1', 'error'],
+    ['a.1e+5 = 1', 'error'],
+    ['x = [1]\nx += 2', { x: [1, 2] }],
+  ] as const)('key position: %j → %j (Lightbend 1.4.6)', (text, expected) => {
+    if (expected === 'error') {
+      expect(() => parse(text)).toThrow(/reserved character '\+'/)
+    } else {
+      expect(parse(text).toObject()).toEqual(expected)
+    }
+  })
+
+  it.each([
     'a = -1+x',
     'a = 1e+',
-    'a = 1+',
+    'a = 1e+5+1',
     'a = [1, 2e+x]',
     'b = 1, a = ${b}1e+x',
+    'b = 1, a = ${b}x+y',
+    'a = foo1e+5',
     '1e+x = 1',
+    'a+b = 1',
   ])('rejects %j', (text) => {
     expect(() => parse(text)).toThrow(/reserved character '\+'/)
   })
 
   it.each([
-    ['a = 1e+5', 100000],
     ['a = 1.5e+2', 150],
     ['a = -2e+1', -20],
   ])('reads %j as a number', (text, value) => {
     expect(parse(text).getNumber('a')).toBe(value)
   })
 
-  it('keeps a valid exponent run and the text after it as one value', () => {
-    expect(parse('a = 1e+5x').getString('a')).toBe('1e+5x')
+  it('leaves the += operator alone', () => {
+    expect(parse('a = [1]\na += 2\nb=[1]\nb+=2').toObject()).toEqual({ a: [1, 2], b: [1, 2] })
+  })
+
+  it('takes linear time on a long run that ends in +', () => {
+    const start = performance.now()
+    expect(() => parse(`${'1'.repeat(40000)}+x = 1`)).toThrow(ParseError)
+    expect(() => parse(`a = ${'1'.repeat(40000)}+x`)).toThrow(ParseError)
+    expect(performance.now() - start).toBeLessThan(1000)
   })
 
   it('accepts the same text quoted', () => {

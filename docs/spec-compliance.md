@@ -175,7 +175,7 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
 
 - **S8.1** Forbidden characters rejected (``$ " { } [ ] : = , + # ` ^ ? ! @ * & \``) and whitespace — §Unquoted strings (L245)
   tests: tests/lexer.test.ts:191, tests/issue68-path-empty-segment.test.ts (S8.1 describe block)
-  status: ✅ — `isUnquotedStart` / `isUnquotedContinue` in src/internal/lexer/lexer.ts now exclude `` ` `` (backtick) alongside the rest of the set (xx.hocon#68, uf01–uf04 fixtures). `(` and `)` remain accepted — they are not spec-forbidden (xx.hocon#34)
+  status: ✅ — `isUnquotedStart` / `isUnquotedContinue` in src/internal/lexer/lexer.ts now exclude `` ` `` (backtick) alongside the rest of the set (xx.hocon#68, uf01–uf04 fixtures). `(` and `)` remain accepted — they are not spec-forbidden (xx.hocon#34). `+`: until v1.14.0 only a *leading* `+` (and the `+=` operator) was rejected, and a `+` inside an unquoted run was kept as text (`abc+1`, `1e+x`); it is now rejected everywhere except as the exponent sign inside a number run (E8 step 4), matching Lightbend 1.4.6 — see S8.6 and tests/s8-unquoted-starts.test.ts
 - **S8.2** `//` inside an unquoted string starts a comment — §Unquoted strings (L248)
   tests: tests/lexer.test.ts:29
   status: ✅
@@ -189,14 +189,14 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
   tests: tests/lightbend/testdata/equiv01/unquoted.conf (fixture)
   status: ✅
 - **S8.6** Unquoted string cannot begin with `0-9` or `-` — §Unquoted strings (L270) *(spec wording is verbatim; the implementation follows the E8 / Lightbend reading — see status note below)*
-  tests: tests/s8-unquoted-starts.test.ts (xx.hocon fixtures: 29 success — us01–us14, us16, us17–us30 — and 1 error — us15; plus 3 path-rule regressions, 9 E8 explicit assertions and the E8 step-4 `+` cases); tests/lexer.test.ts (E8 value-start positive tests for `-foo` and `123abc`)
+  tests: tests/s8-unquoted-starts.test.ts (xx.hocon fixtures: 29 success — us01–us14, us16, us17–us30 — and 1 error — us15; plus 3 path-rule regressions, 9 E8 explicit assertions and the Lightbend 1.4.6 `+` table); tests/lexer.test.ts (E8 value-start positive tests for `-foo` and `123abc`)
   status: ✅ (post-E8 amendment) — xx.hocon E8 rewritten 2026-05-20 (xx.hocon#31 / commit dd102e8) adopts Lightbend's pragmatic reading of HOCON.md L270-276 ("begin" = value-position begin, not token-position). ts.hocon now matches:
   - Value-start `-` not followed by a digit → unquoted text (was lex error). RFC 8259 JSON-number requires a digit after `-`; bare `-` / `-foo` therefore fall outside L270's disallow scope. Lightbend reference produces `{"x":"-foo"}` / `{"x":"-"}`.
   - Value-start digit-leading runs → coerced via `Number()` at the value layer (e.g. `a = 01` → `{"a": 1}`). ts.hocon has no separate `number` token kind, so coercion happens at resolve time on the unquoted token. F3 `01` BREAKING (was `"01"` string under the strict pre-E8 reading).
   - Concat-continuation after value-tokens (e.g. `b = ${a}-bar` → `"foo-bar"`) now accepted — the strict `-` reject at the main tokenize loop's unquoted-start branch has been removed (src/internal/lexer/lexer.ts).
   - `+` rejection retained in both value-start and concat-continuation positions (HOCON `+=` operator reservation).
   - Path-element strict checks preserved (out of E8 scope): `parseSubstBody`'s segment-start `-` check (src/internal/lexer/lexer.ts) and the dotted-key segment check in `parseKey` (src/internal/parser/parser.ts) — these police path-element composition, not value-position unquoted strings. Tests `${-foo}` and `a.-foo = 1` still throw `ParseError`.
-  - E8 step 4 (us15 `a = 1e+x`): where a token starts like a number (a digit, or `-` and a digit), the lexer takes the maximal `[0-9.eE+-]` run as Lightbend's `pullNumber` does; a run that contains `+` and does not parse as a number is a reserved-character `ParseError`, with no fallback to an unquoted string (`1e+x`, `1+2`, `1.2.3+build`). A valid run (`1e+5`) reads as before. Closes the former `it.fails` gap ([#73](https://github.com/o3co/ts.hocon/issues/73)); go.hocon already rejected it.
+  - E8 step 4 (us15 `a = 1e+x`): where a token starts like a number (a digit, or `-` and a digit), the lexer takes the maximal `[0-9.eE+-]` run as Lightbend's `pullNumber` does; a `+` in that run is allowed only when the run is a number (`1e+5`, `1.e+5`), and any other `+` outside quotes is a reserved-character `ParseError` (`1e+x`, `1+2`, `1.2.3+build`, `1e+5.5`, `x1e+5`, `abc+1`). Pinned against the Lightbend 1.4.6 table (value and key position, 2026-10-16). Closes the former `it.fails` gap ([#73](https://github.com/o3co/ts.hocon/issues/73)).
 - **S8.7** No escape sequences in unquoted strings — §Unquoted strings (L253)
   tests: tests/lexer.test.ts:385
   status: ✅
