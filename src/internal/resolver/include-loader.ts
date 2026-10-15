@@ -1,6 +1,10 @@
-import { createRequire } from 'node:module'
+// Namespace imports, not named ones: a browser bundle replaces Node built-ins
+// with stub modules that may have no named exports (Vite 7's browser-external
+// fails the build on `import { createRequire }`), and these are only reached
+// when a file or package is actually loaded.
+import * as nodeModule from 'node:module'
 import * as nodePath from 'node:path'
-import { pathToFileURL } from 'node:url'
+import * as nodeUrl from 'node:url'
 import { PackageLookupError, ParseError, ResolveError } from '../../errors.js'
 import type { AstNode } from '../parser/ast.js'
 import { tokenize } from '../lexer/lexer.js'
@@ -70,7 +74,7 @@ export function pickRequire(candidate: unknown, metaUrl: string | undefined): No
   if (typeof (candidate as NodeRequire | undefined)?.resolve === 'function') {
     return candidate as NodeRequire
   }
-  return createRequire(metaUrl ?? pathToFileURL(nodePath.join(process.cwd(), 'noop.js')))
+  return nodeModule.createRequire(metaUrl ?? nodeUrl.pathToFileURL(nodePath.join(process.cwd(), 'noop.js')))
 }
 
 /**
