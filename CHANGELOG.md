@@ -131,12 +131,17 @@ different value. Each entry gives the workaround.
   largest integer a JS number holds exactly. Code that caught `RangeError` from `getBytes` should
   catch `ConfigError` instead. The Zod marker `hocon.bytes()` fails validation
   with the key's path.
-- **`parseAsync` / `parseFileAsync` honour `resolveSubstitutions` and
-  `originDescription`.** They always resolved, so `resolveSubstitutions: false`
-  threw `ResolveError` on an unresolved substitution instead of returning an
-  unresolved `Config` (E12), and the `Config` did not carry
+- **BREAKING: `parseAsync` / `parseFileAsync` honour `resolveSubstitutions`
+  and `originDescription`.** They always resolved, so `resolveSubstitutions:
+  false` threw `ResolveError` on an unresolved substitution instead of
+  returning an unresolved `Config` (E12), and the `Config` did not carry
   `originDescription`. They now behave like `parse` / `parseFile`; includes
-  are still loaded asynchronously (through `readFile` when given).
+  are still loaded asynchronously (through `readFile` when given). A call that
+  passed `resolveSubstitutions: false` and read values right away got a
+  resolved Config before and now gets an unresolved one, so a getter on a
+  substituted value (`b = 1, a = ${b}`, then `getNumber('a')`) throws
+  `NotResolvedError`. Workaround: drop the option, or call `resolve()` before
+  reading.
 - **`resolveSubstitutions: false` kept objects inside arrays.** A deferred
   parse turned each object element of an array (also inside nested arrays) into
   `undefined` when the field had no substitution: `items = [{ x = 1 }]` read as
