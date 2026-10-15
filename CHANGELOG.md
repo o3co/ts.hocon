@@ -37,6 +37,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The JSON render writes `1.`, `-.5` and `1.e5` as numbers.** The canonical
+  JSON render used by the cross-implementation differential harness
+  (`renderHoconAsJSON`) quoted number lexemes that are not JSON numbers as
+  written; Lightbend reads them as numbers. It now fills in the missing digit
+  (`1.0`, `-0.5`, `1.0e5`), as go.hocon does since go#208, and every
+  unquoted-starts fixture renders to its Lightbend expected JSON. No public API
+  change; `getString` still returns the lexeme as written.
 - **Unit values accept exponent forms (E20,
   [o3co/xx.hocon#111](https://github.com/o3co/xx.hocon/issues/111)).** The
   number in a duration or byte size is a full number, exponent included, as
