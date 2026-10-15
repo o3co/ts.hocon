@@ -492,6 +492,17 @@ describe('getBytes', () => {
     expect(() => c.getBytes('o')).toThrow(
       new ConfigError('byte size overflows the representable range at o: "1E"', 'o'),
     )
+    // The path is part of the contract; check it explicitly too, not only
+    // through toThrow's own-property comparison.
+    const err = (() => {
+      try {
+        c.getBytes('o')
+      } catch (e) {
+        return e
+      }
+    })()
+    expect(err).toBeInstanceOf(ConfigError)
+    expect(err).toMatchObject({ message: 'byte size overflows the representable range at o: "1E"', path: 'o' })
   })
 
   // S21.4 — single-letter byte abbreviations map to powers of 2 (java -Xmx convention)
