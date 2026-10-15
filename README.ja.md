@@ -566,7 +566,7 @@ const merged = cfg.withFallback(base).resolve()
 | `@o3co/ts.hocon/adapters/env` | — | プレフィックス付き名前空間の一括マウント。`.env` の読み込みも可能 |
 | `@o3co/ts.hocon/adapters/jsonc` | — | コメントと末尾カンマを許す JSON |
 | `@o3co/ts.hocon/adapters/json5` | — | JSON5 1.0.0。手書き scanner で依存ゼロ |
-| `@o3co/ts.hocon/adapters/toml` | `smol-toml`（>= 1.0。推奨 >= 1.9.0、[SECURITY.md](SECURITY.md#the-toml-adapter) 参照） | オプショナルなピア依存 |
+| `@o3co/ts.hocon/adapters/toml` | `smol-toml`（>= 1.0。1.9.0 以上を推奨、[SECURITY.md](SECURITY.md#the-toml-adapter) 参照） | オプショナルなピア依存 |
 | `@o3co/ts.hocon/adapters/yaml` | `yaml`（>= 2.0） | オプショナルなピア依存。スカラー解決はそのライブラリの答えで、`version: '1.2'` を明示してドリフトを防止 |
 
 TOML と YAML のライブラリは **オプショナルなピア依存** なので、本パッケージを入れても

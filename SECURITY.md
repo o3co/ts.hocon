@@ -61,8 +61,8 @@ read these keys by name (`cfg.getNumber('limits."constructor"')`).
 ### The TOML adapter
 
 `@o3co/ts.hocon/adapters/toml` parses with `smol-toml`, an optional peer
-dependency that accepts `>= 1.0`. Versions before 1.9.0 have two known
-denial-of-service issues on crafted input:
+dependency whose declared range is `>= 1.0`. Versions before 1.9.0 are affected
+by one or both of two known denial-of-service issues on crafted input:
 
 - [GHSA-7w5x-hrqm-74c2](https://github.com/advisories/GHSA-7w5x-hrqm-74c2):
   malformed TOML documents (<= 1.7.0);
@@ -71,8 +71,8 @@ denial-of-service issues on crafted input:
 
 Install `smol-toml` 1.9.0 or later, above all when the TOML you mount can come
 from outside your control. The peer range still admits older versions so that
-an existing install keeps working; raising its floor to `>= 1.9.0` is planned
-for a later minor release.
+an existing install keeps working; raising its floor to `>= 1.9.0` is tracked
+in [#221](https://github.com/o3co/ts.hocon/issues/221).
 
 ## Reporting a vulnerability
 
