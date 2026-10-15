@@ -22,6 +22,11 @@ export function buildTree(ast: AstNode, opts: ResolveOptions): ResObj {
   return new StructureBuilder(opts).build(ast)
 }
 
+/** buildTree, loading includes asynchronously (via opts.readFile). */
+export function buildTreeAsync(ast: AstNode, opts: ResolveOptions): Promise<ResObj> {
+  return new StructureBuilder(opts).buildAsync(ast)
+}
+
 /**
  * resolveTree — phase 2. Replaces substitution and concat placeholders in a
  * ResObj tree produced by buildTree (or merged via mergeUnresolved). Returns a
