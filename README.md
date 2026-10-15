@@ -222,7 +222,7 @@ const Backup = z.object({
 getValidated(cfg, 'backup', Backup) // { keep: { years: 0, months: 0, days: 14 } }
 ```
 
-An invalid duration, size or period fails validation with the key's path. The markers are ordinary Zod schemas, so they work in `validate`, `getValidated`, `parseWithSchema`, `parseFileWithSchema` and anywhere else Zod runs them. A marker reads a number through its JavaScript value, so a number literal in exponent form (`1e3`, or one JavaScript prints that way, below 1e-6 or from 1e21) can read differently from the getters (accepted where the getter refuses it, or the reverse); write durations and sizes with a unit to avoid this.
+An invalid duration, size or period fails validation with the key's path. The markers are ordinary Zod schemas, so they work in `validate`, `getValidated`, `parseWithSchema`, `parseFileWithSchema` and anywhere else Zod runs them. A marker reads a number through its JavaScript value, so a number literal in exponent form (`1e3`, or one JavaScript prints that way, below 1e-6 or from 1e21) can read differently from the getters (accepted where the getter refuses it, or the reverse); a period marker also reads a literal with a decimal point (`7.0`) as an integer, which `getPeriod()` refuses. Write unit values with a unit (`30s`, `7d`) to avoid both.
 
 Install Zod as a peer dependency:
 ```bash
@@ -290,6 +290,9 @@ c.getBytes('max-size')          // 536870912 (bytes)
 c.getBytes('max-size', 'MiB')  // 512
 ```
 
+Supported duration units: `ns`, `us`, `ms`, `s`, `m`, `h`, `d` (and long forms like `seconds`, `minutes`). Duration unit names are case-sensitive and must be lowercase (HOCON spec). Byte units are more case-tolerant: the canonical forms below plus lowercase aliases (`kb`, `kib`, …), any-case long forms (`megabytes`), and single-letter powers-of-two in both cases (`K`/`k`, per Lightbend).
+Supported byte units: `B`, `KB`/`KiB`, `MB`/`MiB`, `GB`/`GiB`, `TB`/`TiB` (and long forms like `megabytes`, `mebibytes`).
+
 ### Periods
 
 ```ts
@@ -307,9 +310,6 @@ c.getPeriod('grace')     // { years: 0, months: 0, days: 3 }
 ```
 
 Supported period units: `d`/`day`/`days`, `w`/`week`/`weeks` (folded into days), `m`/`mo`/`month`/`months`, `y`/`year`/`years`. Unit names are case-sensitive and must be lowercase (`m` is months here, not minutes). A period is integer only (`7.5` is an error, unlike durations and sizes), may be negative, and each component must fit in a 32-bit signed integer, as in Lightbend (`java.time.Period`), rs.hocon and py.hocon.
-
-Supported duration units: `ns`, `us`, `ms`, `s`, `m`, `h`, `d` (and long forms like `seconds`, `minutes`). Duration unit names are case-sensitive and must be lowercase (HOCON spec). Byte units are more case-tolerant: the canonical forms below plus lowercase aliases (`kb`, `kib`, …), any-case long forms (`megabytes`), and single-letter powers-of-two in both cases (`K`/`k`, per Lightbend).
-Supported byte units: `B`, `KB`/`KiB`, `MB`/`MiB`, `GB`/`GiB`, `TB`/`TiB` (and long forms like `megabytes`, `mebibytes`).
 
 ## Spec Compliance
 

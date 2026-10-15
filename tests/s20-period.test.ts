@@ -34,6 +34,8 @@ describe('getPeriod', () => {
     ['-7d', period(0, 0, -7)],
     ['-2w', period(0, 0, -14)],
     ['  7 m  ', period(0, 7, 0)],
+    ['7\u00a0d', period(0, 0, 7)],
+    ['7\td', period(0, 0, 7)],
   ])('reads %j', (raw, expected) => {
     expect(parse(`p = ${JSON.stringify(raw)}`).getPeriod('p')).toEqual(expected)
   })

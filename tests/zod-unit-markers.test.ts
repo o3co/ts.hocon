@@ -1,8 +1,9 @@
 // tests/zod-unit-markers.test.ts
 // hocon.duration() / hocon.bytes() / hocon.period() — Zod schema markers for
-// HOCON unit values (ts.hocon#195, o3co/xx.hocon#102). A marker must read what the matching Config getter reads, so
-// the parity tables below run each input through both. The one documented
-// difference — number literals in exponent form — is pinned separately.
+// HOCON unit values (ts.hocon#195, o3co/xx.hocon#102). A marker must read what
+// the matching Config getter reads, so the parity tables below run each input
+// through both. The documented differences — number literals in exponent form,
+// and for a period also with a decimal point — are pinned separately.
 
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
@@ -196,7 +197,8 @@ describe('hocon.bytes()', () => {
 describe('hocon.period()', () => {
   const inputs = [
     'v = 7', 'v = "7"', 'v = " 7 "', 'v = 7d', 'v = 2w', 'v = "3 months"', 'v = 3mo', 'v = 1y', 'v = -7',
-    'v = "-2w"', 'v = 7.5', 'v = "7D"', 'v = 2147483648', 'v = 306783379w', 'v = 7 parsecs',
+    'v = "-2w"', 'v = "+7d"', 'v = "-0"', 'v = 7.5', 'v = 7.0d', 'v = "7D"', 'v = 2147483648',
+    'v = 306783379w', 'v = 7 parsecs',
     'v = abc', 'v = ""', 'v = true', 'v = null', 'v = [1]', 'v { a = 1 }',
   ]
 
@@ -225,6 +227,16 @@ describe('hocon.period()', () => {
         path: ['backup', 'keep'],
         message: 'invalid period: "7.5"',
       })
+    }
+  })
+
+  // Documented difference: the getter reads the source text and refuses a
+  // number literal with a decimal point or an exponent (integer only); the
+  // marker reads the JS number, so `7.0` is 7 and `1e2` is 100.
+  it('reads a number literal with a decimal point or an exponent through its JS value', () => {
+    for (const [input, days] of [['v = 7.0', 7], ['v = -7.00', -7], ['v = 1e2', 100]] as const) {
+      expect([input, viaGetter(() => parse(input).getPeriod('v'))]).toEqual([input, 'error'])
+      expect([input, viaMarker(hocon.period(), input)]).toEqual([input, { years: 0, months: 0, days }])
     }
   })
 

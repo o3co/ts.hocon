@@ -171,7 +171,7 @@ getValidated(cfg, 'backup', Backup) // { keep: { years: 0, months: 0, days: 14 }
 
 period の単位は `d`/`day`/`days`、`w`/`week`/`weeks`（日数に畳み込み）、`m`/`mo`/`month`/`months`、`y`/`year`/`years` です。単位は小文字のみで、大文字小文字を区別します（ここでの `m` は分ではなく月）。単位のない整数は日数として読みます。period は整数のみ（`7.5` はエラー）で、負の値も読めます。各成分は 32 bit 符号付き整数に収まる必要があります（Lightbend の `java.time.Period`、rs.hocon、py.hocon と同じ）。
 
-不正な duration / byte size / period は、キーのパス付きのバリデーションエラーになります。マーカーは普通の Zod スキーマなので、`validate`・`getValidated`・`parseWithSchema`・`parseFileWithSchema` をはじめ、Zod が実行するところならどこでも使えます。数値は JavaScript の値として読むため、指数表記の数値リテラル（`1e3`、または JavaScript が指数表記で表示する 1e-6 未満・1e21 以上の値）は getter と結果が異なることがあります（getter が拒否する値を通す場合も、その逆もあります）。duration と byte size は単位付きで書けばこの差は出ません。
+不正な duration / byte size / period は、キーのパス付きのバリデーションエラーになります。マーカーは普通の Zod スキーマなので、`validate`・`getValidated`・`parseWithSchema`・`parseFileWithSchema` をはじめ、Zod が実行するところならどこでも使えます。数値は JavaScript の値として読むため、指数表記の数値リテラル（`1e3`、または JavaScript が指数表記で表示する 1e-6 未満・1e21 以上の値）は getter と結果が異なることがあります（getter が拒否する値を通す場合も、その逆もあります）。period のマーカーは、小数点付きのリテラル（`7.0`）も整数として読みます（`getPeriod()` は拒否します）。単位付きで書けば（`30s`、`7d`）どちらの差も出ません。
 
 Zod をピア依存としてインストール:
 ```bash
