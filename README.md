@@ -229,6 +229,8 @@ Install Zod as a peer dependency:
 npm install zod
 ```
 
+The Zod entry points (`validate`, `getValidated`, `parseWithSchema`, `parseFileWithSchema`) refuse an object key named `__proto__`, `constructor` or `prototype` anywhere in the value: Zod drops a `__proto__` key from a record without an error, and the three are refused alike so the result does not depend on the schema. The `ZodError` has one issue per key, at the object that holds it, with the key in the message and in `params.key` (`key "__proto__" names an object's prototype → at limits`). Rename the key, or read it with the plain getters (`cfg.getNumber('limits."constructor"')`), which are unaffected.
+
 ### Error types
 
 ```ts

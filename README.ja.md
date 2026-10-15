@@ -178,6 +178,8 @@ Zod をピア依存としてインストール:
 npm install zod
 ```
 
+Zod の入口（`validate`・`getValidated`・`parseWithSchema`・`parseFileWithSchema`）は、値のどこかに `__proto__`・`constructor`・`prototype` という名前のキーがあると拒否します。Zod は record から `__proto__` キーをエラーなしで落とすため、また結果が schema によって変わらないように、3 つとも同じく拒否します。`ZodError` にはキーごとに 1 つの issue が入ります。issue はそのキーを持つオブジェクトの位置に付き、キー名は message と `params.key` に入ります（`key "__proto__" names an object's prototype → at limits`）。キー名を変えるか、影響を受けない通常の getter（`cfg.getNumber('limits."constructor"')`）で読んでください。
+
 ### エラー型
 
 ```ts
