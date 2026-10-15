@@ -714,7 +714,7 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
   tested inputs. ⚠️ would apply only if a non-letter unit string happened to match a
   map key — which is structurally impossible given the map's contents.
 - **S18.4** String with no unit → interpreted with default unit — §Units format (L1290)
-  tests: tests/config.test.ts (S18.4 describe block), tests/s18-units-default.test.ts (ud01-ud08, ub01-ub06, un01-un03)
+  tests: tests/config.test.ts (S18.4 describe block), tests/s18-units-default.test.ts (ud01-ud08, ub01-ub06, un01-un03, up01-up05)
   status: ✅
   notes: Fixed in Phase 6 #3d alongside S18.1 — same fix site. The `if (unit === '')` branch
   in `parseDuration`/`parseBytes` handles both number-value (S18.1) and string-value (S18.4)
@@ -723,7 +723,8 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
   byte strings (e.g. `"1024.5"`) accepted and truncated via `Math.trunc` (Lightbend
   `BigDecimal.toBigInteger()` faithful). `getBytes()` rejects negative byte sizes
   (Lightbend positive-only accessor invariant). xx.hocon fixtures ud01-ud08, ub01-ub06,
-  un01-un03 pass. Period fixtures up01-up05 inapplicable — `getPeriod` not implemented (S20 ➖).
+  un01-un03 pass. Period fixtures up01-up05 pass with `getPeriod` (S20): a bare integer is days, and
+  `"7.5"` is rejected (integer only, Lightbend `Integer.parseInt`).
 
 ## S19. Duration format
 
@@ -759,21 +760,23 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
 ## S20. Period format
 
 - **S20.1** `d` / `day` / `days` — §Period Format (L1327)
-  out-of-scope: Period Format mirrors `java.time.Period`, a JVM-specific type; the spec text (L1316-1318) explicitly references this Java API. None of the three implementations exposes a period parser/API.
-  tests: —
-  status: ➖
+  tests: tests/s20-period.test.ts; tests/s18-units-default.test.ts (up01-up05); tests/zod-unit-markers.test.ts (hocon.period)
+  status: ✅
+  notes: `Config.getPeriod(path)` returns a `Period` (`{ years, months, days }`), at parity with rs.hocon
+  `get_period` and py.hocon `get_period` (o3co/xx.hocon#102). Integer only, case-sensitive lowercase units,
+  a bare integer is days, negative values allowed, each component within the i32 range. Rules live in
+  `readPeriod` (coerce.ts); the getter and the `hocon.period()` Zod marker both read through it.
 - **S20.2** `w` / `week` / `weeks` — §Period Format (L1328)
-  out-of-scope: Period Format unsupported; see S20.1.
-  tests: —
-  status: ➖
+  tests: tests/s20-period.test.ts; tests/s18-units-default.test.ts (up05)
+  status: ✅
+  notes: weeks are folded into days (`2w` → 14 days), as `java.time.Period.ofWeeks` does; the i32 range is
+  checked after folding.
 - **S20.3** `m` / `mo` / `month` / `months` — §Period Format (L1329)
-  out-of-scope: Period Format unsupported; see S20.1.
-  tests: —
-  status: ➖
+  tests: tests/s20-period.test.ts
+  status: ✅
 - **S20.4** `y` / `year` / `years` — §Period Format (L1333)
-  out-of-scope: Period Format unsupported; see S20.1.
-  tests: —
-  status: ➖
+  tests: tests/s20-period.test.ts
+  status: ✅
 
 ## S21. Size in bytes format
 

@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`Config.getPeriod(path)` and the Zod marker `hocon.period()` (S20,
+  [o3co/xx.hocon#102](https://github.com/o3co/xx.hocon/issues/102)).** A
+  period (`7d`, `2w`, `3m`, `1y`; a bare integer is days) reads as a `Period`
+  (`{ years, months, days }`, exported as a type from `@o3co/ts.hocon`), at
+  parity with rs.hocon `get_period` and py.hocon `get_period`: integer only,
+  case-sensitive lowercase units, weeks folded into days, negative values
+  allowed, each component within the 32-bit signed range. The getter and the
+  marker read through one reader, `readPeriod` in `coerce.ts`. The
+  units-default fixtures up01–up05, skipped until now, run.
+
 - **Zod: `hocon.duration(unit?)` and `hocon.bytes(unit?)` schema markers**
   ([#195](https://github.com/o3co/ts.hocon/issues/195)). Exported from
   `@o3co/ts.hocon/zod`, they read a HOCON duration (`30m`) or byte size
