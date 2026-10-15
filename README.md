@@ -405,7 +405,7 @@ The package still imports the Node built-ins `fs`, `path`, `module` and `url` (f
 - **Vite** (7 and 8) does this by default, so there is nothing to configure.
 - **Other bundlers:** map the four modules to an empty module (`export default {}`), for example with an esbuild plugin or webpack 5's `resolve.fallback: { fs: false, path: false, module: false, url: false }`. Marking them external is not enough, because the browser cannot load `fs`.
 
-That covers parsing without file includes. Includes read through your own `readFile` / `readFileSync` (below) also resolve paths, so they need a browser implementation of `path` instead of the empty module, such as the `path-browserify` package. `include package(...)` does not work in a browser.
+That covers parsing without file includes. Includes read through your own `readFile` / `readFileSync` (below) also resolve paths, so they need a browser implementation of `path` instead of the empty module, such as the `path-browserify` package. `include package(...)` needs a custom `packageResolver` there (see `ParseOptions`).
 
 ```ts
 // Browser usage with custom file loader
