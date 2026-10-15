@@ -36,6 +36,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **BREAKING (E8 step 4, xx.hocon us15): a `+` inside a number-like
+  unquoted value is a parse error** ([#73](https://github.com/o3co/ts.hocon/issues/73)).
+  Where an unquoted value starts like a number (a digit, or `-` and a digit),
+  the leading run of digits, `.`, `e`/`E`, `+` and `-` is read as a number, as
+  Lightbend does; if that run contains `+` and is not a number, it is now
+  `ParseError: reserved character '+' is not allowed outside quotes` instead
+  of the string it used to become: `a = 1e+x`, `a = 1+2`,
+  `version = 1.2.3+build`. A valid exponent (`1e+5`) reads as before. This
+  matches Lightbend and go.hocon. Workaround: quote the value
+  (`a = "1e+x"`, `version = "1.2.3+build"`).
 - **BREAKING: the Zod entry points throw `NotResolvedError` on an unresolved
   config ([#210](https://github.com/o3co/ts.hocon/issues/210)).** `validate`,
   `getValidated`, `parseWithSchema` and `parseFileWithSchema` built the value

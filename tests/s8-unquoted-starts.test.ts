@@ -64,11 +64,11 @@ const SUCCESS_FIXTURES = [
   'us30-concat-quoted-dash-subst',
 ]
 
-// Known gap: us15 (`a = 1e+x`) carries an `.error` sidecar from Lightbend
-// (Reserved character `+` outside quotes). Lightbend's error fires at its
-// value-parser layer; the `+` reservation is enforced in both value-start
-// and concat-continuation positions per E8.
-const KNOWN_GAP_FIXTURES = [
+// Error fixtures: us15 (`a = 1e+x`) carries an `.error` sidecar from Lightbend
+// (Reserved character `+` outside quotes). E8 step 4: a number-lex run that
+// contains `+` and does not parse as a number is a reserved-character error,
+// with no fallback to an unquoted string.
+const ERROR_FIXTURES = [
   'us15-incomplete-exp',
 ]
 
@@ -83,17 +83,47 @@ describe('S8.6 — unquoted-starts conformance (post-E8 amendment)', () => {
     })
   }
 
-  for (const name of KNOWN_GAP_FIXTURES) {
-    // it.fails — currently this assertion FAILS (parse does not throw), and
-    // that failure is the expected state. When the gap closes (i.e. parse
-    // begins throwing as Lightbend does on the `+` reservation), this
-    // `.fails` will itself fail, surfacing the change in CI without source
-    // edit. Tracking: ts.hocon#73 (the `+` reservation gap for `1e+x`).
-    it.fails(`${name}: known gap (ts.hocon#73) — '+' reservation enforcement deferred`, () => {
+  for (const name of ERROR_FIXTURES) {
+    it(`${name}: rejected — '+' is reserved (E8 step 4)`, () => {
       const content = readFileSync(join(confDir, `${name}.conf`), 'utf-8')
-      expect(() => parse(content)).toThrow()
+      expect(() => parse(content)).toThrow(ParseError)
+      expect(() => parse(content)).toThrow(/reserved character '\+'/)
     })
   }
+
+  // E8 step 4 beyond the fixture: the value-start number-lex run is the
+  // maximal [0-9.eE+-] run from a digit (or `-` + digit); a `+` in a run that
+  // is not a number is an error wherever an unquoted token starts that way.
+  it.each([
+    'a = 1e+x',
+    'a = 1+2',
+    'a = 1.2.3+build',
+    'a = -1+x',
+    'a = 1e+',
+    'a = 1+',
+    'a = [1, 2e+x]',
+    'b = 1, a = ${b}1e+x',
+    '1e+x = 1',
+  ])('rejects %j', (text) => {
+    expect(() => parse(text)).toThrow(/reserved character '\+'/)
+  })
+
+  it.each([
+    ['a = 1e+5', 100000],
+    ['a = 1.5e+2', 150],
+    ['a = -2e+1', -20],
+  ])('reads %j as a number', (text, value) => {
+    expect(parse(text).getNumber('a')).toBe(value)
+  })
+
+  it('keeps a valid exponent run and the text after it as one value', () => {
+    expect(parse('a = 1e+5x').getString('a')).toBe('1e+5x')
+  })
+
+  it('accepts the same text quoted', () => {
+    expect(parse('a = "1e+x"').getString('a')).toBe('1e+x')
+    expect(parse('a = "1+2"').getString('a')).toBe('1+2')
+  })
 
   // --- Out-of-E8-scope strict checks (unchanged) ---------------------------
   //

@@ -192,6 +192,7 @@ class Lexer {
       // (dotted segments) remain strict — they police path-element
       // composition, not value-position unquoted strings.
       if (isUnquotedStart(ch)) {
+        this.rejectPlusInNumberRun(sl, sc)
         let value = ''
         while (this.pos < this.input.length && isUnquotedContinue(this.peek(), () => this.peek(1))) {
           value += this.advance()
@@ -205,6 +206,29 @@ class Lexer {
 
     this.tokens.push({ kind: 'eof', value: '', line: this.line, col: this.col, isQuoted: false, precedingSpace: false, precedingWhitespace: '' })
     return this.tokens
+  }
+
+  /**
+   * E8 step 4 (xx.hocon docs/extra-spec-conventions.md): where a token starts
+   * like a number (a digit, or `-` and a digit), Lightbend's `pullNumber`
+   * takes the maximal run of `[0-9.eE+-]`. A run that contains `+` and does not
+   * parse as a number is a reserved-character error, not an unquoted string
+   * (`a = 1e+x`, xx.hocon us15). A run without `+`, or a valid one (`1e+5`),
+   * goes on as an unquoted run, as before.
+   */
+  private rejectPlusInNumberRun(line: number, col: number): void {
+    const first = this.peek()
+    if (!isDigit(first) && !(first === '-' && isDigit(this.peek(1)))) return
+    let end = this.pos
+    while (end < this.input.length && NUMBER_RUN_CHARS.includes(this.input[end]!)) end++
+    const run = this.input.slice(this.pos, end)
+    if (run.includes('+') && !JAVA_NUMBER_RE.test(run)) {
+      throw new ParseError(
+        `reserved character '+' is not allowed outside quotes (in ${JSON.stringify(run)}; quote the value)`,
+        line,
+        col,
+      )
+    }
   }
 
   private peek(offset = 0): string { return this.input[this.pos + offset] ?? '' }
@@ -497,6 +521,15 @@ function isUnquotedSubstChar(ch: string): boolean {
 }
 
 function isDecimalDigit(ch: string): boolean {
+  return ch >= '0' && ch <= '9'
+}
+
+const NUMBER_RUN_CHARS = '0123456789.eE+-'
+
+/** What Long.parseLong / Double.parseDouble accept from a `[0-9.eE+-]` run that starts with a digit or `-`. */
+const JAVA_NUMBER_RE = /^-?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/
+
+function isDigit(ch: string): boolean {
   return ch >= '0' && ch <= '9'
 }
 
