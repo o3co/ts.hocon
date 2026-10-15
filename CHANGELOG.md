@@ -36,6 +36,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Unit arithmetic is exact decimal (E20,
+  [o3co/xx.hocon#102](https://github.com/o3co/xx.hocon/issues/102)).** The
+  number in a duration or byte size is read from its text as an exact decimal
+  and multiplied by the unit exactly, in `getDuration` / `getBytes` and the
+  `hocon.duration()` / `hocon.bytes()` markers alike.
+  - **Duration — a deliberate divergence from Lightbend (E20).** The exact
+    product is rounded once, to the nearest double in the output unit:
+    `1.001s` is `1001` ms (was `1000.9999999999999`), `2.3h` is `8280000` ms
+    (was `8279999.999999999`), and integer values in units below a millisecond
+    are exact too (`9us` is `0.009` ms, was `0.009000000000000001`). Lightbend
+    multiplies in double and gives `1000999999` ns for `1.001s`.
+  - **Byte size — Lightbend parity.** The exact product is truncated toward
+    zero (`BigDecimal.toBigInteger`) and then converted to the output unit with
+    one rounding, for every output unit: `1.0009kB` is `1000` (the unit path
+    rounded it to `1001`), and `getBytes(path, 'KB')` truncates to whole bytes
+    first.
 - **BREAKING: the Zod entry points refuse a key named `__proto__`,
   `constructor` or `prototype`
   ([#201](https://github.com/o3co/ts.hocon/issues/201)).** `validate`,

@@ -5,6 +5,7 @@
 //
 // Duration fixtures (ud01-ud08): getDuration default unit = ms.
 // Bytes fixtures (ub01-ub06): getBytes default unit = bytes (Math.trunc for fractional).
+// E20 fixtures (ud09-ud11, ub07-ub08): unit arithmetic is exact decimal.
 // Negative edge cases (un01-un03): empty/ws-only/unit-only strings → error.
 //
 // Period fixtures (up01-up05): getPeriod default unit = days, integer only.
@@ -111,6 +112,39 @@ describe('S18.4 + S18.1 — bytes no-unit fallthrough (ub01-ub06)', () => {
 // ---------------------------------------------------------------------------
 // Negative edge cases (un01-un03): empty / ws-only / unit-only strings
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// E20 fixtures (ud09-ud11, ub07-ub08): exact decimal unit arithmetic
+// ---------------------------------------------------------------------------
+describe('E20 — exact decimal unit arithmetic (ud09-ud11, ub07-ub08)', () => {
+  it('ud09: "1.001s" → getDuration("t") = 1001 ms (not 1000.9999999999999)', () => {
+    const c = loadConf('ud09-duration-fractional-exact.conf')
+    expect(c.getDuration('t')).toBe(1001)
+    expect(c.getDuration('t', 'ns')).toBe(1001000000)
+  })
+
+  it('ud10: "2.3h" → getDuration("t") = 8280000 ms (not 8279999.999999999)', () => {
+    const c = loadConf('ud10-duration-fractional-exact-hours.conf')
+    expect(c.getDuration('t')).toBe(8280000)
+    expect(c.getDuration('t', 'ns')).toBe(8280000000000)
+  })
+
+  it('ud11: "1.001" no unit → getDuration("t") = 1.001 ms (1001000 ns)', () => {
+    const c = loadConf('ud11-duration-fractional-exact-no-unit.conf')
+    expect(c.getDuration('t')).toBe(1.001)
+    expect(c.getDuration('t', 'ns')).toBe(1001000)
+  })
+
+  it('ub07: "1.0009kB" → getBytes("b") = 1000 (truncated, not rounded)', () => {
+    const c = loadConf('ub07-bytes-fractional-unit-truncated.conf')
+    expect(c.getBytes('b')).toBe(1000)
+  })
+
+  it('ub08: "1.001kB" → getBytes("b") = 1001 (exact before truncation)', () => {
+    const c = loadConf('ub08-bytes-fractional-unit-exact.conf')
+    expect(c.getBytes('b')).toBe(1001)
+  })
+})
+
 describe('S18.4 — negative edge cases (un01-un03)', () => {
   it('un01: "" empty string → getDuration("t") throws ConfigError', () => {
     const c = loadConf('un01-empty-duration.conf')

@@ -1,0 +1,119 @@
+// tests/e20-exact-unit-arithmetic.test.ts
+//
+// E20 (xx.hocon docs/extra-spec-conventions.md): the numeric part of a unit
+// value is read from its source text as an exact decimal and multiplied by the
+// unit exactly.
+// - Duration: the exact product, rounded once to the nearest double in the
+//   output unit (a deliberate divergence from Lightbend's double product).
+// - Byte size: the exact product, truncated toward zero, then converted to the
+//   output unit with one rounding (Lightbend parity, BigDecimal.toBigInteger).
+// The units-default fixtures ud09-ud11 / ub07-ub08 run in s18-units-default.
+import { describe, expect, it } from 'vitest'
+import { z } from 'zod'
+import { parseBytes, parseDuration, readBytes, readDuration } from '../src/coerce.js'
+import { parse } from '../src/index.js'
+import { getValidated, hocon } from '../src/zod.js'
+
+describe('E20 — duration', () => {
+  it.each([
+    ['1.001s', 'ms', 1001],
+    ['1.001s', 'ns', 1001000000],
+    ['2.3h', 'ms', 8280000],
+    ['2.3h', 'ns', 8280000000000],
+    ['1.001', 'ms', 1.001],
+    ['1.001', 'ns', 1001000],
+    ['0.1s', 'ms', 100],
+    ['0.7m', 's', 42],
+    ['1.1d', 'h', 26.4],
+    ['-1.001s', 'ms', -1001],
+    ['+2.5 seconds', 'ms', 2500],
+  ] as const)('%s in %s is %d', (text, unit, expected) => {
+    expect(parseDuration(text, unit)).toBe(expected)
+  })
+
+  // Integer values in units below a millisecond were inexact too: the unit
+  // factor was a float (1e-3) and the output unit divided again.
+  it.each([
+    ['9us', 'ms', 0.009],
+    ['7us', 'ns', 7000],
+    ['3ns', 'ms', 0.000003],
+    ['123456789ns', 's', 0.123456789],
+    ['1500us', 'ms', 1.5],
+  ] as const)('%s in %s is %d', (text, unit, expected) => {
+    expect(parseDuration(text, unit)).toBe(expected)
+  })
+
+  it('rounds once, to the nearest double, in the output unit', () => {
+    // 1/3 of an hour in seconds and in days: the exact quotient, rounded once.
+    expect(parseDuration('20m', 'h')).toBe(1 / 3)
+    expect(parseDuration('1h', 'd')).toBe(1 / 24)
+    expect(parseDuration('1ms', 'd')).toBe(1 / 86_400_000)
+  })
+
+  it('keeps a fraction below a nanosecond in the output unit', () => {
+    expect(parseDuration('1.5ns', 'ms')).toBe(0.0000015)
+    expect(parseDuration('1.5ns', 'ns')).toBe(1.5)
+  })
+
+  it('still rejects what it rejected', () => {
+    for (const text of ['', ' ', 's', '1.2.3s', '.s', '-s', '1e3s', '5 parsecs', '5 MS', '5 constructor', '5 toString']) {
+      expect([text, parseDuration(text)]).toEqual([text, NaN])
+    }
+  })
+
+  it('reaches the getter and the marker through readDuration', () => {
+    expect(readDuration('1.001s')).toEqual({ ok: true, value: 1001 })
+    const c = parse('t = 1.001s, u = 9us')
+    expect(c.getDuration('t')).toBe(1001)
+    expect(c.getDuration('u')).toBe(0.009)
+    expect(getValidated(c, 't', hocon.duration().pipe(z.number().int()))).toBe(1001)
+  })
+})
+
+describe('E20 — byte size', () => {
+  it.each([
+    ['1.0009kB', 'B', 1000],
+    ['1.001kB', 'B', 1001],
+    ['1.9999B', 'B', 1],
+    ['0.5KiB', 'B', 512],
+    ['1.0009kB', 'KB', 1],
+    ['1.0009KiB', 'KiB', 1],
+    ['1.5009KiB', 'KiB', 1536 / 1024],
+    ['2.5MB', 'MB', 2.5],
+    ['1.0000001GB', 'MB', 1000.0001],
+  ] as const)('%s in %s is %d (exact product, truncated, then converted)', (text, unit, expected) => {
+    expect(parseBytes(text, unit)).toBe(expected)
+  })
+
+  it('truncates a bare fractional number too, in any output unit', () => {
+    expect(parseBytes('1024.9', 'KiB')).toBe(1)
+    expect(parseBytes('1023.9', 'KiB')).toBe(1023 / 1024)
+  })
+
+  it('computes the units beyond 2^63 bytes exactly', () => {
+    // 0.001 * 1024^6 = 1152921504606846.976 → 1152921504606846 (rounding gave …847)
+    expect(parseBytes('0.001EiB')).toBe(1152921504606846)
+    expect(parseBytes('0.000000001Y')).toBe(1208925819614629)
+    expect(parseBytes('0.000000001YB')).toBe(1000000000000000)
+  })
+
+  it('reports an overflow or a negative size as before', () => {
+    expect(readBytes('1E')).toEqual({ ok: false, problem: 'overflow' })
+    expect(readBytes('9007199254740993')).toEqual({ ok: false, problem: 'overflow' })
+    expect(readBytes('9007199254740991')).toEqual({ ok: true, value: 9007199254740991 })
+    expect(readBytes('-1kB')).toEqual({ ok: false, problem: 'negative' })
+    expect(readBytes('-0.5')).toEqual({ ok: true, value: 0 })
+  })
+
+  it('still rejects what it rejected', () => {
+    for (const text of ['', 'kB', '1.2.3kB', '1KB', '1 kb', '5 parsecs', '5 constructor', '5 toString']) {
+      expect([text, readBytes(text)]).toEqual([text, { ok: false, problem: 'invalid' }])
+    }
+  })
+
+  it('reaches the getter and the marker through readBytes', () => {
+    const c = parse('b = 1.0009kB')
+    expect(c.getBytes('b')).toBe(1000)
+    expect(getValidated(c, 'b', hocon.bytes())).toBe(1000)
+  })
+})
