@@ -4,6 +4,7 @@ import type { ZodTransform, ZodType } from 'zod'
 import { coerceBoolean, coerceNumber, readBytes, readDuration, readPeriod } from './coerce.js'
 import type { ByteUnit, DurationUnit, Period, UnitProblem, UnitReading } from './coerce.js'
 import type { Config } from './config.js'
+import type { NotResolvedError } from './errors.js'
 // NOTE: parse/parseFile are imported at module level. This means importing
 // '@o3co/ts.hocon/zod' pulls in Node.js built-ins (fs, path). Consumers
 // who only need validate()/getValidated() in browser environments should
@@ -16,16 +17,18 @@ import type { ParseOptions } from './parse.js'
  * where the schema expects a number or a boolean (`"8080"` → 8080), through
  * objects, arrays and optional / nullable / default / catch / readonly
  * wrappers (not unions, records, tuples or pipes); unit values go through the
- * {@link hocon} markers. On an unresolved Config, values that are still
- * substitutions are absent from what the schema sees.
+ * {@link hocon} markers.
  *
  * An object key named `__proto__`, `constructor` or `prototype` anywhere in
  * the value is refused with a `ZodError` issue at the object that holds it
  * (#202); read such a key with the plain getters instead.
  *
+ * @throws {@link NotResolvedError} when the config still holds an unresolved
+ *   substitution (#210); call `resolve()` first.
  * @throws `ZodError` when the value does not match the schema.
  */
 export function validate<T>(config: Config, schema: ZodType<T>): T {
+  requireResolved(config, '')
   const plain = config.toObject()
   refusePrototypeKeys(plain)
   const coerced = coerceValue(plain, schema)
@@ -40,13 +43,26 @@ export function validate<T>(config: Config, schema: ZodType<T>): T {
  * the value is refused with a `ZodError` issue at the object that holds it
  * (#202); read such a key with the plain getters instead.
  *
+ * @throws {@link NotResolvedError} when the value at `path` still holds an
+ *   unresolved substitution (#210); a resolved subtree of an otherwise
+ *   unresolved config validates.
  * @throws `ZodError` when the value does not match the schema.
  */
 export function getValidated<T>(config: Config, path: string, schema: ZodType<T>): T {
+  requireResolved(config, path)
   const val = config.get(path)
   refusePrototypeKeys(val)
   const coerced = coerceValue(val, schema)
   return schema.parse(coerced)
+}
+
+// The plain value (toObject / get) leaves out what is still a substitution, so
+// a schema would validate an unfinished config as if those keys were absent
+// (ts.hocon#210). Config.getValue throws NotResolvedError when the node at
+// `path` or anything under it is unresolved — the getters' answer — so ask it
+// first. A missing path is fine here; the schema decides about `undefined`.
+function requireResolved(config: Config, path: string): void {
+  config.getValue(path)
 }
 
 // ─── prototype-named keys ─────────────────────────────────────────────────────

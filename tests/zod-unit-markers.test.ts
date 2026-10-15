@@ -8,6 +8,7 @@
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
 import { parse } from '../src/parse.js'
+import { NotResolvedError } from '../src/errors.js'
 import { getValidated, hocon, parseWithSchema, validate } from '../src/zod.js'
 import { readBytes, readDuration } from '../src/coerce.js'
 import type { ByteUnit, DurationUnit, Period } from '../src/coerce.js'
@@ -125,10 +126,11 @@ describe('hocon.duration()', () => {
     })
   })
 
-  it('works on a partially unresolved config', () => {
+  it('works on a resolved value of a partially unresolved config', () => {
     const cfg = parse('t = 30s\nu = ${missing}', { resolveSubstitutions: false })
-    expect(validate(cfg, z.object({ t: hocon.duration('s') }))).toEqual({ t: 30 })
-    expect(validate(cfg, z.object({ t: z.string() }))).toEqual({ t: '30s' })
+    expect(getValidated(cfg, 't', hocon.duration('s'))).toBe(30)
+    // The whole config still holds ${missing} (#210).
+    expect(() => validate(cfg, z.object({ t: hocon.duration('s') }))).toThrow(NotResolvedError)
   })
 
   it('works with schema.parse directly', () => {

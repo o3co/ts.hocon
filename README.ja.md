@@ -276,6 +276,8 @@ getValidated(cfg, 'backup', Backup) // { keep: { years: 0, months: 0, days: 14 }
 
 不正な duration / byte size / period は、キーのパス付きのバリデーションエラーになります。マーカーは普通の Zod スキーマなので、`validate`・`getValidated`・`parseWithSchema`・`parseFileWithSchema` をはじめ、Zod が実行するところならどこでも使えます。数値は JavaScript の値として読むため、double の精度を超える桁数の数値リテラル（`1.99999999999999999` B は `getBytes()` では 1、マーカーでは 2）や、指数表記の数値リテラル（`1e3`、または JavaScript が指数表記で表示する 1e-6 未満・1e21 以上の値）は、リテラルの文字列を正確に読む getter と結果が異なることがあります（getter が拒否する値を通す場合も、その逆もあります）。period のマーカーは、小数点付きのリテラル（`7.0`）も整数として読みます（`getPeriod()` は拒否します）。単位付きで書けば（`30s`、`7d`）どちらの差も出ません。
 
+未解決の Config（`resolveSubstitutions: false` でパースしたもの、または `resolve()` 前のフォールバックの重なり）に対しては、`validate` は保留中の値が欠けたツリーを検証するのではなく、getter と同じく `NotResolvedError` を投げます。`getValidated` は、値が未解決のパスでは `NotResolvedError` を投げ、解決済みのパスなら検証します。先に `resolve()` を呼んでください。
+
 Zod をピア依存としてインストール:
 ```bash
 npm install zod

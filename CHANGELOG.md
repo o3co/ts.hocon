@@ -36,6 +36,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **BREAKING: the Zod entry points throw `NotResolvedError` on an unresolved
+  config ([#210](https://github.com/o3co/ts.hocon/issues/210)).** `validate`,
+  `getValidated`, `parseWithSchema` and `parseFileWithSchema` built the value
+  for the schema from `toObject()` / `get()`, which leave out what is still a
+  substitution, so on an unresolved Config (`resolveSubstitutions: false`, or
+  a fallback stack not yet `resolve()`d) the schema saw those keys as absent:
+  an optional field read as missing, a default filled in, and a config that
+  was not finished could pass. They now throw `NotResolvedError` (a
+  `ConfigError`) when the value they would validate holds an unresolved
+  substitution, as the typed getters do; `getValidated` on a resolved subtree
+  of an unresolved config still validates. Workaround: call `resolve()` (or
+  `resolveWith()`) before validating, or validate only a resolved subtree with
+  `getValidated`.
 - **A partially resolved Config answers from what is still unresolved.** After
   `resolve({ allowUnresolved: true })` or `resolveWith(…, { allowUnresolved:
   true })`:
