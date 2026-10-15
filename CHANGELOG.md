@@ -16,8 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   parity with rs.hocon `get_period` and py.hocon `get_period`: integer only,
   case-sensitive lowercase units, weeks folded into days, negative values
   allowed, each component within the 32-bit signed range. The getter and the
-  marker read through one reader, `readPeriod` in `coerce.ts`. The
-  units-default fixtures up01–up05, skipped until now, run.
+  marker read through one reader, `readPeriod` in `coerce.ts`. Like the other
+  markers, `hocon.period()` reads a number through its JavaScript value, so a
+  number literal with a decimal point or an exponent (`7.0`, `1e2`) reads as
+  days there while `getPeriod()` refuses it. The units-default fixtures
+  up01–up05, skipped until now, run.
 
 - **Zod: `hocon.duration(unit?)` and `hocon.bytes(unit?)` schema markers**
   ([#195](https://github.com/o3co/ts.hocon/issues/195)). Exported from
