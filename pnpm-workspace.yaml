@@ -6,3 +6,13 @@ overrides:
   # GHSA-g7r4-m6w7-qqqr: tsup's transitive esbuild resolves to 0.27.x, which
   # is in the vulnerable range; force the patched line for every consumer.
   esbuild: '>=0.28.1'
+  # GHSA-253c-mchw-3w2r: typedoc's transitive markdown-it (^14.3.0) can stay on
+  # a vulnerable 14.3.0 lock entry; force the patched 14.x line.
+  markdown-it: '^14.3.1'
+  # GHSA-mh99-v99m-4gvg, GHSA-rgw5-rvv9-x895, GHSA-6j4f-fj2g-mc7p,
+  # GHSA-qhr7-859c-m2p7, GHSA-q2hr-2g5m-vwhr: typedoc > minimatch pulls a
+  # vulnerable brace-expansion 5.0.x; force the patched 5.x line.
+  brace-expansion: '^5.0.12'
+  # GHSA-68fv-2mgg-jv7q: @vitest/coverage-v8 > magicast pulls a vulnerable
+  # source-map-js; force the patched 1.x line.
+  source-map-js: '^1.2.2'
