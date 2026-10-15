@@ -224,6 +224,8 @@ getValidated(cfg, 'backup', Backup) // { keep: { years: 0, months: 0, days: 14 }
 
 An invalid duration, size or period fails validation with the key's path. The markers are ordinary Zod schemas, so they work in `validate`, `getValidated`, `parseWithSchema`, `parseFileWithSchema` and anywhere else Zod runs them. A marker reads a number through its JavaScript value, so a number literal in exponent form (`1e3`, or one JavaScript prints that way, below 1e-6 or from 1e21) can read differently from the getters (accepted where the getter refuses it, or the reverse); a period marker also reads a literal with a decimal point (`7.0`) as an integer, which `getPeriod()` refuses. Write unit values with a unit (`30s`, `7d`) to avoid both.
 
+The Zod entry points (`validate`, `getValidated`, `parseWithSchema`, `parseFileWithSchema`) refuse an object key named `__proto__`, `constructor` or `prototype` anywhere in the value, with a `ZodError` issue at that key's path (`a key that names an object's prototype`): a JavaScript object built from such a key can lose it or read the prototype instead. Rename the key, or read it with the plain getters (`cfg.getNumber('limits."constructor"')`), which are unaffected.
+
 Install Zod as a peer dependency:
 ```bash
 npm install zod
