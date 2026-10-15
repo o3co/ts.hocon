@@ -36,6 +36,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`getNumber` and the Zod number coercion take linear time on long digit
+  strings.** The decimal-number pattern backtracked quadratically, so reading
+  a 40 000-digit string that is not a number took about 8 seconds.
+- **BREAKING (S8.1 + E8 step 4, xx.hocon us15): a `+` outside quotes is a
+  parse error unless it is the exponent sign of a number**
+  ([#73](https://github.com/o3co/ts.hocon/issues/73)). HOCON.md forbids `+`
+  in unquoted strings, but the lexer kept any `+` not followed by `=` as text,
+  so `a = 1e+x`, `a = 1+2`, `version = 1.2.3+build`, `a = abc+1` and
+  `a+b = 1` read as strings. Now, as in Lightbend 1.4.6: where a token starts
+  like a number (a digit, or `-` and a digit), the leading run of digits, `.`,
+  `e`/`E`, `+` and `-` is read as a number, and a `+` in it is allowed only if
+  the run is one (`1e+5`, `1.e+5`, `-.5e+3`; `1e+5ms` stays the string
+  `"1e+5ms"`);
+  every other `+` is `ParseError: reserved character '+' is not allowed
+  outside quotes` (`1e+5.5`, `1e+5-`, `x1e+5`, `.5e+3`, `1x+2`, `abc+`). The
+  `+=` operator is unaffected. This includes an unquoted timestamp with a
+  positive offset (`at = 2020-01-01T00:00:00+09:00`), which the lexer's colon
+  leniency used to accept as a string (Lightbend rejects it for the `:`).
+  Workaround: quote the value (`version = "1.2.3+build"`,
+  `at = "2020-01-01T00:00:00+09:00"`).
+  `+=` operator is unaffected. Workaround: quote the value
+  (`version = "1.2.3+build"`).
 - **BREAKING: the Zod entry points throw `NotResolvedError` on an unresolved
   config ([#210](https://github.com/o3co/ts.hocon/issues/210)).** `validate`,
   `getValidated`, `parseWithSchema` and `parseFileWithSchema` built the value

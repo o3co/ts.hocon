@@ -64,11 +64,11 @@ const SUCCESS_FIXTURES = [
   'us30-concat-quoted-dash-subst',
 ]
 
-// Known gap: us15 (`a = 1e+x`) carries an `.error` sidecar from Lightbend
-// (Reserved character `+` outside quotes). Lightbend's error fires at its
-// value-parser layer; the `+` reservation is enforced in both value-start
-// and concat-continuation positions per E8.
-const KNOWN_GAP_FIXTURES = [
+// Error fixtures: us15 (`a = 1e+x`) carries an `.error` sidecar from Lightbend
+// (Reserved character `+` outside quotes). E8 step 4: a number-lex run that
+// contains `+` and does not parse as a number is a reserved-character error,
+// with no fallback to an unquoted string.
+const ERROR_FIXTURES = [
   'us15-incomplete-exp',
 ]
 
@@ -83,17 +83,117 @@ describe('S8.6 — unquoted-starts conformance (post-E8 amendment)', () => {
     })
   }
 
-  for (const name of KNOWN_GAP_FIXTURES) {
-    // it.fails — currently this assertion FAILS (parse does not throw), and
-    // that failure is the expected state. When the gap closes (i.e. parse
-    // begins throwing as Lightbend does on the `+` reservation), this
-    // `.fails` will itself fail, surfacing the change in CI without source
-    // edit. Tracking: ts.hocon#73 (the `+` reservation gap for `1e+x`).
-    it.fails(`${name}: known gap (ts.hocon#73) — '+' reservation enforcement deferred`, () => {
+  for (const name of ERROR_FIXTURES) {
+    it(`${name}: rejected — '+' is reserved (E8 step 4)`, () => {
       const content = readFileSync(join(confDir, `${name}.conf`), 'utf-8')
-      expect(() => parse(content)).toThrow()
+      expect(() => parse(content)).toThrow(ParseError)
+      expect(() => parse(content)).toThrow(/reserved character '\+'/)
     })
   }
+
+  // S8.1 + E8 step 4: outside quotes, `+` is allowed only as the exponent
+  // sign inside a number run; anywhere else it is a reserved-character error.
+  // Every row of the table measured on Lightbend 1.4.6 (2026-10-16), the
+  // baseline; go.hocon differs on the five ★ rows.
+  it.each([
+    ['1e+x', 'error'],
+    ['1+2', 'error'],
+    ['1.2.3+build', 'error'],
+    ['1.0.0+abc', 'error'],
+    ['+1', 'error'],
+    ['1e+5', 100000],
+    ['1x+2', 'error'],
+    ['abc+1', 'error'],
+    ['abc+', 'error'],
+    ['a+b', 'error'],
+    ['1e+5ms', '1e+5ms'],
+    ['1e+5 ms', '1e+5 ms'],
+    ['1.5e+3s', '1.5e+3s'],
+    ['1e+5x', '1e+5x'],
+    ['1e-x', '1e-x'],
+    ['1e-5e5', '1e-5e5'],
+    ['-1.5e+3', -1500],
+    ['x1e+5', 'error'],
+    ['.5e+3', 'error'],
+    ['1e+5.5', 'error'], // ★ go: string
+    ['1e+5.2', 'error'], // ★ go: string
+    ['1e+5e5', 'error'], // ★ go: string
+    ['1e+5-', 'error'], // ★ go: string
+    ['1.e+5', 100000], // ★ go: error
+    ['-.5e+3', -500],
+  ] as const)('a = %s → %j (Lightbend 1.4.6)', (text, expected) => {
+    if (expected === 'error') {
+      expect(() => parse(`a = ${text}`)).toThrow(/reserved character '\+'|unexpected character: "\+"/)
+    } else {
+      expect(parse(`a = ${text}`).get('a')).toBe(expected)
+    }
+  })
+
+  // Number-lex edges without `+` (S8.4), Lightbend 1.4.6.
+  it.each([
+    ['1.', 1],
+    ['1.e5', 100000],
+    ['-1.', -1],
+    ['-.5', -0.5],
+    ['1.5.', '1.5.'],
+    ['.5', '.5'],
+    ['-.', '-.'],
+    ['1.e', '1.e'],
+  ] as const)('a = %s → %j (Lightbend 1.4.6)', (text, expected) => {
+    expect(parse(`a = ${text}`).get('a')).toBe(expected)
+  })
+
+  it.each([
+    ['1e+5 = 1', { '1e+5': 1 }],
+    ['1e+5x = 1', { '1e+5x': 1 }],
+    ['a+b = 1', 'error'],
+    ['a.1e+5 = 1', 'error'],
+    ['x = [1]\nx += 2', { x: [1, 2] }],
+    ['1 = [1]\n1+= 2', 'error'], // the number run swallows the + of +=, as in Lightbend
+  ] as const)('key position: %j → %j (Lightbend 1.4.6)', (text, expected) => {
+    if (expected === 'error') {
+      expect(() => parse(text)).toThrow(/reserved character '\+'/)
+    } else {
+      expect(parse(text).toObject()).toEqual(expected)
+    }
+  })
+
+  it.each([
+    'a = -1+x',
+    'a = 1e+',
+    'a = 1e+5+1',
+    'a = [1, 2e+x]',
+    'b = 1, a = ${b}1e+x',
+    'b = 1, a = ${b}x+y',
+    'a = foo1e+5',
+    '1e+x = 1',
+    'a+b = 1',
+  ])('rejects %j', (text) => {
+    expect(() => parse(text)).toThrow(/reserved character '\+'/)
+  })
+
+  it.each([
+    ['a = 1.5e+2', 150],
+    ['a = -2e+1', -20],
+  ])('reads %j as a number', (text, value) => {
+    expect(parse(text).getNumber('a')).toBe(value)
+  })
+
+  it('leaves the += operator alone', () => {
+    expect(parse('a = [1]\na += 2\nb=[1]\nb+=2').toObject()).toEqual({ a: [1, 2], b: [1, 2] })
+  })
+
+  it('takes linear time on a long run that ends in +', () => {
+    const start = performance.now()
+    expect(() => parse(`${'1'.repeat(40000)}+x = 1`)).toThrow(ParseError)
+    expect(() => parse(`a = ${'1'.repeat(40000)}+x`)).toThrow(ParseError)
+    expect(performance.now() - start).toBeLessThan(1000)
+  })
+
+  it('accepts the same text quoted', () => {
+    expect(parse('a = "1e+x"').getString('a')).toBe('1e+x')
+    expect(parse('a = "1+2"').getString('a')).toBe('1+2')
+  })
 
   // --- Out-of-E8-scope strict checks (unchanged) ---------------------------
   //

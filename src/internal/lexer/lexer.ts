@@ -192,8 +192,10 @@ class Lexer {
       // (dotted segments) remain strict — they police path-element
       // composition, not value-position unquoted strings.
       if (isUnquotedStart(ch)) {
+        const plusAllowedUntil = this.numberRunEnd(sl, sc)
         let value = ''
         while (this.pos < this.input.length && isUnquotedContinue(this.peek(), () => this.peek(1))) {
+          if (this.peek() === '+' && this.pos >= plusAllowedUntil) throw reservedPlus(this.line, this.col)
           value += this.advance()
         }
         this.push('unquoted', value.trimEnd(), sl, sc)
@@ -205,6 +207,28 @@ class Lexer {
 
     this.tokens.push({ kind: 'eof', value: '', line: this.line, col: this.col, isQuoted: false, precedingSpace: false, precedingWhitespace: '' })
     return this.tokens
+  }
+
+  /**
+   * S8.1 + E8 step 4: outside quotes, `+` is reserved except as the exponent
+   * sign of a numeric literal (the Lightbend 1.4.6 behaviour). Where a token
+   * starts like a number (a digit or `-`: Lightbend's `firstNumberChars`),
+   * `pullNumber` takes the maximal `[0-9.eE+-]` run; when that run is a number
+   * (`1e+5`, `-.5e+3`), a `+` inside it is the exponent sign. A run that
+   * contains `+` and is not a number is an error right here — this also covers
+   * `1+= 2`, where the run swallows the `+` of `+=` in Lightbend. Returns the
+   * input index up to which a `+` is allowed: the end of a number run, else
+   * the token start, so the caller rejects every other `+` (`abc+1`, `1x+2`).
+   */
+  private numberRunEnd(line: number, col: number): number {
+    const first = this.peek()
+    if (!isDecimalDigit(first) && first !== '-') return this.pos
+    let end = this.pos
+    while (end < this.input.length && NUMBER_RUN_CHARS.includes(this.input[end]!)) end++
+    const run = this.input.slice(this.pos, end)
+    if (JAVA_NUMBER_RE.test(run)) return end
+    if (run.includes('+')) throw reservedPlus(line, col)
+    return this.pos
   }
 
   private peek(offset = 0): string { return this.input[this.pos + offset] ?? '' }
@@ -500,13 +524,28 @@ function isDecimalDigit(ch: string): boolean {
   return ch >= '0' && ch <= '9'
 }
 
+const NUMBER_RUN_CHARS = '0123456789.eE+-'
+
+/**
+ * What Long.parseLong / Double.parseDouble accept from a `[0-9.eE+-]` run that
+ * starts with a digit or `-`. The integer and fraction digits are separate
+ * groups so the match stays linear on a long digit run (`\d+\.?\d*`
+ * backtracks quadratically).
+ */
+const JAVA_NUMBER_RE = /^-?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/
+
+function reservedPlus(line: number, col: number): ParseError {
+  return new ParseError(`reserved character '+' is not allowed outside quotes (quote the value)`, line, col)
+}
+
 /**
  * Forbidden characters for unquoted strings per S8.1 (HOCON.md L245-247):
  * `$ " { } [ ] : = , + # ` ^ ? ! @ * & \`. Note `(` and `)` are deliberately
- * NOT members (xx.hocon#34). `+` is handled asymmetrically: `isUnquotedStart`
- * lists it outright (an unquoted string may not begin with `+`), while
- * `isUnquotedContinue` rejects it only when it forms the `+=` operator, so a
- * `+` inside a token stays ordinary content.
+ * NOT members (xx.hocon#34). `+` is handled in two places: `isUnquotedStart`
+ * lists it outright (an unquoted string may not begin with `+`), and
+ * `isUnquotedContinue` stops at the `+=` operator; any other `+` inside a token
+ * is rejected by the tokenizer unless it is the exponent sign of a number run
+ * (see `numberRunEnd`).
  * Backtick is a full member of the set (xx.hocon#68) — it is only ordinary
  * content inside a quoted string, which never reaches these predicates.
  */

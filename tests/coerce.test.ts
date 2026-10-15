@@ -78,3 +78,12 @@ describe('parseDuration — trimHoconWs non-ASCII whitespace', () => {
     expect(parseDuration('　500')).toBe(500)
   })
 })
+
+describe('DECIMAL_NUMBER_RE', () => {
+  it('takes linear time on a long digit string that is not a number', () => {
+    const start = performance.now()
+    expect(coerceNumber('1'.repeat(40000) + 'x')).toBeUndefined()
+    expect(coerceNumber('1'.repeat(40000) + '.5e3')).toBe(Infinity)
+    expect(performance.now() - start).toBeLessThan(1000)
+  })
+})
