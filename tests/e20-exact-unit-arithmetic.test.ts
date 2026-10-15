@@ -250,6 +250,13 @@ describe('E20 — exponent forms in unit values', () => {
     expect(() => parse('b = "1e3e3"').getBytes('b')).toThrow(/invalid byte size/)
   })
 
+  it('keeps the sign of a negative duration that rounds to zero (Copilot)', () => {
+    expect(Object.is(parse(`t = "-0.${'0'.repeat(345)}1ms"`).getDuration('t'), -0)).toBe(true)
+    expect(Object.is(parse('t = "-1e-346ms"').getDuration('t'), -0)).toBe(true)
+    expect(Object.is(parse('t = "-1e-999999999ms"').getDuration('t'), -0)).toBe(true)
+    expect(Object.is(parse('t = "1e-999999999ms"').getDuration('t'), 0)).toBe(true)
+  })
+
   it('reads an exponent with leading zeros by its value (Codex)', () => {
     expect(parse('t = "1e0000000000003ms"').getDuration('t')).toBe(1000)
     expect(parse('t = "1e-0000000000003s"').getDuration('t')).toBe(1)

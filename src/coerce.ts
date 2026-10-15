@@ -172,7 +172,8 @@ export function parseDuration(value: string, outputUnit: DurationUnit = 'ms'): n
   const magnitude = decimalMagnitude(text)
   if (magnitude === undefined) return 0
   if (magnitude > 330) return text.mantissa < 0n ? -Infinity : Infinity
-  if (magnitude < -345) return 0
+  // Keep the sign, as the exact path's rounding does (a tiny negative is -0).
+  if (magnitude < -345) return text.mantissa < 0n ? -0 : 0
   const [n, d] = scaledRatio(text, unit)
   return ratioToNumber(n, d * per)
 }
