@@ -175,7 +175,7 @@ export class Config {
         throw new ConfigError(`byte size must be non-negative at ${path}: ${JSON.stringify(v.raw)}`, path)
       case 'overflow':
         throw new ConfigError(
-          `byte size overflows the representable range (max 2^53-1 bytes) at ${path}: ${JSON.stringify(v.raw)}`,
+          `byte size overflows the representable range at ${path}: ${JSON.stringify(v.raw)}`,
           path,
         )
     }

@@ -490,7 +490,7 @@ describe('getBytes', () => {
     expect(() => c.getBytes('b')).toThrow(new ConfigError('invalid byte size at b: "5 parsecs"', 'b'))
     expect(() => c.getBytes('n')).toThrow(new ConfigError('byte size must be non-negative at n: "-1"', 'n'))
     expect(() => c.getBytes('o')).toThrow(
-      new ConfigError('byte size overflows the representable range (max 2^53-1 bytes) at o: "1E"', 'o'),
+      new ConfigError('byte size overflows the representable range at o: "1E"', 'o'),
     )
   })
 

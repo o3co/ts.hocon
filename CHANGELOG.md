@@ -41,8 +41,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `RangeError` without the path, unlike every other getter error and unlike
   `getDuration`'s overflow (E21), so `catch (e) { if (e instanceof
   ConfigError) … }` missed it. It now throws
-  `ConfigError("byte size overflows the representable range (max 2^53-1 bytes)
-  at <path>: <raw>")`. Code that caught `RangeError` from `getBytes` should
+  `ConfigError("byte size overflows the representable range at <path>:
+  <raw>")`, worded like `getDuration`'s; the limit is 2^53-1 bytes, the
+  largest integer a JS number holds exactly. Code that caught `RangeError` from `getBytes` should
   catch `ConfigError` instead. The Zod marker `hocon.bytes()` is unchanged (it
   already failed validation with the key's path).
 - **`parseAsync` / `parseFileAsync` honour `resolveSubstitutions` and
