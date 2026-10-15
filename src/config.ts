@@ -23,6 +23,13 @@ export class Config {
   readonly _originDescription: string | undefined
   /** @internal ResObj tree for deferred-resolution path. Set when resolved=false. */
   readonly _resObjRoot: ResObj | undefined
+  /**
+   * @internal What is still unresolved after a partial resolve
+   * (`allowUnresolved: true`), with resolved values in place. The unresolved
+   * checks read this; `_resObjRoot` keeps the original tree for the next
+   * resolve. Unset when the two are the same (a deferred parse).
+   */
+  private readonly _pendingRoot: ResObj | undefined
   /** @internal ResolveOptions stored for the resolve() call. */
   private readonly _resolveOpts: InternalResolveOptions | undefined
 
@@ -33,6 +40,7 @@ export class Config {
       parseBaseDir?: string
       originDescription?: string
       resObjRoot?: ResObj
+      pendingRoot?: ResObj
       resolveOpts?: InternalResolveOptions
     }
   ) {
@@ -40,6 +48,7 @@ export class Config {
     this._parseBaseDir = opts?.parseBaseDir
     this._originDescription = opts?.originDescription
     this._resObjRoot = opts?.resObjRoot
+    this._pendingRoot = opts?.pendingRoot
     this._resolveOpts = opts?.resolveOpts
   }
 
@@ -384,6 +393,7 @@ export class Config {
         parseBaseDir: this._parseBaseDir,
         originDescription: this._originDescription,
         resObjRoot: hadPlaceholders ? tree : undefined,
+        pendingRoot: hadPlaceholders ? hoconValueToResObj(resolved) : undefined,
         resolveOpts: hadPlaceholders ? resolveOpts : undefined,
       })
     }
@@ -451,6 +461,7 @@ export class Config {
         parseBaseDir: this._parseBaseDir,
         originDescription: this._originDescription,
         resObjRoot: hadPlaceholders ? receiverTree : undefined,
+        pendingRoot: hadPlaceholders ? hoconValueToResObj(filtered) : undefined,
         resolveOpts: hadPlaceholders ? resolveOpts : undefined,
       })
     }
@@ -578,7 +589,7 @@ export class Config {
    * fields omitted from them — so the object appears "present but empty-ish").
    */
   private _resObjRootSubtreeHasPlaceholders(path: string): boolean {
-    const tree = this._resObjRoot
+    const tree = this._pendingRoot ?? this._resObjRoot
     if (!tree) return false
     const segments = splitConfigPath(path)
     let cur: ResObj = tree
@@ -732,6 +743,11 @@ function stripPlaceholderFields(
       const inner = stripPlaceholderFields(val)
       if (inner.hadPlaceholders) hadPlaceholders = true
       fields.set(k, inner.stripped)
+    } else if (val.kind === 'array' && valContainsPlaceholders(val)) {
+      // A placeholder anywhere in an array (nested arrays and objects too):
+      // omit the field, as a deferred parse does, so getList throws
+      // NotResolvedError instead of reading the placeholder as null.
+      hadPlaceholders = true
     } else {
       fields.set(k, val)
     }
