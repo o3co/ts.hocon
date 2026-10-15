@@ -292,8 +292,16 @@ c.getBytes('max-size')          // 536870912 (bytes)
 c.getBytes('max-size', 'MiB')  // 512
 ```
 
-Supported duration units: `ns`, `us`, `ms`, `s`, `m`, `h`, `d` (and long forms like `seconds`, `minutes`). Duration unit names are case-sensitive and must be lowercase (HOCON spec). Byte units are more case-tolerant: the canonical forms below plus lowercase aliases (`kb`, `kib`, …), any-case long forms (`megabytes`), and single-letter powers-of-two in both cases (`K`/`k`, per Lightbend).
-Supported byte units: `B`, `KB`/`KiB`, `MB`/`MiB`, `GB`/`GiB`, `TB`/`TiB` (and long forms like `megabytes`, `mebibytes`).
+Supported duration units: `ns`, `us`, `ms`, `s`, `m`, `h`, `d` (and long forms like `seconds`, `minutes`). Duration unit names are case-sensitive and must be lowercase (HOCON spec).
+
+Supported byte units, the same set as Lightbend and case-sensitive like it:
+
+- bytes: `B`, `b`, `byte`, `bytes`
+- powers of 1000: `kB`, `MB`, `GB`, `TB`, `PB`, `EB`, `ZB`, `YB`, and `kilobyte(s)` … `yottabyte(s)`
+- powers of 1024: `Ki`/`KiB`, `Mi`/`MiB`, … `Yi`/`YiB`, and `kibibyte(s)` … `yobibyte(s)`
+- single letters, powers of 1024 in either case (java `-Xmx` style): `K`/`k`, `M`/`m`, `G`/`g`, `T`/`t`, `P`/`p`, `E`/`e`, `Z`/`z`, `Y`/`y`
+
+Other spellings are errors: `KB`, `kb`, `kib`, `Kilobytes`, `MEGABYTES`. (`'KB'` and the other names in `getBytes(path, unit)` are output units, a separate list.)
 
 ### Periods
 
