@@ -185,7 +185,7 @@ if (!existsSync(FIXTURE_DIR)) {
       const testName = `${filename}: ${scenario.description}`
 
       if (SKIP.has(filename)) {
-        it.skip(`${testName} (ts.hocon: E11 not yet implemented)`, () => {})
+        it.skip(`${testName} (YAML runner has no package resolver; dr17 runs in deferred-resolution.test.ts)`, () => {})
         continue
       }
 
