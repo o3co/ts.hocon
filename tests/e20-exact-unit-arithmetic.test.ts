@@ -75,7 +75,7 @@ describe('E20 — duration', () => {
   })
 
   it('still rejects what it rejected', () => {
-    for (const text of ['', ' ', 's', '1.2.3s', '.s', '-s', '1e3s', '5 parsecs', '5 MS', '5 constructor', '5 toString']) {
+    for (const text of ['', ' ', 's', '1.2.3s', '.s', '-s', '5 parsecs', '5 MS', '5 constructor', '5 toString']) {
       expect([text, parseDuration(text)]).toEqual([text, NaN])
     }
   })
@@ -161,5 +161,93 @@ describe('E21 — a duration that is not a finite number is an error', () => {
   it('fails the marker with the key path', () => {
     const c = parse(`t = "${huge}.5d"`)
     expect(() => getValidated(c, 't', hocon.duration())).toThrow(/duration overflows the representable range/)
+  })
+})
+
+// E20 "exponent forms" (xx.hocon#111): the number part of a unit value is a
+// full number, exponent included (the Java double grammar), computed exactly.
+// Rows ud14-ud20 / ub09-ub13 as measured on Lightbend 1.4.6 (ud19: E21).
+describe('E20 — exponent forms in unit values', () => {
+  const durationMs = (text: string) => parse(text).getDuration('t')
+  it.each([
+    ['t = "1e+5ms"', 100000], // ud14
+    ['t = "1.5e2s"', 150000], // ud15
+    ['t = "1E3"', 1000], // ud16
+    ['t = 1e3', 1000], // ud17 (NUMBER)
+    ['t = "1e-3s"', 1], // ud18
+    ['t = "-1e3ms"', -1000],
+    ['t = "1e3 ms"', 1000],
+    ['t = "1.e3ms"', 1000],
+    ['t = ".5e1s"', 5000],
+    ['t = "1e-400s"', 0],
+    ['t = "0e999999999s"', 0],
+  ] as const)('%s → %d ms', (text, ms) => {
+    expect(durationMs(text)).toBe(ms)
+  })
+
+  it('reads ud18 in ns exactly', () => {
+    expect(parse('t = "1e-3s"').getDuration('t', 'ns')).toBe(1000000)
+  })
+
+  it.each([
+    't = "1e400s"', // ud19 — E21 (Lightbend saturates)
+    't = "1e999999999s"',
+    't = "-1e999999999s"',
+  ])('%s is an overflow (E21)', (text) => {
+    expect(() => parse(text).getDuration('t')).toThrow(/duration overflows the representable range/)
+  })
+
+  it.each([
+    't = "1e3.5ms"', // ud20
+    't = "1e3e"',
+    't = "1e"',
+    't = "1e+"',
+    't = "e3ms"',
+  ])('%s is invalid', (text) => {
+    expect(() => parse(text).getDuration('t')).toThrow(/invalid duration/)
+  })
+
+  it.each([
+    ['b = "1e3kB"', 1000000], // ub09
+    ['b = "1e3"', 1000], // ub10
+    ['b = "2E2KiB"', 204800], // ub11
+    ['b = "1e-3kB"', 1], // ub12
+    ['b = "1.0005e3B"', 1000], // ub12 (b2)
+    ['b = "1e-999999999kB"', 0],
+    ['b = "1.9e0"', 1],
+  ] as const)('%s → %d bytes', (text, bytes) => {
+    expect(parse(text).getBytes('b')).toBe(bytes)
+  })
+
+  it.each([
+    'b = "1e400B"', // ub13
+    'b = "1e999999999kB"',
+    'b = "1e3e"', // 1e3 exabytes
+    'b = "1e16"',
+  ])('%s overflows', (text) => {
+    expect(() => parse(text).getBytes('b')).toThrow(/byte size overflows/)
+  })
+
+  it('keeps the single-letter E unit when no digit follows', () => {
+    expect(() => parse('b = "1E"').getBytes('b')).toThrow(/byte size overflows/)
+    expect(parse('b = "0.000001E"').getBytes('b')).toBe(Number(1024n ** 6n / 1_000_000n))
+  })
+
+  it('decides a huge exponent without building the power', () => {
+    const start = performance.now()
+    expect(() => parse('t = "1e999999999999s"').getDuration('t')).toThrow(/overflows/)
+    expect(parse('b = "1e-999999999999kB"').getBytes('b')).toBe(0)
+    expect(performance.now() - start).toBeLessThan(500)
+  })
+
+  it('leaves periods integer-only', () => {
+    expect(() => parse('p = "1e2d"').getPeriod('p')).toThrow(/invalid period/)
+  })
+
+  it('makes the marker agree with the getter on exponent forms', () => {
+    for (const text of ['t = 1e3', 't = 0.0000001', 't = "1e+5ms"']) {
+      const c = parse(text)
+      expect([text, getValidated(c, 't', hocon.duration())]).toEqual([text, c.getDuration('t')])
+    }
   })
 })

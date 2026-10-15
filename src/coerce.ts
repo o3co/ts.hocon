@@ -62,34 +62,76 @@ export function coerceNumber(value: string): number | undefined {
 
 /** A unit value split into its exact number (`mantissa / 10^scale`) and its unit text. */
 interface UnitText {
+  /** The number is `mantissa × 10^-scale`; `scale` is negative for a large exponent. */
   readonly mantissa: bigint
   readonly scale: number
   readonly unit: string
 }
 
-/** `[ws] number [ws] unit [ws]`, or undefined when there is no number. */
+function isDigitChar(ch: string | undefined): boolean {
+  return ch !== undefined && ch >= '0' && ch <= '9'
+}
+
+/**
+ * `[ws] number [ws] unit [ws]`, or undefined when there is no number. The
+ * number is the Java double grammar Lightbend reads (E20 exponent forms):
+ * `[+-]? (digits [. digits?] | . digits) ([eE] [+-]? digits)?`. An `e`/`E`
+ * not followed by a digit is the start of the unit (`1E` is an exabyte).
+ */
 function splitUnitText(value: string): UnitText | undefined {
-  const trimmed = trimHoconWs(value)
+  const t = trimHoconWs(value)
   let i = 0
-  while (i < trimmed.length) {
-    const ch = trimmed[i]
-    if (i === 0 && (ch === '-' || ch === '+')) { i++; continue }
-    if (ch !== '.' && (ch < '0' || ch > '9')) break
-    i++
+  const negative = t[0] === '-'
+  if (t[0] === '-' || t[0] === '+') i++
+  const intStart = i
+  while (isDigitChar(t[i])) i++
+  const intDigits = t.slice(intStart, i)
+  let fraction = ''
+  if (t[i] === '.') {
+    const fracStart = ++i
+    while (isDigitChar(t[i])) i++
+    fraction = t.slice(fracStart, i)
   }
-  const number = trimmed.slice(0, i)
-  // Number() decides which spellings are numbers (`1.`, `.5`, `+1` are; `.`,
-  // `-`, `1.2.3` are not), as before; the digits are then read exactly.
-  if (i === 0 || Number.isNaN(Number(number))) return undefined
-  const unsigned = number[0] === '-' || number[0] === '+' ? number.slice(1) : number
-  const dot = unsigned.indexOf('.')
-  const fraction = dot === -1 ? '' : unsigned.slice(dot + 1)
-  const magnitude = BigInt((dot === -1 ? unsigned : unsigned.slice(0, dot) + fraction) || '0')
+  if (intDigits === '' && fraction === '') return undefined
+  let exponent = 0
+  if (t[i] === 'e' || t[i] === 'E') {
+    let j = i + 1
+    if (t[j] === '+' || t[j] === '-') j++
+    if (isDigitChar(t[j])) {
+      const expStart = j
+      while (isDigitChar(t[j])) j++
+      // Past ±10^12 the bounds in the parsers decide anyway; clamp so the
+      // exponent stays an exact integer.
+      const digits = t.slice(expStart, j)
+      const magnitude = digits.length > 12 ? 1e12 : Number(digits)
+      exponent = t[i + 1] === '-' ? -magnitude : magnitude
+      i = j
+    }
+  }
+  const magnitude = BigInt((intDigits + fraction) || '0')
   return {
-    mantissa: number[0] === '-' ? -magnitude : magnitude,
-    scale: fraction.length,
-    unit: trimHoconWs(trimmed.slice(i)),
+    mantissa: negative ? -magnitude : magnitude,
+    scale: fraction.length - exponent,
+    unit: trimHoconWs(t.slice(i)),
   }
+}
+
+/**
+ * The power of ten of `mantissa × 10^-scale` (its leading digit's place),
+ * from the digit count alone: lets a parser settle a huge exponent before
+ * building 10^|scale|. Undefined for a zero mantissa.
+ */
+function decimalMagnitude(text: UnitText): number | undefined {
+  if (text.mantissa === 0n) return undefined
+  const digits = (text.mantissa < 0n ? -text.mantissa : text.mantissa).toString().length
+  return digits - 1 - text.scale
+}
+
+/** `mantissa × factor × 10^-scale` as a ratio `[numerator, denominator]`, exactly. */
+function scaledRatio(text: UnitText, factor: bigint): [bigint, bigint] {
+  return text.scale >= 0
+    ? [text.mantissa * factor, 10n ** BigInt(text.scale)]
+    : [text.mantissa * factor * 10n ** BigInt(-text.scale), 1n]
 }
 
 /** Nanoseconds per duration unit. */
@@ -123,7 +165,15 @@ export function parseDuration(value: string, outputUnit: DurationUnit = 'ms'): n
   // (HOCON.md L1304, lowercase only).
   const unit = text.unit === '' ? 1_000_000n : DURATION_UNITS.get(text.unit)
   if (unit === undefined) return NaN
-  return ratioToNumber(text.mantissa * unit, 10n ** BigInt(text.scale) * per)
+  // A unit and an output unit are within 10^14 of each other, so past these
+  // bounds the result is surely beyond a double (E21) or below its smallest
+  // value; decide without building the power of ten.
+  const magnitude = decimalMagnitude(text)
+  if (magnitude === undefined) return 0
+  if (magnitude > 330) return text.mantissa < 0n ? -Infinity : Infinity
+  if (magnitude < -345) return 0
+  const [n, d] = scaledRatio(text, unit)
+  return ratioToNumber(n, d * per)
 }
 
 const BYTE_UNITS = new Map<string, bigint>([
@@ -181,8 +231,16 @@ export function parseBytes(value: string, outputUnit: ByteUnit = 'B'): number {
   // S18.1 + S18.4: no unit means bytes. Units are matched exactly, with case.
   const unit = text.unit === '' ? 1n : BYTE_UNITS.get(text.unit)
   if (unit === undefined) return NaN
+  // At 10^16 or more the size is past 2^53-1 whatever the unit (≥ 1 byte);
+  // below 10^-25 it is under one byte even in yottabytes, so it truncates to
+  // 0. Decide those without building the power of ten.
+  const magnitude = decimalMagnitude(text)
+  if (magnitude === undefined) return 0
+  if (magnitude >= 16) throw byteSizeOverflow()
+  if (magnitude < -25) return 0
   // The exact product, truncated toward zero (BigInt division).
-  const bytes = (text.mantissa * unit) / 10n ** BigInt(text.scale)
+  const [n, d] = scaledRatio(text, unit)
+  const bytes = n / d
   // S21.4: a JS number holds bytes exactly only up to 2^53-1; beyond that,
   // throw rather than return an imprecise result.
   if (bytes > MAX_SAFE_BYTES || bytes < -MAX_SAFE_BYTES) throw byteSizeOverflow()

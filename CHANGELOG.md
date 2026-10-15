@@ -30,12 +30,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   copying the unit grammar: `hocon.duration('s').pipe(z.number().int().min(60))`.
   An invalid, negative (bytes) or overflowing value fails validation with the
   key's path. A marker reads a number through its JavaScript value, so a number
-  literal in exponent form can read differently from the getters, which read
-  the source text — it can accept a value the getter refuses, and the reverse. `@o3co/ts.hocon/zod` now imports `zod` at runtime (it was a
-  type-only import before); zod stays an optional peer dependency.
+  literal with more significant digits than a double holds can read
+  differently from the getters, which read the source text. `@o3co/ts.hocon/zod`
+  now imports `zod` at runtime (it was a type-only import before); zod stays an
+  optional peer dependency.
 
 ### Fixed
 
+- **Unit values accept exponent forms (E20,
+  [o3co/xx.hocon#111](https://github.com/o3co/xx.hocon/issues/111)).** The
+  number in a duration or byte size is a full number, exponent included, as
+  Lightbend reads it: `"1e+5ms"` is 100000 ms, `"1.5e2s"` 150000 ms, `t = 1e3`
+  1000 ms, `"1e3kB"` 1000000 bytes, `"2E2KiB"` 204800 bytes; all of them were
+  `invalid` before. The exponent is part of the exact arithmetic (E20), and a
+  huge one is settled without building the power (`"1e400s"` is E21's
+  overflow, `"1e-999999999kB"` is 0). An `e`/`E` not followed by a digit is
+  still a unit (`"1E"` is an exabyte). Periods stay integer-only (`"1e2d"` is
+  an error). With this, a Zod marker and its getter also agree on exponent
+  forms, which they did not.
 - **`getNumber` and the Zod number coercion take linear time on long digit
   strings.** The decimal-number pattern backtracked quadratically, so reading
   a 40 000-digit string that is not a number took about 8 seconds.

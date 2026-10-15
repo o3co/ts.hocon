@@ -139,15 +139,14 @@ describe('hocon.duration()', () => {
     expect(() => hocon.duration().parse(true)).toThrow(/expected duration, got boolean/)
   })
 
-  // Documented difference: a marker reads a number through String(n), the
-  // getters read the literal's source text, and the two differ for exponent
-  // forms and for digits beyond a double's precision (below). Pinned so a change
-  // here is a deliberate one.
-  it('reads a number literal in exponent form through its JS value', () => {
-    expect(viaGetter(() => parse('v = 1e3').getDuration('v'))).toBe('error')
+  // E20 exponent forms (xx.hocon#111): the getters read exponent forms too, so
+  // a number literal written with an exponent, or one JavaScript prints with
+  // one (0.0000001 → "1e-7"), reads the same through the getter and the marker.
+  it('reads a number literal in exponent form like the getter', () => {
+    expect(viaGetter(() => parse('v = 1e3').getDuration('v'))).toBe(1000)
     expect(viaMarker(hocon.duration(), 'v = 1e3')).toBe(1000)
     expect(viaGetter(() => parse('v = 0.0000001').getDuration('v'))).toBe(1e-7)
-    expect(viaMarker(hocon.duration(), 'v = 0.0000001')).toBe('error')
+    expect(viaMarker(hocon.duration(), 'v = 0.0000001')).toBe(1e-7)
   })
 
   // Documented difference (E20): the getters read the literal's digits exactly,
