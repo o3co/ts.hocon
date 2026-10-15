@@ -47,9 +47,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `a+b = 1` read as strings. Now, as in Lightbend 1.4.6: where a token starts
   like a number (a digit, or `-` and a digit), the leading run of digits, `.`,
   `e`/`E`, `+` and `-` is read as a number, and a `+` in it is allowed only if
-  the run is one (`1e+5`, `1.e+5`; `1e+5ms` stays the string `"1e+5ms"`);
+  the run is one (`1e+5`, `1.e+5`, `-.5e+3`; `1e+5ms` stays the string
+  `"1e+5ms"`);
   every other `+` is `ParseError: reserved character '+' is not allowed
   outside quotes` (`1e+5.5`, `1e+5-`, `x1e+5`, `.5e+3`, `1x+2`, `abc+`). The
+  `+=` operator is unaffected. This includes an unquoted timestamp with a
+  positive offset (`at = 2020-01-01T00:00:00+09:00`), which the lexer's colon
+  leniency used to accept as a string (Lightbend rejects it for the `:`).
+  Workaround: quote the value (`version = "1.2.3+build"`,
+  `at = "2020-01-01T00:00:00+09:00"`).
   `+=` operator is unaffected. Workaround: quote the value
   (`version = "1.2.3+build"`).
 - **BREAKING (E8 step 4, xx.hocon us15): a `+` inside a number-like

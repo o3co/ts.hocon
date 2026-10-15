@@ -120,6 +120,7 @@ describe('S8.6 — unquoted-starts conformance (post-E8 amendment)', () => {
     ['1e+5e5', 'error'], // ★ go: string
     ['1e+5-', 'error'], // ★ go: string
     ['1.e+5', 100000], // ★ go: error
+    ['-.5e+3', -500],
   ] as const)('a = %s → %j (Lightbend 1.4.6)', (text, expected) => {
     if (expected === 'error') {
       expect(() => parse(`a = ${text}`)).toThrow(/reserved character '\+'|unexpected character: "\+"/)
@@ -128,12 +129,27 @@ describe('S8.6 — unquoted-starts conformance (post-E8 amendment)', () => {
     }
   })
 
+  // Number-lex edges without `+` (S8.4), Lightbend 1.4.6.
+  it.each([
+    ['1.', 1],
+    ['1.e5', 100000],
+    ['-1.', -1],
+    ['-.5', -0.5],
+    ['1.5.', '1.5.'],
+    ['.5', '.5'],
+    ['-.', '-.'],
+    ['1.e', '1.e'],
+  ] as const)('a = %s → %j (Lightbend 1.4.6)', (text, expected) => {
+    expect(parse(`a = ${text}`).get('a')).toBe(expected)
+  })
+
   it.each([
     ['1e+5 = 1', { '1e+5': 1 }],
     ['1e+5x = 1', { '1e+5x': 1 }],
     ['a+b = 1', 'error'],
     ['a.1e+5 = 1', 'error'],
     ['x = [1]\nx += 2', { x: [1, 2] }],
+    ['1 = [1]\n1+= 2', 'error'], // the number run swallows the + of +=, as in Lightbend
   ] as const)('key position: %j → %j (Lightbend 1.4.6)', (text, expected) => {
     if (expected === 'error') {
       expect(() => parse(text)).toThrow(/reserved character '\+'/)
