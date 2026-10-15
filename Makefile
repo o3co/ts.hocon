@@ -12,11 +12,12 @@ ARRAY_ROOT_DIR              := tests/lightbend/testdata/hocon/array-root
 PATH_EMPTY_SEGMENT_DIR      := tests/lightbend/testdata/hocon/path-empty-segment
 UNQUOTED_FORBIDDEN_DIR      := tests/lightbend/testdata/hocon/unquoted-forbidden
 EMITTER_ROUNDTRIP_DIR       := tests/testdata/emitter-roundtrip
+INCLUDE_PACKAGE_DIR         := tests/lightbend/testdata/hocon/include-package
 
 .PHONY: testdata test
 
 testdata:
-	@if [ -f .xx-hocon-version ] && [ -d "$(EXPECTED_DIR)" ] && [ -d "$(UNITS_DIR)" ] && [ -d "$(UNQUOTED_STARTS_DIR)" ] && [ -d "$(UNQUOTED_PARENS_DIR)" ] && [ -d "$(DEFERRED_RESOLUTION_DIR)" ] && [ -d "$(KEY_HYPHEN_DIR)" ] && [ -d "$(PATH_EXPR_WS_DIR)" ] && [ -d "$(ARRAY_ROOT_DIR)" ] && [ -d "$(PATH_EMPTY_SEGMENT_DIR)" ] && [ -d "$(UNQUOTED_FORBIDDEN_DIR)" ] && [ -d "$(EMITTER_ROUNDTRIP_DIR)" ]; then \
+	@if [ -f .xx-hocon-version ] && [ -d "$(EXPECTED_DIR)" ] && [ -d "$(UNITS_DIR)" ] && [ -d "$(UNQUOTED_STARTS_DIR)" ] && [ -d "$(UNQUOTED_PARENS_DIR)" ] && [ -d "$(DEFERRED_RESOLUTION_DIR)" ] && [ -d "$(KEY_HYPHEN_DIR)" ] && [ -d "$(PATH_EXPR_WS_DIR)" ] && [ -d "$(ARRAY_ROOT_DIR)" ] && [ -d "$(PATH_EMPTY_SEGMENT_DIR)" ] && [ -d "$(UNQUOTED_FORBIDDEN_DIR)" ] && [ -d "$(EMITTER_ROUNDTRIP_DIR)" ] && [ -d "$(INCLUDE_PACKAGE_DIR)" ]; then \
 	  remote_sha=$$(curl -sf "https://api.github.com/repos/$(TESTDATA_REPO)/commits/$(TESTDATA_REF)" | grep '"sha"' | head -1 | cut -d'"' -f4) && \
 	  local_sha=$$(cat .xx-hocon-version) && \
 	  if [ "$$remote_sha" = "$$local_sha" ]; then \
@@ -50,6 +51,7 @@ testdata:
 	cp -R "$$tmpdir/testdata/hocon/path-empty-segment/." "$(PATH_EMPTY_SEGMENT_DIR)/" && \
 	cp -R "$$tmpdir/testdata/hocon/unquoted-forbidden/." "$(UNQUOTED_FORBIDDEN_DIR)/" && \
 	{ [ ! -d "$$tmpdir/testdata/emitter-roundtrip" ] || { rm -rf "$(EMITTER_ROUNDTRIP_DIR)" && mkdir -p "$(EMITTER_ROUNDTRIP_DIR)" && cp -R "$$tmpdir/testdata/emitter-roundtrip/." "$(EMITTER_ROUNDTRIP_DIR)/"; }; } && \
+	rm -rf "$(INCLUDE_PACKAGE_DIR)" && mkdir -p "$(INCLUDE_PACKAGE_DIR)" && cp -R "$$tmpdir/testdata/hocon/include-package/." "$(INCLUDE_PACKAGE_DIR)/" && \
 	curl -sf "https://api.github.com/repos/$(TESTDATA_REPO)/commits/$(TESTDATA_REF)" | grep '"sha"' | head -1 | cut -d'"' -f4 > .xx-hocon-version && \
 	echo "Done. Fetched $$(cat .xx-hocon-version)"
 

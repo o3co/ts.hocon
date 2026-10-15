@@ -24,11 +24,10 @@ const FIXTURE_DIR = new URL(
 ).pathname
 
 // ── Per-impl skip list ────────────────────────────────────────────────────────
-// dr17: E11 package-include — E11 IS shipped in v1.3.0 and is covered by the
-// programmatic Layer-1 tests in tests/deferred-resolution.test.ts and
-// tests/e11-parser-package.test.ts. The YAML scenario runner cannot register
-// packages programmatically (Parser::register_package is not a YAML construct
-// per the C4 plan), so this fixture is skipped in the YAML runner only.
+// dr17: E11 package-include (shipped in v1.4.0). The YAML scenario format has
+// no way to supply a package resolver, so the YAML runner skips it; dr17 runs
+// programmatically in tests/deferred-resolution.test.ts, and the include-package
+// fixtures (ipk01-ipk14) in tests/conformance/include-package.test.ts.
 
 const SKIP: Set<string> = new Set([
   'dr17-e11-package-include-deferred.yaml',
@@ -186,7 +185,7 @@ if (!existsSync(FIXTURE_DIR)) {
       const testName = `${filename}: ${scenario.description}`
 
       if (SKIP.has(filename)) {
-        it.skip(`${testName} (ts.hocon: E11 not yet implemented)`, () => {})
+        it.skip(`${testName} (YAML runner has no package resolver; dr17 runs in deferred-resolution.test.ts)`, () => {})
         continue
       }
 
