@@ -119,7 +119,7 @@ const Auth = z.object({
 const auth = getValidated(config, 'auth', Auth)
 ```
 
-`include package(...)` is not part of HOCON.md: it is a convention shared by the o3co implementations ([E11](https://github.com/o3co/xx.hocon/blob/main/docs/extra-spec-conventions.md#e11)), a non-JVM counterpart to `include classpath(...)`. It is how a module publishes its defaults without the application knowing where its files live (in ts.hocon, `<identifier>/<file>` resolves through Node module resolution from the including file, or through your own `packageResolver`; see [`ParseOptions`](#parse-functions)). On the JVM, Lightbend's `reference.conf` convention plays the same role.
+`include package(...)` is not part of HOCON.md: it is a convention shared by the o3co implementations ([E11](https://github.com/o3co/xx.hocon/blob/main/docs/extra-spec-conventions.md#e11)), a non-JVM counterpart to `include classpath(...)`. It is how a module publishes its defaults without the application knowing where its files live (in ts.hocon, the default resolver hands `<identifier>/<file>` to Node module resolution from the including file, so the identifier there is the npm package name, such as `@acme/auth`, which E11 allows for TS-only config; a portable Go-style identifier like the one above needs a `packageResolver` that maps it to the package; see [`ParseOptions`](#parse-functions)). On the JVM, Lightbend's `reference.conf` convention plays the same role.
 
 ## Features
 

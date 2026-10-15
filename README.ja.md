@@ -118,7 +118,7 @@ const Auth = z.object({
 const auth = getValidated(config, 'auth', Auth)
 ```
 
-`include package(...)` は HOCON.md の一部ではなく、o3co の各実装が共有する規約（[E11](https://github.com/o3co/xx.hocon/blob/main/docs/extra-spec-conventions.md#e11)）で、`include classpath(...)` の JVM 以外での対応物です。モジュールは、アプリケーションがファイルの置き場所を知らなくても済む形でデフォルト値を公開できます（ts.hocon では `<identifier>/<file>` を include 元のファイルから Node のモジュール解決で探すか、独自の `packageResolver` で解決します。[`ParseOptions`](#パース関数) を参照）。JVM では Lightbend の `reference.conf` 規約が同じ役割を果たします。
+`include package(...)` は HOCON.md の一部ではなく、o3co の各実装が共有する規約（[E11](https://github.com/o3co/xx.hocon/blob/main/docs/extra-spec-conventions.md#e11)）で、`include classpath(...)` の JVM 以外での対応物です。モジュールは、アプリケーションがファイルの置き場所を知らなくても済む形でデフォルト値を公開できます（ts.hocon の既定のリゾルバーは `<identifier>/<file>` を include 元のファイルから Node のモジュール解決に渡すので、identifier には `@acme/auth` のような npm のパッケージ名を書きます。TS だけで使う設定ではこれも E11 で認められています。上の例のような言語横断の Go 形式の identifier を使うには、それをパッケージに対応づける `packageResolver` が必要です。[`ParseOptions`](#パース関数) を参照）。JVM では Lightbend の `reference.conf` 規約が同じ役割を果たします。
 
 ## 特徴
 
