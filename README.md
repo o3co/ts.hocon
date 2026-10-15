@@ -160,8 +160,8 @@ parseFileAsync(path: string, opts?: ParseOptions): Promise<Config>
 | `readFileSync` | `(path: string) => string` | Custom file reader (sync) |
 | `readFile` | `(path: string) => Promise<string>` | Custom file reader (async) |
 | `resolveSubstitutions` | `boolean` | `false` returns an unresolved Config, to resolve later (default `true`; see [Deferred resolution](#deferred-resolution-api-e12)) |
-| `originDescription` | `string` | Source name used in error messages when there is no file path |
-| `resolveFrom` | `string \| string[]` | Where `include package(...)` starts Node module resolution (default: the including file's directory, else `process.cwd()`) |
+| `originDescription` | `string` | Source name for resolve-error messages when there is no file path |
+| `resolveFrom` | `string \| string[]` | Where `include package(...)` starts Node module resolution (default: `baseDir`, which for `parseFile` is the file's directory; else `process.cwd()`) |
 | `packageResolver` | `PackageResolver` | Custom resolver for `include package(...)` (Yarn PnP, bundlers, edge runtimes, tests); `resolveFrom` is then ignored |
 
 ### Config methods
@@ -169,7 +169,7 @@ parseFileAsync(path: string, opts?: ParseOptions): Promise<Config>
 | Method | Returns | Throws if |
 |--------|---------|-----------|
 | `get(path)` | `unknown \| undefined` | — |
-| `getValue(path)` | `ReadonlyHoconValue \| undefined` | unresolved (the raw value tree, for introspection) |
+| `getValue(path)` (the raw value tree, for introspection) | `ReadonlyHoconValue \| undefined` | unresolved |
 | `getString(path)` | `string` | missing, wrong type, or unresolved |
 | `getNumber(path)` | `number` | missing, wrong type, or unresolved |
 | `getBoolean(path)` | `boolean` | missing, wrong type, or unresolved |
@@ -349,7 +349,7 @@ c.getBytes('max-size', 'MiB')  // 512
 
 Supported duration units: `ns`, `us`, `ms`, `s`, `m`, `h`, `d` (and long forms like `seconds`, `minutes`). Duration unit names are case-sensitive and must be lowercase (HOCON spec). A number or a string with no unit is milliseconds for a duration and bytes for a byte size.
 
-The number is read from its text as an exact decimal and multiplied by the unit exactly (E20). A duration is then rounded once in the requested unit: `1.001s` is `1001` ms, where Lightbend's double arithmetic gives `1000.999999` ms. A byte size is truncated toward zero to whole bytes (as Lightbend does) before it is converted: `1.0009kB` is `1000`. A duration whose value is not a finite number is an error (E21). A byte size must be non-negative and at most 2^53-1 bytes (the largest integer a JS number holds exactly), so any count of `EB`/`ZB`/`YB`/`Ei`…`Yi`/`E`/`Z`/`Y` of 1 or more is an error; use fractions (`0.001EiB`) or a smaller unit.
+The number is read from its text as an exact decimal and multiplied by the unit exactly (E20). A duration is then rounded once in the requested unit: `1.001s` is `1001` ms (`1001000000` ns), where Lightbend's double arithmetic gives `1000999999` ns. A byte size is truncated toward zero to whole bytes (as Lightbend does) before it is converted: `1.0009kB` is `1000`. A duration whose value is not a finite number is an error (E21). A byte size must be non-negative and at most 2^53-1 bytes (the largest integer a JS number holds exactly), so 1 or more of any exa-, zetta- or yotta- unit (`EB`, `Ei`/`EiB`, `E`/`e`, `exabyte`, … through `Y`) is an error; use fractions (`0.001EiB`) or a smaller unit.
 
 Supported byte units, the same set as Lightbend and case-sensitive like it:
 

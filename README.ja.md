@@ -38,9 +38,9 @@ const { parse } = require('@o3co/ts.hocon')     // CJS
 
 CI では PR ごと・リリースごとに、ビルド成果物に対して 8 つの export すべてを両形式で
 ロードし、実際に呼び出し（バンドル形式で挙動が変わる package include を含む）、サブパスが
-返す値や投げるエラーが root の export するクラスのインスタンスであること、各条件が自前の
-型定義を宣言していることまで検証します。1.10.0 で当時の CJS の 7 エントリポイントすべてが
-ロード時に例外を投げた実績があるためのゲートであり、この種の欠陥を検出するものです
+返す値や投げるエラーが root の export するクラスのインスタンスであること、各 export 条件が
+自前の型定義を宣言していることまで検証します。1.10.0 で当時の CJS の 7 エントリポイントすべてが
+ロード時に例外を投げたことがあるためのゲートであり、この種の欠陥を検出するものです
 （あらゆる欠陥が起こり得ないという保証ではありません）。
 
 ### 2. 使い方
@@ -159,8 +159,8 @@ parseFileAsync(path: string, opts?: ParseOptions): Promise<Config>
 | `readFileSync` | `(path: string) => string` | カスタムファイルリーダー（同期） |
 | `readFile` | `(path: string) => Promise<string>` | カスタムファイルリーダー（非同期） |
 | `resolveSubstitutions` | `boolean` | `false` にすると未解決の Config を返し、後で解決できる（デフォルト `true`。[遅延解決](#遅延解決-apie12)を参照） |
-| `originDescription` | `string` | ファイルパスがないときにエラーメッセージで使うソース名 |
-| `resolveFrom` | `string \| string[]` | `include package(...)` で Node のモジュール解決を始める場所（デフォルト: include 元ファイルのディレクトリ、なければ `process.cwd()`） |
+| `originDescription` | `string` | ファイルパスがないときに解決エラーのメッセージで使うソース名 |
+| `resolveFrom` | `string \| string[]` | `include package(...)` で Node のモジュール解決を始める場所（デフォルト: `baseDir`。`parseFile` ではファイルのディレクトリ。なければ `process.cwd()`） |
 | `packageResolver` | `PackageResolver` | `include package(...)` 用の独自リゾルバー（Yarn PnP、bundler、エッジランタイム、テスト）。指定すると `resolveFrom` は無視される |
 
 ### Config メソッド
@@ -168,7 +168,7 @@ parseFileAsync(path: string, opts?: ParseOptions): Promise<Config>
 | メソッド | 戻り値 | スローする条件 |
 |---------|--------|--------------|
 | `get(path)` | `unknown \| undefined` | — |
-| `getValue(path)` | `ReadonlyHoconValue \| undefined` | 未解決（値ツリーをそのまま返す。構造の確認用） |
+| `getValue(path)`（値ツリーをそのまま返す。構造の確認用） | `ReadonlyHoconValue \| undefined` | 未解決 |
 | `getString(path)` | `string` | 存在しない、型が違う、未解決 |
 | `getNumber(path)` | `number` | 存在しない、型が違う、未解決 |
 | `getBoolean(path)` | `boolean` | 存在しない、型が違う、未解決 |
@@ -186,7 +186,7 @@ parseFileAsync(path: string, opts?: ParseOptions): Promise<Config>
 | `toObject(opts?)` | `unknown` | —（`{ nullPrototype: true }` で何も継承しないオブジェクトを返す。[セキュリティ上の考慮事項](#セキュリティ上の考慮事項)を参照） |
 | `renderHocon()` | `string` | 未解決 |
 
-上の「スローする条件」はすべて `.path` を持つ `ConfigError` で、例外が 2 つあります。`getValue` や getter で未解決の値を読んだとき、および `resolveWith` の source が未解決のときは `NotResolvedError`（`ConfigError` のサブクラス）を投げます。`resolve` / `resolveWith` で解決できない代入は `ResolveError` です。
+上の「スローする条件」はすべて `.path` を持つ `ConfigError` です。ただし次の 2 つは別のクラスです。`getValue` や getter で未解決の値を読んだとき、および `resolveWith` の source が未解決のときは `NotResolvedError`（`ConfigError` のサブクラス）を投げます。`resolve` / `resolveWith` で解決できない代入は `ResolveError` です。
 
 ### 遅延解決 API（E12）
 
@@ -279,7 +279,7 @@ Zod をピア依存としてインストール:
 npm install zod
 ```
 
-Zod の入口（`validate`・`getValidated`・`parseWithSchema`・`parseFileWithSchema`）は、値のどこかに `__proto__`・`constructor`・`prototype` という名前のキーがあると拒否します。Zod は record から `__proto__` キーをエラーなしで落とすため、また結果が schema によって変わらないように、3 つとも同じく拒否します。`ZodError` にはキーごとに 1 つの issue が入ります。issue はそのキーを持つオブジェクトの位置に付き、キー名は message と `params.key` に入ります（`key "__proto__" names an object's prototype → at limits`）。キー名を変えるか、影響を受けない通常の getter（`cfg.getNumber('limits."constructor"')`）で読んでください。
+Zod の入口（`validate`・`getValidated`・`parseWithSchema`・`parseFileWithSchema`）は、値のどこかに `__proto__`・`constructor`・`prototype` という名前のキーがあると拒否します。Zod は record から `__proto__` キーをエラーなしで落とすため、また結果がスキーマによって変わらないように、3 つとも同じく拒否します。`ZodError` にはキーごとに 1 つの issue が入ります。issue はそのキーを持つオブジェクトの位置に付き、キー名は message と `params.key` に入ります（`key "__proto__" names an object's prototype → at limits`）。キー名を変えるか、影響を受けない通常の getter（`cfg.getNumber('limits."constructor"')`）で読んでください。
 
 ### エラー型
 
@@ -348,7 +348,7 @@ c.getBytes('max-size', 'MiB')  // 512
 
 duration の単位: `ns`、`us`、`ms`、`s`、`m`、`h`、`d`（`seconds`、`minutes` などの長い形も可）。duration の単位名は大文字小文字を区別し、小文字のみです（HOCON 仕様）。単位のない数値や文字列は、duration ではミリ秒、byte size ではバイトとして読みます。
 
-数値は文字列から正確な 10 進数として読み、単位との積も正確に計算します（E20）。duration はそのあと指定の単位で 1 回だけ丸めます。`1.001s` は `1001` ms です（Lightbend の double の計算では `1000.999999` ms になります）。byte size は、変換の前に 0 方向へ切り捨てて整数バイトにします（Lightbend と同じ）。`1.0009kB` は `1000` です。値が有限の数値にならない duration はエラーです（E21）。byte size は 0 以上かつ 2^53-1 バイト（JS の number が正確に表せる最大の整数）以下でなければならないので、`EB`/`ZB`/`YB`/`Ei`…`Yi`/`E`/`Z`/`Y` を 1 以上の量で書くとエラーになります。小数（`0.001EiB`）か、もっと小さい単位を使ってください。
+数値は文字列から正確な 10 進数として読み、単位との積も正確に計算します（E20）。duration はそのあと指定の単位で 1 回だけ丸めます。`1.001s` は `1001` ms（`1001000000` ns）です（Lightbend の double の計算では `1000999999` ns になります）。byte size は、変換の前に 0 方向へ切り捨てて整数バイトにします（Lightbend と同じ）。`1.0009kB` は `1000` です。値が有限の数値にならない duration はエラーです（E21）。byte size は 0 以上かつ 2^53-1 バイト（JS の number が正確に表せる最大の整数）以下でなければならないので、exa・zetta・yotta の単位（`EB`、`Ei`/`EiB`、`E`/`e`、`exabyte` など、`Y` まで）を 1 以上の量で書くとエラーになります。小数（`0.001EiB`）か、もっと小さい単位を使ってください。
 
 byte size の単位は Lightbend と同じ集合で、同じく大文字小文字を区別します:
 
