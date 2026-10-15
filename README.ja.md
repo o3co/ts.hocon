@@ -291,7 +291,10 @@ ts.hocon は [node-config](https://github.com/node-config/node-config)（JSON）
 
 `parse()` と `parseAsync()` はブラウザで動作します。adapter と Zod 連携も同じです。`parseFile()` と `parseFileAsync()` は Node.js（またはカスタムの `readFileSync`/`readFile` オプション）が必要です。
 
-パッケージは Node の組み込みモジュール `fs`・`path`・`module`・`url` を import しています（ファイルの読み込みと `include package(...)` のため）。呼び出すのはその経路だけです。そのため、ブラウザ向けの bundle ではこれらを stub（export はあるが、使うと例外を投げるモジュール）に置き換える必要があります。Vite は既定でそうするので（browser-external）、設定は不要です。Node の組み込みモジュールでエラーになる bundler では、同等の stub を設定してください。external にするだけでは足りません。ブラウザは `fs` を読み込めないからです。
+パッケージは Node の組み込みモジュール `fs`・`path`・`module`・`url` を import しています（ファイルの読み込みと `include package(...)` のため）。使うのはその経路だけです。ブラウザ向けの bundle では、これらを空のモジュールに置き換える必要があります:
+
+- **Vite**（7 と 8）は既定でそうするので、設定は不要です。
+- **その他の bundler**: 4 つを空のモジュール（`export default {}`）に割り当ててください。たとえば esbuild の plugin や、webpack 5 の `resolve.fallback: { fs: false, path: false, module: false, url: false }` を使います。external にするだけでは足りません。ブラウザは `fs` を読み込めないからです。
 
 ```ts
 // カスタムファイルローダーを使ったブラウザ利用

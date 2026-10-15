@@ -400,7 +400,10 @@ Feature-level comparison with [node-config](https://github.com/node-config/node-
 
 `parse()` and `parseAsync()` work in browsers, as do the adapters and the Zod integration. `parseFile()` and `parseFileAsync()` require Node.js (or a custom `readFileSync`/`readFile` option).
 
-The package still imports the Node built-ins `fs`, `path`, `module` and `url` (for file reading and `include package(...)`) and calls them only on those paths. So a browser bundle needs them replaced by stubs, modules whose exports exist but throw if used. Vite does this by default (its browser-external modules), so nothing needs configuring there. With a bundler that fails on Node built-ins instead, configure the equivalent stubs. Marking them external is not enough, because the browser cannot load `fs`.
+The package still imports the Node built-ins `fs`, `path`, `module` and `url` (for file reading and `include package(...)`) and uses them only on those paths. A browser bundle needs them replaced by empty modules:
+
+- **Vite** (7 and 8) does this by default, so there is nothing to configure.
+- **Other bundlers:** map the four modules to an empty module (`export default {}`), for example with an esbuild plugin or webpack 5's `resolve.fallback: { fs: false, path: false, module: false, url: false }`. Marking them external is not enough, because the browser cannot load `fs`.
 
 ```ts
 // Browser usage with custom file loader

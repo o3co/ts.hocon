@@ -17,10 +17,11 @@
 //      classes the root entrypoint exports (Config, ConfigError, ParseError,
 //      …), so `instanceof` holds across entrypoints in both module systems.
 //   5. Checks that no CJS file names `__filename`, `__dirname` or `import.meta`.
-//      A browser bundler that takes the "require" condition evaluates the CJS
-//      output without Node's module wrapper, so a load-time `__filename`
-//      crashes every entrypoint there (what tsup's CJS shim did after #199),
-//      and `import.meta` is a SyntaxError in CJS anywhere.
+//      A bundler that takes the "require" condition evaluates the CJS output
+//      without Node's module wrapper, so a load-time `__filename` crashes every
+//      entrypoint where there is no `document` either (what tsup's CJS shim
+//      did, in Web / Service Workers and edge runtimes), and `import.meta` is
+//      a SyntaxError in CJS anywhere.
 //
 // Step 2 is the point. A load-only check cannot see a defect whose whole nature
 // is that it defers work to first use, which is what the `require`-shim bug was.
