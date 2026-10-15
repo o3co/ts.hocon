@@ -568,7 +568,7 @@ Deferring resolution matters: the plain `parse` resolves as it goes, so a
 | `@o3co/ts.hocon/adapters/env` | — | Bulk-mounts a prefixed namespace; also reads `.env` |
 | `@o3co/ts.hocon/adapters/jsonc` | — | JSON with comments and trailing commas |
 | `@o3co/ts.hocon/adapters/json5` | — | JSON5 1.0.0, hand-rolled scanner, zero dependencies |
-| `@o3co/ts.hocon/adapters/toml` | `smol-toml` (>= 1.0) | Optional peer dependency |
+| `@o3co/ts.hocon/adapters/toml` | `smol-toml` (>= 1.0; >= 1.9.0 recommended, see [SECURITY.md](SECURITY.md#the-toml-adapter)) | Optional peer dependency |
 | `@o3co/ts.hocon/adapters/yaml` | `yaml` (>= 2.0) | Optional peer dependency; scalar resolution is that library's answer, with `version: '1.2'` declared so it cannot drift |
 
 The TOML and YAML libraries are **optional peer dependencies**, so installing

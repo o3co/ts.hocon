@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Documented — `smol-toml` 1.9.0 or later recommended for `adapters/toml`
+
+- `smol-toml` before 1.9.0 has two denial-of-service advisories on crafted
+  input ([GHSA-7w5x-hrqm-74c2](https://github.com/advisories/GHSA-7w5x-hrqm-74c2),
+  [GHSA-r4xh-jqrq-34v2](https://github.com/advisories/GHSA-r4xh-jqrq-34v2)).
+  The README and SECURITY.md now recommend 1.9.0 or later. The peer range
+  stays `>= 1.0` for now, so existing installs keep working.
+
 ## [1.14.0] - 2026-10-16
 
 This minor release contains behavior changes marked **BREAKING** below: a

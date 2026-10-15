@@ -58,6 +58,22 @@ without an error, so letting such a key through would lose configuration
 silently. The issue carries the key, not its value. The plain getters still
 read these keys by name (`cfg.getNumber('limits."constructor"')`).
 
+### The TOML adapter
+
+`@o3co/ts.hocon/adapters/toml` parses with `smol-toml`, an optional peer
+dependency that accepts `>= 1.0`. Versions before 1.9.0 have two known
+denial-of-service issues on crafted input:
+
+- [GHSA-7w5x-hrqm-74c2](https://github.com/advisories/GHSA-7w5x-hrqm-74c2):
+  malformed TOML documents (<= 1.7.0);
+- [GHSA-r4xh-jqrq-34v2](https://github.com/advisories/GHSA-r4xh-jqrq-34v2):
+  quadratic-time `parse()` while rescanning key lines (<= 1.8.0).
+
+Install `smol-toml` 1.9.0 or later, above all when the TOML you mount can come
+from outside your control. The peer range still admits older versions so that
+an existing install keeps working; raising its floor to `>= 1.9.0` is planned
+for a later minor release.
+
 ## Reporting a vulnerability
 
 Please **do not** open a public GitHub issue for security vulnerabilities.
