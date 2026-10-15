@@ -234,6 +234,22 @@ describe('E20 — exponent forms in unit values', () => {
     expect(parse('b = "0.000001E"').getBytes('b')).toBe(Number(1024n ** 6n / 1_000_000n))
   })
 
+  // The unit is the trailing letters (Lightbend getUnits), so an e/E after
+  // an exponent is the exa unit (2^60 bytes). Lightbend 1.4.6 values; ts holds
+  // bytes only up to 2^53-1, so 1E itself (2^60) overflows here (S21.4).
+  it.each([
+    ['b = "1e-3e"', 1152921504606846],
+    ['b = "1e-3E"', 1152921504606846],
+  ] as const)('%s → %d bytes (exa unit after an exponent)', (text, bytes) => {
+    expect(parse(text).getBytes('b')).toBe(bytes)
+  })
+
+  it('treats 1E, 2e1E and 1e3e3 as Lightbend does, within ts limits', () => {
+    expect(() => parse('b = "1E"').getBytes('b')).toThrow(/byte size overflows/) // Lightbend: 1152921504606846976
+    expect(() => parse('b = "2e1E"').getBytes('b')).toThrow(/byte size overflows/)
+    expect(() => parse('b = "1e3e3"').getBytes('b')).toThrow(/invalid byte size/)
+  })
+
   it('reads an exponent with leading zeros by its value (Codex)', () => {
     expect(parse('t = "1e0000000000003ms"').getDuration('t')).toBe(1000)
     expect(parse('t = "1e-0000000000003s"').getDuration('t')).toBe(1)
