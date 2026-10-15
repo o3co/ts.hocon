@@ -12,7 +12,7 @@ A [Lightbend HOCON](https://github.com/lightbend/config/blob/main/HOCON.md) pars
 
 [日本語](README.ja.md)
 
-> **Library stance:** ts.hocon is a HOCON config loader — its purpose is reading `.hocon` config files and providing typed access via the Config API (`getString`, `getNumber`, `getBoolean`, `getDuration`, `getBytes`, `toObject`). It is not a low-level parser API. Internal types like `HoconValue` may change between minor versions.
+> **Library stance:** ts.hocon is a HOCON config loader — its purpose is reading `.hocon` config files and providing typed access via the Config API (`getString`, `getNumber`, `getBoolean`, `getDuration`, `getBytes`, `getPeriod`, `toObject`). It is not a low-level parser API. Internal types like `HoconValue` may change between minor versions.
 >
 > **Cross-language conformance:** This implementation is tested against shared expected-JSON fixtures from [o3co/xx.hocon](https://github.com/o3co/xx.hocon) alongside [go.hocon](https://github.com/o3co/go.hocon), [rs.hocon](https://github.com/o3co/rs.hocon), and [py.hocon](https://github.com/o3co/py.hocon) to ensure all four implementations meet the same Lightbend HOCON specification.
 
@@ -36,12 +36,13 @@ import { parse } from '@o3co/ts.hocon'          // ESM
 const { parse } = require('@o3co/ts.hocon')     // CJS
 ```
 
-On every PR and every release, CI loads all seven exports both ways against the
+On every PR and every release, CI loads all eight exports both ways against the
 built artifact, calls each one (including a package-scoped `include`, which
-behaves differently per bundle format), and checks that each condition declares
-its own type declarations. That gate exists because 1.10.0 shipped with all
-seven CJS entrypoints throwing at load; it catches that class of defect rather
-than promising none can exist.
+behaves differently per bundle format), checks that what a subpath returns or
+throws is an instance of the classes the root exports, and checks that each
+condition declares its own type declarations. That gate exists because 1.10.0
+shipped with all seven of its CJS entrypoints throwing at load; it catches that
+class of defect rather than promising none can exist.
 
 ### 2. Use
 
@@ -76,6 +77,49 @@ cfg.has('server.host')         // true
 HOCON isn't just a serialization format — it's a **config-injection language**. JSON, YAML, and TOML describe data structures and leave file layering, environment variables, and reference resolution to your code (Pydantic, Serde, Zod, etc.). HOCON bakes those into the spec itself: by the time your program reads the config, fallback files are merged and `${VAR}` references resolved into a single composed object. Conditional branching from "is this value present in this layer?" disappears at the format boundary.
 
 On top of that, HOCON combines the readability of YAML with the structure of JSON — making it a strong fit for anything beyond flat key-value config.
+
+## Configuration that stays inside its module
+
+In a large codebase, configuration tends to leak: one big file that every team edits, defaults copied into each service, and modules that read each other's keys. HOCON lets each module own its configuration the way it owns its code.
+
+- **Each module owns a namespace and ships its own defaults.** The `auth` module keeps `auth { … }` next to its code, with every default filled in. The application never copies those defaults; it brings them in with one `include`.
+- **The application overrides only what differs.** Later layers deep-merge over earlier ones, so the application states two keys, not the whole block.
+- **Each module reads only its own subtree, through its own schema.** The module asks for `auth` and validates it against the schema it defines. The shape of that section is the module's contract; nothing else in the file is visible to it.
+- **Wiring between modules lives in the application.** The module only declares the keys it reads (`auth.db`) and leaves them without a default when the application must supply them. The application connects them to shared values (`auth.db = ${shared.db}`). Modules never reference each other or the application's keys, so dependencies run one way.
+
+```hocon
+# auth/reference.conf: shipped inside the auth package, owned by the auth team
+auth {
+  session { lifetime = 30m, max-body = 64KiB }
+  # db: no default; the application supplies auth.db
+}
+```
+
+```hocon
+# application.conf: owned by the application
+include package("github.com/acme/auth", "reference.conf")
+
+shared.db { host = db.internal, port = 5432 }
+auth.db = ${shared.db}       # wiring lives in the application
+auth.session.lifetime = 2h   # override what differs; the rest stays the module's default
+```
+
+```ts
+// inside the auth module
+import { getValidated, hocon } from '@o3co/ts.hocon/zod'
+import { z } from 'zod'
+
+const Auth = z.object({
+  session: z.object({
+    lifetime: hocon.duration('s').pipe(z.number().int().positive()),
+    'max-body': hocon.bytes().pipe(z.number().int().positive()),
+  }),
+  db: z.object({ host: z.string(), port: z.number().int() }),
+})
+const auth = getValidated(config, 'auth', Auth)
+```
+
+`include package(...)` is not part of HOCON.md: it is a convention shared by the o3co implementations ([E11](https://github.com/o3co/xx.hocon/blob/main/docs/extra-spec-conventions.md#e11)), a non-JVM counterpart to `include classpath(...)`. It is how a module publishes its defaults without the application knowing where its files live (in ts.hocon, the default resolver hands `<identifier>/<file>` to Node module resolution from the including file, so the identifier there is the npm package name, such as `@acme/auth`, which E11 allows for TS-only config; a portable Go-style identifier like the one above needs a `packageResolver` that maps it to the package; see [`ParseOptions`](#parse-functions)). On the JVM, Lightbend's `reference.conf` convention plays the same role.
 
 ## Features
 
@@ -115,19 +159,24 @@ parseFileAsync(path: string, opts?: ParseOptions): Promise<Config>
 | `env` | `Record<string, string>` | Environment variables for substitution (default: `process.env`) |
 | `readFileSync` | `(path: string) => string` | Custom file reader (sync) |
 | `readFile` | `(path: string) => Promise<string>` | Custom file reader (async) |
+| `resolveSubstitutions` | `boolean` | `false` returns an unresolved Config, to resolve later (default `true`; see [Deferred resolution](#deferred-resolution-api-e12)) |
+| `originDescription` | `string` | Source name for resolve-error messages when there is no file path |
+| `resolveFrom` | `string \| string[]` | Where `include package(...)` starts Node module resolution (default: `baseDir`, which for `parseFile` is the file's directory; else `process.cwd()`) |
+| `packageResolver` | `PackageResolver` | Custom resolver for `include package(...)` (Yarn PnP, bundlers, edge runtimes, tests); `resolveFrom` is then ignored |
 
 ### Config methods
 
 | Method | Returns | Throws if |
 |--------|---------|-----------|
 | `get(path)` | `unknown \| undefined` | — |
+| `getValue(path)` (the raw value tree, for introspection) | `ReadonlyHoconValue \| undefined` | unresolved |
 | `getString(path)` | `string` | missing, wrong type, or unresolved |
 | `getNumber(path)` | `number` | missing, wrong type, or unresolved |
 | `getBoolean(path)` | `boolean` | missing, wrong type, or unresolved |
 | `getConfig(path)` | `Config` | missing, not an object, or unresolved |
 | `getList(path)` | `unknown[]` | missing, not an array, or unresolved |
-| `getDuration(path, unit?)` | `number` | missing, not a string, or invalid duration format |
-| `getBytes(path, unit?)` | `number` | missing, not a string, or invalid byte size format |
+| `getDuration(path, unit?)` | `number` | missing, not a string or number, invalid duration format, or not a finite number (E21) |
+| `getBytes(path, unit?)` | `number` | missing, not a string or number, invalid byte size format, negative, or beyond 2^53-1 bytes |
 | `getPeriod(path)` | `Period` | missing, not a string or number, or invalid period format |
 | `has(path)` | `boolean` | — |
 | `keys()` | `string[]` | — |
@@ -135,8 +184,10 @@ parseFileAsync(path: string, opts?: ParseOptions): Promise<Config>
 | `resolve(opts?)` | `Config` | unresolvable substitution (unless `allowUnresolved: true`) |
 | `resolveWith(source, opts?)` | `Config` | source unresolved, or unresolvable substitution |
 | `isResolved()` | `boolean` | — |
-| `toObject()` | `unknown` | — |
+| `toObject(opts?)` | `unknown` | — (`{ nullPrototype: true }` returns objects that inherit nothing; see [Security Considerations](#security-considerations)) |
 | `renderHocon()` | `string` | unresolved |
+
+Every "Throws if" above is a `ConfigError` with `.path`, with two exceptions. An unresolved value read by `getValue` or a getter, or an unresolved `resolveWith` source, throws `NotResolvedError` (a `ConfigError` subclass). An unresolvable substitution in `resolve` / `resolveWith` throws `ResolveError`.
 
 ### Deferred resolution API (E12)
 
@@ -174,7 +225,7 @@ result.getString('r') // "val"
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `useSystemEnvironment` | `boolean` | `true` | Consult `process.env` for substitution fallback |
+| `useSystemEnvironment` | `boolean` | `true` | Consult the environment (`ParseOptions.env`, default `process.env`) for substitution fallback |
 | `allowUnresolved` | `boolean` | `false` | Leave unresolvable substitutions in place (no error) |
 
 ### Zod integration
@@ -234,12 +285,16 @@ The Zod entry points (`validate`, `getValidated`, `parseWithSchema`, `parseFileW
 ### Error types
 
 ```ts
-import { ParseError, ResolveError, ConfigError } from '@o3co/ts.hocon'
+import { ParseError, ResolveError, PackageLookupError, ConfigError, NotResolvedError } from '@o3co/ts.hocon'
 
-// ParseError   — lexing/parsing failure: .line, .col, .file?
-// ResolveError — substitution/include failure: .path, .line, .col, .file?
-// ConfigError  — wrong type or missing path: .path
+// ParseError         — lexing/parsing failure: .line, .col, .file?
+// ResolveError       — substitution/include failure: .path, .line, .col, .file?
+// PackageLookupError — include package(...) not found (a ResolveError): .identifier, .packageFile
+// ConfigError        — wrong type, missing path, invalid value: .path
+// NotResolvedError   — getter on an unresolved value (a ConfigError): .path
 ```
+
+Every entrypoint (`/zod`, `/adapters/*`) throws these same classes, so `instanceof` against the root's exports works across entrypoints within one module system. The Zod entry points throw `ZodError` for a value that does not match the schema.
 
 ## HOCON Examples
 
@@ -292,7 +347,9 @@ c.getBytes('max-size')          // 536870912 (bytes)
 c.getBytes('max-size', 'MiB')  // 512
 ```
 
-Supported duration units: `ns`, `us`, `ms`, `s`, `m`, `h`, `d` (and long forms like `seconds`, `minutes`). Duration unit names are case-sensitive and must be lowercase (HOCON spec).
+Supported duration units: `ns`, `us`, `ms`, `s`, `m`, `h`, `d` (and long forms like `seconds`, `minutes`). Duration unit names are case-sensitive and must be lowercase (HOCON spec). A number or a string with no unit is milliseconds for a duration and bytes for a byte size.
+
+The number is read from its text as an exact decimal and multiplied by the unit exactly (E20). A duration is then rounded once in the requested unit: `1.001s` is `1001` ms (`1001000000` ns), where Lightbend's double arithmetic gives `1000999999` ns. A byte size is truncated toward zero to whole bytes (as Lightbend does) before it is converted: `1.0009kB` is `1000`. A duration whose value is not a finite number is an error (E21). A byte size must be non-negative and at most 2^53-1 bytes (the largest integer a JS number holds exactly), so 1 or more of any exa-, zetta- or yotta- unit (`EB`, `Ei`/`EiB`, `E`/`e`, `exabyte`, … through `Y`) is an error; use fractions (`0.001EiB`) or a smaller unit.
 
 Supported byte units, the same set as Lightbend and case-sensitive like it:
 
@@ -335,15 +392,21 @@ Conformance against the [Lightbend HOCON specification](https://github.com/light
 
 | Item | Description | Status |
 |------|-------------|--------|
-| E11  | `include package(...)` service-locator includes | ✅ v1.3.0 |
+| E11  | `include package(...)` service-locator includes | ✅ v1.4.0 |
 | E12  | Deferred substitution resolution (`parse → withFallback → resolve()` lifecycle) | ✅ v1.4.0 |
+| E18  | HOCON emitter round-trip contract (`renderHocon()`) | ✅ v1.13.0 |
+| E19  | A float literal that overflows the double range (`1e999`) is a parse error | ✅ |
+| E20  | Unit arithmetic is exact decimal (durations: a deliberate divergence from Lightbend) | ✅ |
+| E21  | A duration the implementation cannot represent is an error | ✅ |
+
+The E-series items are conventions shared by the o3co implementations beyond HOCON.md; see [`xx.hocon/docs/extra-spec-conventions.md`](https://github.com/o3co/xx.hocon/blob/main/docs/extra-spec-conventions.md).
 
 Not supported:
 
 - `include url(...)`
 - `include classpath(...)`
 
-Supported since v0.2.0 (P1):
+Supported since v1.0.0 (P1):
 
 - `.properties` file parsing
 
@@ -472,7 +535,7 @@ const config = parseWithSchema(hoconInput, schema) // fails fast on startup
 | Project | Language | Registry | Description |
 |---------|----------|----------|-------------|
 | [go.hocon](https://github.com/o3co/go.hocon) | Go | [pkg.go.dev](https://pkg.go.dev/github.com/o3co/go.hocon) | HOCON parser for Go |
-| [rs.hocon](https://github.com/o3co/rs.hocon) | Rust | [crates.io](https://crates.io/crates/o3co-hocon) | HOCON parser for Rust |
+| [rs.hocon](https://github.com/o3co/rs.hocon) | Rust | [crates.io](https://crates.io/crates/hocon-parser) | HOCON parser for Rust |
 | [py.hocon](https://github.com/o3co/py.hocon) | Python | [PyPI](https://pypi.org/project/hocon-parser/) | HOCON parser for Python |
 | [hocon2](https://github.com/o3co/hocon2) | Go | [pkg.go.dev](https://pkg.go.dev/github.com/o3co/hocon2) | HOCON → JSON/YAML/TOML/Properties CLI |
 
@@ -501,8 +564,8 @@ Deferring resolution matters: the plain `parse` resolves as it goes, so a
 | `@o3co/ts.hocon/adapters/env` | — | Bulk-mounts a prefixed namespace; also reads `.env` |
 | `@o3co/ts.hocon/adapters/jsonc` | — | JSON with comments and trailing commas |
 | `@o3co/ts.hocon/adapters/json5` | — | JSON5 1.0.0, hand-rolled scanner, zero dependencies |
-| `@o3co/ts.hocon/adapters/toml` | `smol-toml` | Optional peer dependency |
-| `@o3co/ts.hocon/adapters/yaml` | `yaml` 2.9.x | Optional peer dependency; scalar resolution is that library's answer, with `version: '1.2'` declared so it cannot drift |
+| `@o3co/ts.hocon/adapters/toml` | `smol-toml` (>= 1.0) | Optional peer dependency |
+| `@o3co/ts.hocon/adapters/yaml` | `yaml` (>= 2.0) | Optional peer dependency; scalar resolution is that library's answer, with `version: '1.2'` declared so it cannot drift |
 
 The TOML and YAML libraries are **optional peer dependencies**, so installing
 this package still pulls in nothing — you add the one you actually use. Plain
