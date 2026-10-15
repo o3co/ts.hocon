@@ -90,10 +90,13 @@ git tag v1.4.0
 git push origin v1.4.0
 ```
 
-CI then runs the tests, sets the version from the tag, builds, publishes to npm,
-and creates the GitHub Release from the matching `## [1.4.0]` section of
-`CHANGELOG.md` — so that section has to exist and be committed *before* the tag
-is pushed, or the run fails without publishing.
+CI (`.github/workflows/release.yml`) then sets the version from the tag,
+installs, fetches the test data (`make testdata`), type-checks, runs the tests,
+builds, runs the entrypoint smoke gate, extracts the matching `## [1.4.0]`
+section of `CHANGELOG.md`, creates the GitHub Release from it, and only then
+publishes to npm. Any failure before the publish step stops the release with
+nothing published — so the CHANGELOG section has to exist and be committed
+*before* the tag is pushed.
 
 > **Do not** run `pnpm publish` locally — CI handles it, and npm does not allow
 > republishing a version.

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.14.0] - 2026-10-16
+
+This minor release contains behavior changes marked **BREAKING** below: a
+config or a call that worked on 1.13.0 can fail now, or (E20) read a slightly
+different value. Each entry gives the workaround.
+
 ### Added
 
 - **`Config.getPeriod(path)` and the Zod marker `hocon.period()` (S20,
@@ -37,14 +43,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **`has(path)` answers `true` for a path whose value is an unresolved
-  substitution.** On an unresolved Config (`resolveSubstitutions: false`, or a
+- **BREAKING: `has(path)` answers `true` for a path whose value is an
+  unresolved substitution.** On an unresolved Config (`resolveSubstitutions: false`, or a
   partial `resolve({ allowUnresolved: true })`), `has('a')` for `a = ${x}`
   returned `false`, as if the key were absent; it now returns `true` without
   throwing, and reading the value still throws `NotResolvedError`. A path
   *under* such a value (`a.b`) still answers `false`, since it is not known
   yet. This aligns the four o3co implementations on go.hocon's behaviour
-  (Lightbend throws instead).
+  (Lightbend throws instead). Code like `if (cfg.has('a')) cfg.getString('a')`
+  on an unresolved config used to skip the read and now throws
+  `NotResolvedError`; check `isResolved()` (or `resolve()`) first, or catch
+  `NotResolvedError`.
 
 ### Fixed
 
@@ -55,17 +64,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`1.0`, `-0.5`, `1.0e5`), as go.hocon does since go#208, and every
   unquoted-starts fixture renders to its Lightbend expected JSON. No public API
   change; `getString` still returns the lexeme as written.
-- **Unit values accept exponent forms (E20,
-  [o3co/xx.hocon#111](https://github.com/o3co/xx.hocon/issues/111)).** The
-  number in a duration or byte size is a full number, exponent included, as
-  Lightbend reads it: `"1e+5ms"` is 100000 ms, `"1.5e2s"` 150000 ms, `t = 1e3`
-  1000 ms, `"1e3kB"` 1000000 bytes, `"2E2KiB"` 204800 bytes; all of them were
-  `invalid` before. The exponent is part of the exact arithmetic (E20), and a
-  huge one is settled without building the power (`"1e400s"` is E21's
-  overflow, `"1e-999999999kB"` is 0). An `e`/`E` not followed by a digit is
-  still a unit (`"1E"` is one exbibyte). Periods stay integer-only (`"1e2d"` is
-  an error). With this, a Zod marker and its getter also agree on exponent
-  forms, which they did not.
 - **`getNumber` and the Zod number coercion take linear time on long digit
   strings.** The decimal-number pattern backtracked quadratically, so reading
   a 40 000-digit string that is not a number took about 8 seconds.
@@ -80,14 +78,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the run is one (`1e+5`, `1.e+5`, `-.5e+3`; `1e+5ms` stays the string
   `"1e+5ms"`);
   every other `+` is `ParseError: reserved character '+' is not allowed
-  outside quotes` (`1e+5.5`, `1e+5-`, `x1e+5`, `.5e+3`, `1x+2`, `abc+`). The
-  `+=` operator is unaffected. This includes an unquoted timestamp with a
-  positive offset (`at = 2020-01-01T00:00:00+09:00`), which the lexer's colon
-  leniency used to accept as a string (Lightbend rejects it for the `:`).
+  outside quotes` (`1e+5.5`, `1e+5-`, `x1e+5`, `.5e+3`, `1x+2`, `abc+`). This
+  includes an unquoted timestamp with a positive offset
+  (`at = 2020-01-01T00:00:00+09:00`), which the lexer's colon leniency used
+  to accept as a string (Lightbend rejects it for the `:`). The `+=` operator
+  is unaffected, except right after a number key: `1+= 2` is an error, since
+  the number run takes the `+`; put a space before the operator (`1 += 2`).
   Workaround: quote the value (`version = "1.2.3+build"`,
   `at = "2020-01-01T00:00:00+09:00"`).
-  `+=` operator is unaffected. Workaround: quote the value
-  (`version = "1.2.3+build"`).
 - **BREAKING: the Zod entry points throw `NotResolvedError` on an unresolved
   config ([#210](https://github.com/o3co/ts.hocon/issues/210)).** `validate`,
   `getValidated`, `parseWithSchema` and `parseFileWithSchema` built the value
@@ -101,7 +99,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   of an unresolved config still validates. Workaround: call `resolve()` (or
   `resolveWith()`) before validating, or validate only a resolved subtree with
   `getValidated`.
-- **A partially resolved Config answers from what is still unresolved.** After
+- **BREAKING: a partially resolved Config answers from what is still
+  unresolved.** After
   `resolve({ allowUnresolved: true })` or `resolveWith(…, { allowUnresolved:
   true })`:
   - `getConfig` / `getValue` (and `getList` for arrays) checked the tree from
@@ -114,7 +113,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     does after a deferred parse, and a later `resolve()` with a fallback fills
     it in. An object with a substitution inside an array (`[{ p = ${y} }]`)
     read as `{}`, and a later resolve with a fallback kept `{}`: the value was
-    lost. It now resolves to `{ p: … }`.
+    lost. It now resolves to `{ p: … }`. Code that read such an array (and got
+    `null` or `{}` in it) now gets `NotResolvedError`: resolve with a fallback
+    that defines the substitution first, or catch `NotResolvedError`.
   - An optional substitution left undefined (`a = ${?m}`) reads as absent, as
     after a full resolve, instead of throwing `NotResolvedError`.
   - `getConfig` on a partially resolved Config returns the subtree as resolved
@@ -128,20 +129,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `ConfigError("byte size overflows the representable range at <path>:
   <raw>")`, worded like `getDuration`'s; the limit is 2^53-1 bytes, the
   largest integer a JS number holds exactly. Code that caught `RangeError` from `getBytes` should
-  catch `ConfigError` instead. The Zod marker `hocon.bytes()` is unchanged (it
-  already failed validation with the key's path).
-- **`parseAsync` / `parseFileAsync` honour `resolveSubstitutions` and
-  `originDescription`.** They always resolved, so `resolveSubstitutions: false`
-  threw `ResolveError` on an unresolved substitution instead of returning an
-  unresolved `Config` (E12), and the `Config` did not carry
+  catch `ConfigError` instead. The Zod marker `hocon.bytes()` fails validation
+  with the key's path.
+- **BREAKING: `parseAsync` / `parseFileAsync` honour `resolveSubstitutions`
+  and `originDescription`.** They always resolved, so `resolveSubstitutions:
+  false` threw `ResolveError` on an unresolved substitution instead of
+  returning an unresolved `Config` (E12), and the `Config` did not carry
   `originDescription`. They now behave like `parse` / `parseFile`; includes
-  are still loaded asynchronously (through `readFile` when given).
+  are still loaded asynchronously (through `readFile` when given). A call that
+  passed `resolveSubstitutions: false` and read values right away got a
+  resolved Config before and now gets an unresolved one, so a getter on a
+  substituted value (`b = 1, a = ${b}`, then `getNumber('a')`) throws
+  `NotResolvedError`. Workaround: drop the option, or call `resolve()` before
+  reading.
 - **`resolveSubstitutions: false` kept objects inside arrays.** A deferred
   parse turned each object element of an array (also inside nested arrays) into
   `undefined` when the field had no substitution: `items = [{ x = 1 }]` read as
-  `[undefined]`, in `parse` and now `parseAsync`, and `resolve()` kept it. The
+  `[undefined]`, in `parse` (and in `parseAsync`, which now honours the
+  option), and `resolve()` kept it. The
   elements are now converted like the object fields around them.
-- **Unit arithmetic is exact decimal (E20,
+- **BREAKING (values): unit arithmetic is exact decimal (E20,
   [o3co/xx.hocon#102](https://github.com/o3co/xx.hocon/issues/102)).** The
   number in a duration or byte size is read from its text as an exact decimal
   and multiplied by the unit exactly, in `getDuration` / `getBytes` and the
@@ -161,19 +168,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     2^53-1 overflow guard applies to the truncated value, so
     `9007199254740991.5` reads `9007199254740991` (it threw); and a negative
     zero (`-0`, `-0.5`) reads `0`, not `-0`, for byte sizes and durations.
+    Nothing fails that used to work, but some values change; to keep a byte
+    count, write it in whole bytes or in a unit it divides exactly.
   - The getters read the literal's text exactly; the markers still read a
     number literal through its JavaScript value, so a bare number with more
-    significant digits than a double holds can now read differently through
+    significant digits than a double holds can read differently through
     a marker (`1.99999999999999999` B: `getBytes()` gives 1, `hocon.bytes()`
     gives 2). Written with a unit, it reads the same.
-- **A duration that is not a finite number is an error (E21,
+- **Unit values accept exponent forms (E20,
+  [o3co/xx.hocon#111](https://github.com/o3co/xx.hocon/issues/111)).** The
+  number in a duration or byte size is a full number, exponent included, as
+  Lightbend reads it: `"1e+5ms"` is 100000 ms, `"1.5e2s"` 150000 ms, `t = 1e3`
+  1000 ms, `"1e3kB"` 1000000 bytes, `"2E2KiB"` 204800 bytes; all of them were
+  `invalid` before. The exponent is part of the exact arithmetic (E20), and a
+  huge one is settled without building the power (`"1e400s"` is E21's
+  overflow, `"1e-999999999kB"` is 0). An `e`/`E` not followed by a digit is
+  still a unit (`"1E"` is one exbibyte, which `getBytes` reports as an
+  overflow). Periods stay integer-only (`"1e2d"` is an error). The duration
+  and byte-size Zod markers agree with their getters on exponent forms.
+- **BREAKING: a duration that is not a finite number is an error (E21,
   [o3co/xx.hocon#102](https://github.com/o3co/xx.hocon/issues/102)).** A
   value too large for a double in the output unit (`10^400` days, integer or
   fractional) made `getDuration` return `Infinity`; it now throws
   `ConfigError` (`duration overflows the representable range at <path>`), and
   `hocon.duration()` fails validation with the key's path. A deliberate
   divergence from Lightbend, which saturates the fractional form at
-  `Long.MAX_VALUE` ns; byte sizes already errored on overflow.
+  `Long.MAX_VALUE` ns; byte sizes error on overflow too (as `ConfigError`, see
+  above). Such a value was never usable; catch `ConfigError` where it can
+  occur.
 - **BREAKING: the Zod entry points refuse a key named `__proto__`,
   `constructor` or `prototype`
   ([#201](https://github.com/o3co/ts.hocon/issues/201)).** `validate`,
@@ -215,8 +237,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   "__vite-browser-external"`). They are namespace imports now: Vite 7 and 8
   build and run it as is, and other bundlers need the four built-ins mapped
   to an empty module. The README's "no Node.js required" overstated this.
-
-- **BREAKING (extra-spec E19, xx.hocon#97): a numeric literal whose magnitude
+- **BREAKING (extra-spec E19, [xx.hocon#97](https://github.com/o3co/xx.hocon/issues/97)): a numeric literal whose magnitude
   overflows the double range (`1e999`) is now a parse error** instead of
   silently becoming `Infinity` — a value HOCON cannot render or re-parse as a
   number (Lightbend's own render → re-parse turns it into the string
