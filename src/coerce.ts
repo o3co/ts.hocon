@@ -76,7 +76,7 @@ function isDigitChar(ch: string | undefined): boolean {
  * `[ws] number [ws] unit [ws]`, or undefined when there is no number. The
  * number is the Java double grammar Lightbend reads (E20 exponent forms):
  * `[+-]? (digits [. digits?] | . digits) ([eE] [+-]? digits)?`. An `e`/`E`
- * not followed by a digit is the start of the unit (`1E` is an exabyte).
+ * not followed by a digit is the start of the unit (`1E` is one exbibyte, the single-letter `E` unit).
  */
 function splitUnitText(value: string): UnitText | undefined {
   const t = trimHoconWs(value)

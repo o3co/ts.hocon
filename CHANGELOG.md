@@ -45,7 +45,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `invalid` before. The exponent is part of the exact arithmetic (E20), and a
   huge one is settled without building the power (`"1e400s"` is E21's
   overflow, `"1e-999999999kB"` is 0). An `e`/`E` not followed by a digit is
-  still a unit (`"1E"` is an exabyte). Periods stay integer-only (`"1e2d"` is
+  still a unit (`"1E"` is one exbibyte). Periods stay integer-only (`"1e2d"` is
   an error). With this, a Zod marker and its getter also agree on exponent
   forms, which they did not.
 - **`getNumber` and the Zod number coercion take linear time on long digit
