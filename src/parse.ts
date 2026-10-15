@@ -108,6 +108,16 @@ function buildResolveContext(input: string, opts: ParseOptions): { ast: ReturnTy
   return { ast, resolveOpts }
 }
 
+/**
+ * Parse a HOCON string into a Config. Substitutions are resolved unless
+ * `opts.resolveSubstitutions` is false (then the Config is unresolved; finish
+ * it with `resolve()` / `resolveWith()`). Includes are read with
+ * `opts.readFileSync` (default: `fs`), relative to `opts.baseDir`.
+ *
+ * @throws {@link ParseError} on a syntax error, or a document nested too deeply.
+ * @throws {@link ResolveError} on a substitution that cannot be resolved, or a cycle.
+ * @throws {@link ConfigError} when the document root is not an object.
+ */
 export function parse(input: string, opts: ParseOptions = {}): Config {
   return parseStringWithOptions(input, opts)
 }
@@ -195,6 +205,13 @@ async function parseStringInnerAsync(input: string, opts: ParseOptions): Promise
   })
 }
 
+/**
+ * Read and parse a HOCON file, as {@link parse} does with the file's text;
+ * includes resolve relative to the file (unless `opts.baseDir` is set). Needs
+ * Node.js, or `opts.readFileSync` elsewhere.
+ *
+ * @throws as {@link parse}, plus whatever reading the file throws.
+ */
 export function parseFile(filePath: string, opts: ParseOptions = {}): Config {
   if (typeof process === 'undefined' && !opts.readFileSync) {
     throw new Error('parseFile is not supported in browser environments. Provide opts.readFileSync or use parse() instead.')
@@ -209,6 +226,13 @@ export function parseFile(filePath: string, opts: ParseOptions = {}): Config {
   })
 }
 
+/**
+ * {@link parseFile} with the file and its includes read asynchronously
+ * (`opts.readFile`, default `fs.promises`). Needs Node.js, or `opts.readFile`
+ * elsewhere.
+ *
+ * @throws (rejects) as {@link parseFile}.
+ */
 export async function parseFileAsync(filePath: string, opts: ParseOptions = {}): Promise<Config> {
   if (typeof process === 'undefined' && !opts.readFile) {
     throw new Error('parseFileAsync is not supported in browser environments. Provide opts.readFile or use parseAsync() instead.')

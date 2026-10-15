@@ -119,6 +119,14 @@ export class Config {
     return v
   }
 
+  /**
+   * The scalar at `path` as its text: a number or boolean comes back as written
+   * (`8080`, `true`).
+   *
+   * @throws {@link NotResolvedError} when the value is an unresolved substitution.
+   * @throws {@link ConfigError} when `path` is missing or is not a scalar, or the value is
+   *   `null`.
+   */
   getString(path: string): string {
     const v = this.requireScalar(path)
     // HOCON spec L1252 (S17.6): null → any non-null type is an error. The
@@ -131,6 +139,14 @@ export class Config {
     return v.raw
   }
 
+  /**
+   * The scalar at `path` as a number. A string that reads as a decimal number
+   * (`"8080"`, `"1.5e3"`) is accepted.
+   *
+   * @throws {@link NotResolvedError} when the value is an unresolved substitution.
+   * @throws {@link ConfigError} when `path` is missing or is not a scalar, or the value is not a
+   *   number.
+   */
   getNumber(path: string): number {
     const v = this.requireScalar(path)
     const coerced = coerceNumber(v.raw)
@@ -138,6 +154,14 @@ export class Config {
     throw new ConfigError(`expected number at ${path}, got ${v.valueType}`, path)
   }
 
+  /**
+   * The scalar at `path` as a boolean: `true` / `yes` / `on` and `false` /
+   * `no` / `off`, in any case.
+   *
+   * @throws {@link NotResolvedError} when the value is an unresolved substitution.
+   * @throws {@link ConfigError} when `path` is missing or is not a scalar, or the value is not one
+   *   of those words.
+   */
   getBoolean(path: string): boolean {
     const v = this.requireScalar(path)
     const coerced = coerceBoolean(v.raw)
@@ -145,6 +169,16 @@ export class Config {
     throw new ConfigError(`expected boolean at ${path}, got ${v.valueType}`, path)
   }
 
+  /**
+   * The duration at `path` in `unit` (default `ms`): a string with a unit
+   * (`"30s"`, `"1.5h"`), or a number or unit-less string, which is
+   * milliseconds. The number is read exactly and rounded once in `unit` (E20).
+   * Negative durations are allowed.
+   *
+   * @throws {@link NotResolvedError} when the value is an unresolved substitution.
+   * @throws {@link ConfigError} when `path` is missing or is not a string or number, the text is
+   *   not a duration, or the result is not a finite number (E21).
+   */
   getDuration(path: string, unit?: DurationUnit): number {
     const v = this.requireScalar(path)
     if (v.valueType !== 'string' && v.valueType !== 'number') {
@@ -161,6 +195,17 @@ export class Config {
     }
   }
 
+  /**
+   * The byte size at `path` in `unit` (default `B`): a string with a unit
+   * (`"64KiB"`, `"1.5MB"`), or a number or unit-less string, which is bytes.
+   * The exact size is truncated toward zero to whole bytes, then converted to
+   * `unit` (E20).
+   *
+   * @throws {@link NotResolvedError} when the value is an unresolved substitution.
+   * @throws {@link ConfigError} when `path` is missing or is not a string or number, the text is
+   *   not a byte size, the size is negative, or it exceeds 2^53-1 bytes (the
+   *   largest integer a JS number holds exactly).
+   */
   getBytes(path: string, unit?: ByteUnit): number {
     const v = this.requireScalar(path)
     if (v.valueType !== 'string' && v.valueType !== 'number') {
@@ -184,6 +229,10 @@ export class Config {
   /**
    * The calendar period at `path` (`7d`, `2w`, `3m`, `1y`; a bare integer is
    * days). Integer only, unlike {@link getDuration} / {@link getBytes}.
+   *
+   * @throws {@link NotResolvedError} when the value is an unresolved substitution.
+   * @throws {@link ConfigError} when `path` is missing or is not a string or number, or the text
+   *   is not a period.
    */
   getPeriod(path: string): Period {
     const v = this.requireScalar(path)
@@ -199,6 +248,12 @@ export class Config {
     }
   }
 
+  /**
+   * The object at `path` as a Config of its own, with paths relative to it.
+   *
+   * @throws {@link NotResolvedError} when the object holds an unresolved substitution.
+   * @throws {@link ConfigError} when `path` is missing or is not an object.
+   */
   getConfig(path: string): Config {
     const v = this.lookupNode(path)
     if (v === undefined) {
@@ -217,6 +272,13 @@ export class Config {
     return new Config(v, { resolved: this._resolved })
   }
 
+  /**
+   * The list at `path` as plain values (see {@link get}). An object whose keys
+   * are all integers is read as a list too (S15: `{ "0": a, "1": b }`).
+   *
+   * @throws {@link NotResolvedError} when the list holds an unresolved substitution.
+   * @throws {@link ConfigError} when `path` is missing or is not a list.
+   */
   getList(path: string): unknown[] {
     const v = this.lookupNode(path)
     if (v === undefined) {

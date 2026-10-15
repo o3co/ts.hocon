@@ -11,6 +11,17 @@ import type { Config } from './config.js'
 import { parse, parseFile } from './parse.js'
 import type { ParseOptions } from './parse.js'
 
+/**
+ * The whole config, validated against `schema`. HOCON strings are coerced
+ * where the schema expects a number or a boolean (`"8080"` → 8080); unit values
+ * go through the {@link hocon} markers.
+ *
+ * An object key named `__proto__`, `constructor` or `prototype` anywhere in
+ * the value is refused with a `ZodError` issue at the object that holds it
+ * (#202); read such a key with the plain getters instead.
+ *
+ * @throws `ZodError` when the value does not match the schema.
+ */
 export function validate<T>(config: Config, schema: ZodType<T>): T {
   const plain = config.toObject()
   refusePrototypeKeys(plain)
@@ -18,6 +29,16 @@ export function validate<T>(config: Config, schema: ZodType<T>): T {
   return schema.parse(coerced)
 }
 
+/**
+ * The value at `path`, validated against `schema` as {@link validate} does;
+ * issue paths are relative to that value.
+ *
+ * An object key named `__proto__`, `constructor` or `prototype` anywhere in
+ * the value is refused with a `ZodError` issue at the object that holds it
+ * (#202); read such a key with the plain getters instead.
+ *
+ * @throws `ZodError` when the value does not match the schema.
+ */
 export function getValidated<T>(config: Config, path: string, schema: ZodType<T>): T {
   const val = config.get(path)
   refusePrototypeKeys(val)
@@ -134,14 +155,19 @@ function describeInput(input: unknown): string {
 export const hocon = {
   /**
    * A duration, read as {@link Config.getDuration} reads it (default unit `ms`),
-   * except that a number literal in exponent form can read differently.
+   * except that a number literal with more significant digits than a double
+   * holds (`1.0000000000000001`) or in exponent form (`1e3`) can read
+   * differently: the getter reads the literal's text, the marker its JS value.
    */
   duration(unit?: DurationUnit): ZodTransform<number, unknown> {
     return unitMarker('duration', (text) => readDuration(text, unit))
   },
   /**
    * A byte size, read as {@link Config.getBytes} reads it (default unit `B`),
-   * except that a number literal in exponent form can read differently.
+   * except that a number literal with more significant digits than a double
+   * holds (`1.99999999999999999`: 1 through the getter, 2 here) or in exponent
+   * form can read differently: the getter reads the literal's text, the marker
+   * its JS value.
    */
   bytes(unit?: ByteUnit): ZodTransform<number, unknown> {
     return unitMarker('byte size', (text) => readBytes(text, unit))
@@ -179,11 +205,21 @@ function getArrayElement(schema: ZodType): ZodType | undefined {
   return (schema as any)._zod?.def?.element
 }
 
+/**
+ * Parse a HOCON string and {@link validate} it.
+ *
+ * @throws as `parse`, or `ZodError` when the value does not match the schema.
+ */
 export function parseWithSchema<T>(input: string, schema: ZodType<T>, opts?: ParseOptions): T {
   const config = parse(input, opts)
   return validate(config, schema)
 }
 
+/**
+ * Read and parse a HOCON file and {@link validate} it.
+ *
+ * @throws as `parseFile`, or `ZodError` when the value does not match the schema.
+ */
 export function parseFileWithSchema<T>(filePath: string, schema: ZodType<T>, opts?: ParseOptions): T {
   const config = parseFile(filePath, opts)
   return validate(config, schema)
