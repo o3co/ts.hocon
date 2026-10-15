@@ -13,14 +13,49 @@ import type { ParseOptions } from './parse.js'
 
 export function validate<T>(config: Config, schema: ZodType<T>): T {
   const plain = config.toObject()
+  refusePrototypeKeys(plain)
   const coerced = coerceValue(plain, schema)
   return schema.parse(coerced)
 }
 
 export function getValidated<T>(config: Config, path: string, schema: ZodType<T>): T {
   const val = config.get(path)
+  refusePrototypeKeys(val)
   const coerced = coerceValue(val, schema)
   return schema.parse(coerced)
+}
+
+// ─── prototype-named keys ─────────────────────────────────────────────────────
+// A HOCON object may hold a key named `__proto__`, `constructor` or
+// `prototype`, and the plain value (toObject / get) keeps it as an own data
+// property. A JS object built from it can lose it or read the prototype's
+// member instead: Zod drops `__proto__` from a record without an error
+// (ts.hocon#201). So the Zod entry points refuse such a key wherever it is in
+// the value, before the schema sees it, with the key's path like any other
+// validation error. The plain getters read keys by name and are unaffected.
+
+const PROTOTYPE_KEYS: ReadonlySet<string> = new Set(['__proto__', 'constructor', 'prototype'])
+
+const PROTOTYPE_KEY_MESSAGE = "a key that names an object's prototype"
+
+function refusePrototypeKeys(value: unknown): void {
+  const issues: z.core.$ZodIssue[] = []
+  collectPrototypeKeys(value, [], issues)
+  if (issues.length > 0) throw new z.ZodError(issues)
+}
+
+function collectPrototypeKeys(value: unknown, path: PropertyKey[], issues: z.core.$ZodIssue[]): void {
+  if (Array.isArray(value)) {
+    value.forEach((item, i) => collectPrototypeKeys(item, [...path, i], issues))
+  } else if (typeof value === 'object' && value !== null) {
+    for (const [key, item] of Object.entries(value)) {
+      if (PROTOTYPE_KEYS.has(key)) {
+        issues.push({ code: 'custom', path: [...path, key], message: PROTOTYPE_KEY_MESSAGE, input: item })
+      } else {
+        collectPrototypeKeys(item, [...path, key], issues)
+      }
+    }
+  }
 }
 
 // ─── unit markers ─────────────────────────────────────────────────────────────
