@@ -5,7 +5,7 @@ import { ConfigError, ParseError } from './errors.js'
 import { guardStackDepth, guardStackDepthAsync } from './internal/depth.js'
 import { tokenize } from './internal/lexer/lexer.js'
 import { parseTokens } from './internal/parser/parser.js'
-import { buildTree, containsPlaceholders, resolve, resolveAsync } from './internal/resolver/resolver.js'
+import { buildTree, buildTreeAsync, containsPlaceholders, resolve, resolveAsync } from './internal/resolver/resolver.js'
 import type { ResolveOptions as InternalResolveOptions } from './internal/resolver/resolver.js'
 import type { PackageResolver } from './internal/resolver/types.js'
 
@@ -169,12 +169,30 @@ export function parseFileWithOptions(filePath: string, opts: ParseOptions = {}):
 export async function parseAsync(input: string, opts: ParseOptions = {}): Promise<Config> {
   // The async path recurses in the same three places the sync one does, so it
   // needs the same guard; parseFileAsync reaches it through here.
-  return guardStackDepthAsync(async () => {
-    const { ast, resolveOpts } = buildResolveContext(input, opts)
+  return guardStackDepthAsync(
+    () => parseStringInnerAsync(input, opts),
+    msg => new ParseError(msg, 1, 1, opts.originDescription),
+  )
+}
+
+/** parseStringInner with includes loaded asynchronously; the same options, the same Config. */
+async function parseStringInnerAsync(input: string, opts: ParseOptions): Promise<Config> {
+  const resolveSubstitutions = opts.resolveSubstitutions ?? true
+  const { ast, resolveOpts } = buildResolveContext(input, opts)
+  if (resolveSubstitutions) {
     const value = await resolveAsync(ast, resolveOpts)
     if (value.kind !== 'object') throw new Error('resolved value is not an object')
-    return new Config(value)
-  }, msg => new ParseError(msg, 1, 1, opts.originDescription))
+    return new Config(value, { resolved: true, originDescription: opts.originDescription })
+  }
+  // Deferred path: phase 1 only — leave substitution placeholders in place.
+  const tree = await buildTreeAsync(ast, resolveOpts)
+  const hasPlaceholders = containsPlaceholders(tree)
+  return Config._fromUnresolvedResObj(tree, {
+    parseBaseDir: opts.baseDir,
+    originDescription: opts.originDescription,
+    resolved: !hasPlaceholders,
+    resolveOpts,
+  })
 }
 
 export function parseFile(filePath: string, opts: ParseOptions = {}): Config {
