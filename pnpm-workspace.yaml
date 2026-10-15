@@ -6,3 +6,17 @@ overrides:
   # GHSA-g7r4-m6w7-qqqr: tsup's transitive esbuild resolves to 0.27.x, which
   # is in the vulnerable range; force the patched line for every consumer.
   esbuild: '>=0.28.1'
+  # The overrides below are scoped to the vulnerable band so they never pull
+  # another major line of the same package. Each parent's declared range
+  # already admits the patched version; the override is a floor against the
+  # lockfile resolving back into the vulnerable band. Remove each one once its
+  # parents declare a floor at or above the patched version.
+  # GHSA-253c-mchw-3w2r: markdown-it via typedoc (^14.3.0).
+  'markdown-it@>=14.0.0 <14.3.1': '^14.3.1'
+  # GHSA-mh99-v99m-4gvg, GHSA-rgw5-rvv9-x895, GHSA-6j4f-fj2g-mc7p,
+  # GHSA-qhr7-859c-m2p7, GHSA-q2hr-2g5m-vwhr: brace-expansion via
+  # typedoc > minimatch (^5.0.5).
+  'brace-expansion@>=5.0.0 <5.0.12': '^5.0.12'
+  # GHSA-68fv-2mgg-jv7q: source-map-js via @vitest/coverage-v8 > magicast and
+  # via postcss (tsup, vite), both ^1.2.1.
+  'source-map-js@>=1.0.0 <1.2.2': '^1.2.2'

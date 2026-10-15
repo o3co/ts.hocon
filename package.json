@@ -128,13 +128,13 @@
   "devDependencies": {
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^25.9.5",
-    "@vitest/coverage-v8": "4.1.10",
-    "js-yaml": "^4.3.1",
-    "smol-toml": "^1.7.0",
+    "@vitest/coverage-v8": "4.1.11",
+    "js-yaml": "^4.3.2",
+    "smol-toml": "^1.9.0",
     "tsup": "^8.5.1",
     "typedoc": "^0.28.20",
     "typescript": "^5.9.3",
-    "vitest": "4.1.10",
+    "vitest": "4.1.11",
     "yaml": "^2.9.0",
     "zod": "^4.4.3"
   },
