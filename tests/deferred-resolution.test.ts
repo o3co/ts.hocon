@@ -1,6 +1,9 @@
 // tests/deferred-resolution.test.ts
 // Layer-1 programmatic tests for E12 spec edges not expressible in YAML.
 // These tests use the public API directly (no YAML harness).
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { parse, parseStringWithOptions } from '../src/parse.js'
 import { fromMap, empty } from '../src/value-factory.js'
@@ -214,11 +217,31 @@ describe('Config._renderJSONForTest', () => {
     expect(c._renderJSONForTest()).toBe('{"a":1e3,"b":1.50,"c":-0,"d":0e5}')
   })
 
-  // xx.hocon#50 review (Copilot): a number-typed lexeme that is not a valid JSON
-  // number (`1.`, trailing dot — number-typed here, string in go) must be quoted,
-  // never emitted as invalid JSON. Output matches go.hocon's `"1."`.
-  it('quotes a number lexeme that is not valid JSON (1.)', () => {
-    expect(parse('a = 1.')._renderJSONForTest()).toBe('{"a":"1."}')
+  // Number lexemes that Lightbend reads as numbers but that are not JSON
+  // numbers as written (`1.`, `-.5`, `1.e5`; xx.hocon us60-us63) render as JSON
+  // numbers with the missing digit filled in, as Lightbend does and go.hocon
+  // does since go#208 — not as quoted strings. Valid JSON either way.
+  it('fills in the digit a number lexeme lacks for JSON (us60-us63)', () => {
+    const c = parse('a = 1.\nb = -1.\nc = -.5\nd = 1.e5\ne = 1.e+5\nf = -1.e-5')
+    expect(c._renderJSONForTest()).toBe('{"a":1.0,"b":-1.0,"c":-0.5,"d":1.0e5,"e":1.0e+5,"f":-1.0e-5}')
+    expect(JSON.parse(c._renderJSONForTest())).toEqual({ a: 1, b: -1, c: -0.5, d: 100000, e: 100000, f: -0.00001 })
+  })
+
+  // Every unquoted-starts fixture Lightbend reads renders to JSON equal to its
+  // expected JSON (the differential harness compares this render).
+  it('renders the unquoted-starts fixtures as Lightbend does', () => {
+    const confDir = fileURLToPath(new URL('./lightbend/testdata/unquoted-starts', import.meta.url))
+    const expectedDir = fileURLToPath(new URL('./lightbend/testdata/expected/unquoted-starts', import.meta.url))
+    const names = readdirSync(confDir).filter((f) => f.endsWith('.conf')).map((f) => f.slice(0, -5))
+    let checked = 0
+    for (const name of names) {
+      const expectedPath = join(expectedDir, `${name}-expected.json`)
+      if (!existsSync(expectedPath)) continue
+      const rendered = parse(readFileSync(join(confDir, `${name}.conf`), 'utf-8'))._renderJSONForTest()
+      expect([name, JSON.parse(rendered)]).toEqual([name, JSON.parse(readFileSync(expectedPath, 'utf-8'))])
+      checked++
+    }
+    expect(checked).toBeGreaterThan(30)
   })
 })
 

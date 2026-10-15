@@ -792,12 +792,12 @@ function renderHoconAsJSON(v: HoconValue): string {
         case 'number': {
           // Canonicalize leading zeros so the lexeme renders as a valid JSON
           // number matching Lightbend/rs.hocon ("023"->23, "-08.5"->-8.5);
-          // xx.hocon#50. Render-only: getString/concat still see the verbatim
-          // lexeme (S10.11), so this does not affect string coercion. Emit raw
-          // only when the normalized lexeme is a valid JSON number; otherwise
-          // quote (e.g. `1.`, which ts classifies as a number but go renders as
-          // a string) so we never emit invalid JSON — byte-aligned with go.hocon.
-          const norm = normalizeLeadingZeroNumber(v.raw)
+          // xx.hocon#50. Fill in the digit JSON needs around a bare dot, as
+          // Lightbend reads these as numbers (`1.`->1.0, `-.5`->-0.5,
+          // `1.e5`->1.0e5; xx.hocon us60-us63, go#208). Render-only:
+          // getString/concat still see the verbatim lexeme (S10.11). Anything
+          // still not a JSON number is quoted, so the output is always JSON.
+          const norm = completeJsonNumber(normalizeLeadingZeroNumber(v.raw))
           return JSON_NUMBER_RE.test(norm) ? norm : JSON.stringify(v.raw)
         }
         case 'string': return JSON.stringify(v.raw)
@@ -835,4 +835,9 @@ const JSON_NUMBER_RE = /^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$/
  */
 function normalizeLeadingZeroNumber(raw: string): string {
   return raw.replace(/^([+-]?)0+(\d)/, '$1$2')
+}
+
+/** Adds the digit JSON requires next to a bare decimal point: `1.`→`1.0`, `-.5`→`-0.5`, `1.e5`→`1.0e5`. */
+function completeJsonNumber(raw: string): string {
+  return raw.replace(/^([+-]?)\./, '$10.').replace(/\.(?=[eE]|$)/, '.0')
 }
