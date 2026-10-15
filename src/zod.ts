@@ -233,7 +233,9 @@ function getArrayElement(schema: ZodType): ZodType | undefined {
 /**
  * Parse a HOCON string and {@link validate} it.
  *
- * @throws as `parse`, or `ZodError` when the value does not match the schema.
+ * @throws as `parse`; {@link NotResolvedError} when parsed with
+ *   `resolveSubstitutions: false` and a substitution is left (#210); `ZodError`
+ *   when the value does not match the schema.
  */
 export function parseWithSchema<T>(input: string, schema: ZodType<T>, opts?: ParseOptions): T {
   const config = parse(input, opts)
@@ -243,7 +245,9 @@ export function parseWithSchema<T>(input: string, schema: ZodType<T>, opts?: Par
 /**
  * Read and parse a HOCON file and {@link validate} it.
  *
- * @throws as `parseFile`, or `ZodError` when the value does not match the schema.
+ * @throws as `parseFile`; {@link NotResolvedError} when parsed with
+ *   `resolveSubstitutions: false` and a substitution is left (#210); `ZodError`
+ *   when the value does not match the schema.
  */
 export function parseFileWithSchema<T>(filePath: string, schema: ZodType<T>, opts?: ParseOptions): T {
   const config = parseFile(filePath, opts)

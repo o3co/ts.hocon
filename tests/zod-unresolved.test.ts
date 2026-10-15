@@ -57,6 +57,13 @@ describe('Zod entry points on an unresolved Config', () => {
     expect(validate(stack.resolve({ useSystemEnvironment: false }), z.object({ port: z.number() }))).toMatchObject({ port: 8080 })
   })
 
+  it('covers arrays, concatenation, += and paths under a substitution', () => {
+    const cfg = parse('arr = [1, ${x}]\ns = ${x}"-tail"\nlist = [1]\nlist += ${x}\na = ${x}', { resolveSubstitutions: false })
+    for (const path of ['arr', 's', 'list', 'a', 'a.b']) {
+      expect(thrown(() => getValidated(cfg, path, z.any()))).toMatchObject({ name: 'NotResolvedError', path })
+    }
+  })
+
   it('a deferred parse without substitutions validates as before', () => {
     expect(validate(parse('a = 1', { resolveSubstitutions: false }), z.object({ a: z.number() }))).toEqual({ a: 1 })
   })
