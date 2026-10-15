@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Zod: `hocon.duration(unit?)` and `hocon.bytes(unit?)` schema markers**
+  ([#195](https://github.com/o3co/ts.hocon/issues/195)). Exported from
+  `@o3co/ts.hocon/zod`, they read a HOCON duration (`30m`) or byte size
+  (`64KiB`) with exactly the rules of `getDuration()` / `getBytes()` and give a
+  number in the requested unit, so a schema can validate unit values without
+  copying the unit grammar: `hocon.duration('s').pipe(z.number().int().min(60))`.
+  `validate`, `getValidated` and `parseWithSchema` hand the marker the scalar's
+  source text; an invalid, negative (bytes) or overflowing value fails
+  validation with the key's path.
+
 ### Fixed
 
 - **BREAKING (extra-spec E19, xx.hocon#97): a numeric literal whose magnitude
