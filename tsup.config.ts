@@ -14,5 +14,16 @@ export default defineConfig({
   format: ['esm', 'cjs'],
   dts: true,
   clean: true,
-  splitting: false,
+  // Splitting puts the shared code (Config, the error classes, the parser) in
+  // chunks every entrypoint imports, so a value or error from `/zod` or
+  // `/adapters/*` is an instance of the classes `@o3co/ts.hocon` exports.
+  // Without it each bundle carries its own copy and `instanceof` fails across
+  // entrypoints. Splitting the CJS output is experimental in tsup;
+  // tools/smoke-entrypoints.mjs checks load, use and `instanceof` in both
+  // formats on every CI run.
+  splitting: true,
+  // With CJS splitting, `import.meta` reaches the CJS chunk unchanged (a
+  // SyntaxError at load); the shim turns `import.meta.url` into the chunk's own
+  // file URL.
+  shims: true,
 })

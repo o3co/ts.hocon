@@ -36,6 +36,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`instanceof` now holds across entrypoints
+  ([o3co/xx.hocon#102](https://github.com/o3co/xx.hocon/issues/102)).** Each
+  built entrypoint (`@o3co/ts.hocon`, `/zod`, `/adapters/*`) used to carry its
+  own copy of `Config` and the error classes, so an error thrown by
+  `parseWithSchema` was not `instanceof ParseError` imported from
+  `@o3co/ts.hocon`, and a `Config` returned by an adapter was not
+  `instanceof Config`. The build now splits the shared code into chunks that
+  every entrypoint imports, in both ESM and CJS. Each subpath bundle is also
+  much smaller, since it no longer repeats the parser. The `dist/` layout
+  gains `chunk-*.js` / `chunk-*.cjs` files; the `exports` map and the type
+  declarations are unchanged. This holds within one module system: a process
+  that loads the package through both `require()` and `import()` still gets
+  two copies of each class (the dual-package hazard).
+
 - **BREAKING (extra-spec E19, xx.hocon#97): a numeric literal whose magnitude
   overflows the double range (`1e999`) is now a parse error** instead of
   silently becoming `Infinity` — a value HOCON cannot render or re-parse as a

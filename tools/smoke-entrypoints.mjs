@@ -8,11 +8,14 @@
 // throwing at load, and the ESM `include package(...)` regression that briefly
 // replaced it.
 //
-// So this gate runs against the built output, and does three things:
+// So this gate runs against the built output, and does four things:
 //
 //   1. LOADs every subpath in package.json "exports" under both module systems.
 //   2. USEs it — calls the entrypoint's real function and checks the answer.
 //   3. Checks each condition declares its own "types" of the right flavour.
+//   4. Checks that what a subpath returns or throws is an instance of the
+//      classes the root entrypoint exports (Config, ConfigError, ParseError,
+//      …), so `instanceof` holds across entrypoints in both module systems.
 //
 // Step 2 is the point. A load-only check cannot see a defect whose whole nature
 // is that it defers work to first use, which is what the `require`-shim bug was.
@@ -107,10 +110,75 @@ const checks = {
   },
 }
 
+// ─── instanceof across entrypoints ───────────────────────────────────────────
+// A consumer imports the error classes from the root and catches what a
+// subpath throws: `catch (e) { if (e instanceof ConfigError) … }`. That only
+// works if every entrypoint shares the root's classes rather than carrying its
+// own copy. Each check gets the subpath module and the root module, loaded
+// through the same module system.
+const thrown = (fn) => {
+  try {
+    fn()
+  } catch (e) {
+    return e
+  }
+  throw new Error('expected a throw')
+}
+const isA = (value, cls, what) => {
+  if (value instanceof cls) return
+  const got = value?.constructor?.name ?? typeof value
+  const detail = got === cls.name
+    ? `got a ${got} from another copy of the class`
+    : `got a ${got}: ${String(value?.message ?? value).split('\n')[0]}`
+  throw new Error(`${what}: not an instance of the root ${cls.name} (${detail})`)
+}
+// The Config an adapter returns is the root's Config, and its getters throw the
+// root's ConfigError.
+const sharesConfig = (cfg, root, what) => {
+  isA(cfg, root.Config, `${what} result`)
+  isA(thrown(() => cfg.getString('no.such.path')), root.ConfigError, `${what} result's getter error`)
+}
+const crossChecks = {
+  './zod': async (m, root, load) => {
+    const { z } = await load('zod')
+    const schema = z.object({ a: z.string() })
+    isA(thrown(() => m.parseWithSchema('a = {', schema)), root.ParseError, 'parseWithSchema parse error')
+    isA(thrown(() => m.parseWithSchema('a = ${missing}', schema)), root.ResolveError, 'parseWithSchema resolve error')
+  },
+  './adapters/properties': async (m, root) => {
+    sharesConfig(m.parsePropertiesConfig('a = 1\n'), root, 'parsePropertiesConfig')
+  },
+  './adapters/env': async (m, root) => {
+    sharesConfig(m.parseDotEnv('A=1\n'), root, 'parseDotEnv')
+    isA(thrown(() => m.parseDotEnv('no-equals-sign\n')), root.ConfigError, 'parseDotEnv error')
+  },
+  './adapters/jsonc': async (m, root) => {
+    sharesConfig(m.parseJsonc('{"a": 1}'), root, 'parseJsonc')
+    isA(thrown(() => m.parseJsonc('{"a": "x')), root.ConfigError, 'parseJsonc error')
+  },
+  './adapters/json5': async (m, root) => {
+    sharesConfig(m.parseJson5('{a: 1}'), root, 'parseJson5')
+    isA(thrown(() => m.parseJson5('{a: }')), root.ConfigError, 'parseJson5 error')
+  },
+  './adapters/toml': async (m, root) => {
+    sharesConfig(m.parseTomlConfig('a = 1\n'), root, 'parseTomlConfig')
+  },
+  './adapters/yaml': async (m, root) => {
+    sharesConfig(m.parseYaml('a: 1\n'), root, 'parseYaml')
+    isA(thrown(() => m.parseYaml('a: [1\n')), root.ConfigError, 'parseYaml error')
+  },
+}
+
 const subpaths = Object.keys(pkg.exports)
 if (subpaths.length === 0) {
   console.error('smoke-entrypoints: package.json has no "exports" — nothing to check?')
   process.exit(1)
+}
+
+async function crossInstanceof(subpath, mod, root, load) {
+  const check = crossChecks[subpath]
+  if (check === undefined) throw new Error('no instanceof check defined for this export — add one')
+  await check(mod, root, load)
 }
 
 let failures = 0
@@ -138,6 +206,14 @@ for (const subpath of subpaths) {
   } catch (e) {
     fail(`require('${specifier}')`, e)
   }
+  if (subpath !== '.') {
+    try {
+      await crossInstanceof(subpath, require(specifier), require(pkg.name), async (dep) => require(dep))
+      console.log(`ok   require('${specifier}')  + instanceof the root's classes`)
+    } catch (e) {
+      fail(`require('${specifier}') instanceof`, e)
+    }
+  }
 
   // ESM: import() must load, and the module must work.
   try {
@@ -149,6 +225,14 @@ for (const subpath of subpaths) {
     console.log(`ok   import('${specifier}')   + functional check`)
   } catch (e) {
     fail(`import('${specifier}')`, e)
+  }
+  if (subpath !== '.') {
+    try {
+      await crossInstanceof(subpath, await import(specifier), await import(pkg.name), async (dep) => await import(dep))
+      console.log(`ok   import('${specifier}')   + instanceof the root's classes`)
+    } catch (e) {
+      fail(`import('${specifier}') instanceof`, e)
+    }
   }
 }
 
@@ -182,4 +266,4 @@ if (failures > 0) {
   console.error(`\nsmoke-entrypoints: ${failures} check(s) FAILED — the artifact is broken, do not ship`)
   process.exit(1)
 }
-console.log(`\nsmoke-entrypoints: all ${subpaths.length} exports load, work, and declare types under require() and import()`)
+console.log(`\nsmoke-entrypoints: all ${subpaths.length} exports load, work, share the root's classes, and declare types under require() and import()`)
