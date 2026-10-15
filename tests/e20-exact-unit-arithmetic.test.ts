@@ -180,6 +180,7 @@ describe('E20 — exponent forms in unit values', () => {
     ['t = "1.e3ms"', 1000],
     ['t = ".5e1s"', 5000],
     ['t = "1e-400s"', 0],
+    ['t = "1e-3ns"', 1e-9], // float output: not short-circuited to 0
     ['t = "0e999999999s"', 0],
   ] as const)('%s → %d ms', (text, ms) => {
     expect(durationMs(text)).toBe(ms)
