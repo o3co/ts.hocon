@@ -103,7 +103,8 @@ function timesPowerOfTwo(x: number, e: number): number {
  * `n / d` (d > 0) rounded once to the nearest double (ties to even). The
  * quotient is taken to 65 bits with the remainder folded into the lowest bit,
  * so Number(bigint)'s own rounding to 53 bits sees an exact tie only when there
- * is one. Below the normal range (2^-1022) the result can round twice.
+ * is one. A result below the normal range (2^-1022) has fewer bits, so it is
+ * rounded directly in units of the smallest subnormal, 2^-1074.
  */
 function ratioToNumber(n: bigint, d: bigint): number {
   if (n === 0n) return 0
@@ -117,10 +118,22 @@ function ratioToNumber(n: bigint, d: bigint): number {
     const length = bitLength(q)
     if (length > 65) { shift--; continue }
     if (length < 65) { shift++; continue }
-    const sticky = num % den === 0n ? 0n : 1n
-    const value = timesPowerOfTwo(Number(q | sticky), -shift)
+    // q * 2^-shift is in [2^(64-shift), 2^(65-shift)): below 2^-1022 from shift 1087.
+    const value = shift > 1086
+      ? subnormalRatio(a, d)
+      : timesPowerOfTwo(Number(q | (num % den === 0n ? 0n : 1n)), -shift)
     return negative ? -value : value
   }
+}
+
+/** `a / d` (a, d > 0, below 2^-1022) rounded to the nearest multiple of 2^-1074, ties to even. */
+function subnormalRatio(a: bigint, d: bigint): number {
+  const num = a << 1074n
+  let k = num / d
+  const twice = (num % d) * 2n
+  if (twice > d || (twice === d && (k & 1n) === 1n)) k++
+  // k <= 2^52, so both the conversion and the scaling are exact.
+  return Number(k) * 2 ** -1074
 }
 
 /** Nanoseconds per duration unit. */

@@ -52,6 +52,23 @@ describe('E20 — duration', () => {
     expect(parseDuration('1ms', 'd')).toBe(1 / 86_400_000)
   })
 
+  it('rounds a result below the normal double range once, too', () => {
+    // Exact decimal text for m * 2^-1075 ms (half-units of the smallest subnormal).
+    const halves = (m: bigint) => {
+      const digits = (m * 5n ** 1075n).toString().padStart(1075, '0')
+      return `${digits.slice(0, -1075) || '0'}.${digits.slice(-1075)}`
+    }
+    expect(parseDuration(halves(1n))).toBe(0) // a tie, to even: 0
+    expect(parseDuration(halves(3n))).toBe(2 * 5e-324) // a tie, to even: 2 units
+    expect(parseDuration(halves(5n))).toBe(2 * 5e-324) // a tie, to even: 2 units
+    // Just above the first tie rounds up (two roundings gave 0 here).
+    expect(parseDuration(`0.${'0'.repeat(323)}24703282292062328`)).toBe(5e-324)
+    expect(parseDuration(`0.${'0'.repeat(323)}24703282292062327`)).toBe(0)
+    // Either side of the smallest normal, 2^-1022.
+    expect(parseDuration(`0.${'0'.repeat(307)}22250738585072014`)).toBe(2.2250738585072014e-308)
+    expect(parseDuration(`0.${'0'.repeat(307)}22250738585072009`)).toBe(2.225073858507201e-308)
+  })
+
   it('keeps a fraction below a nanosecond in the output unit', () => {
     expect(parseDuration('1.5ns', 'ms')).toBe(0.0000015)
     expect(parseDuration('1.5ns', 'ns')).toBe(1.5)
