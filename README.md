@@ -395,9 +395,9 @@ Conformance against the [Lightbend HOCON specification](https://github.com/light
 | E11  | `include package(...)` service-locator includes | ✅ v1.4.0 |
 | E12  | Deferred substitution resolution (`parse → withFallback → resolve()` lifecycle) | ✅ v1.4.0 |
 | E18  | HOCON emitter round-trip contract (`renderHocon()`) | ✅ v1.13.0 |
-| E19  | A float literal that overflows the double range (`1e999`) is a parse error | ✅ unreleased |
-| E20  | Unit arithmetic is exact decimal (durations: a deliberate divergence from Lightbend) | ✅ unreleased |
-| E21  | A duration the implementation cannot represent is an error | ✅ unreleased |
+| E19  | A float literal that overflows the double range (`1e999`) is a parse error | ✅ |
+| E20  | Unit arithmetic is exact decimal (durations: a deliberate divergence from Lightbend) | ✅ |
+| E21  | A duration the implementation cannot represent is an error | ✅ |
 
 The E-series items are conventions shared by the o3co implementations beyond HOCON.md; see [`xx.hocon/docs/extra-spec-conventions.md`](https://github.com/o3co/xx.hocon/blob/main/docs/extra-spec-conventions.md).
 
