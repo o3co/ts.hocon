@@ -1,12 +1,14 @@
 // tests/zod-unit-markers.test.ts
 // hocon.duration() / hocon.bytes() — Zod schema markers for HOCON unit values
-// (ts.hocon#195). A marker must read exactly what the matching Config getter
-// reads, so the parity tables below run each input through both.
+// (ts.hocon#195). A marker must read what the matching Config getter reads, so
+// the parity tables below run each input through both. The one documented
+// difference — number literals in exponent form — is pinned separately.
 
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
 import { parse } from '../src/parse.js'
 import { getValidated, hocon, parseWithSchema, validate } from '../src/zod.js'
+import { readBytes, readDuration } from '../src/coerce.js'
 import type { ByteUnit, DurationUnit } from '../src/coerce.js'
 
 /** The getter's answer: a number, or 'error' when it throws. */
@@ -39,7 +41,7 @@ describe('hocon.duration()', () => {
 
   const inputs = [
     'v = 30m', 'v = "30 m"', 'v = 1500', 'v = 1.5s', 'v = 2 days', 'v = 10ns', 'v = 0',
-    'v = -5s', 'v = "  7 h  "', 'v = 1e3', 'v = 0.0000001', 'v = 30M', 'v = 30 parsecs',
+    'v = -5s', 'v = "  7 h  "', 'v = 0.000001', 'v = 30M', 'v = 30 parsecs',
     'v = abc', 'v = ""', 'v = true', 'v = null', 'v = [1]', 'v { a = 1 }',
   ]
   const units: (DurationUnit | undefined)[] = [undefined, 'ns', 'ms', 's', 'm', 'd']
@@ -84,7 +86,7 @@ describe('hocon.duration()', () => {
     expect(() => getValidated(parse('t = 1500ms'), 't', schema)).toThrow(/int/)
   })
 
-  it('is recognised through optional / default / nullable / describe / nested pipes', () => {
+  it('works through optional / default / nullable / describe / nested pipes', () => {
     const schema = z.object({
       a: hocon.duration('s').optional(),
       b: hocon.duration('s').default(5),
@@ -110,10 +112,38 @@ describe('hocon.duration()', () => {
     expect(getValidated(cfg, 'session', schema)).toEqual({ idle: 45, lifetime: 1800 })
   })
 
-  it('reads the plain value when parsed outside the entry points', () => {
+  it('works in record, union and intersection positions', () => {
+    const schema = z.object({
+      timeouts: z.record(z.string(), hocon.duration('s')),
+      retry: z.union([z.literal('never'), hocon.duration('s')]),
+      both: z.intersection(z.object({ a: hocon.duration('s') }), z.object({ b: z.string() })),
+    })
+    const cfg = parse('timeouts { read = 5s, write = 1m }\nretry = 2s\nboth { a = 1m, b = x }')
+    expect(validate(cfg, schema)).toEqual({
+      timeouts: { read: 5, write: 60 }, retry: 2, both: { a: 60, b: 'x' },
+    })
+  })
+
+  it('works on a partially unresolved config', () => {
+    const cfg = parse('t = 30s\nu = ${missing}', { resolveSubstitutions: false })
+    expect(validate(cfg, z.object({ t: hocon.duration('s') }))).toEqual({ t: 30 })
+    expect(validate(cfg, z.object({ t: z.string() }))).toEqual({ t: '30s' })
+  })
+
+  it('works with schema.parse directly', () => {
     expect(hocon.duration('s').parse('30m')).toBe(1800)
     expect(hocon.duration('s').parse(2000)).toBe(2)
     expect(() => hocon.duration().parse(true)).toThrow(/expected duration, got boolean/)
+  })
+
+  // Documented difference: a marker reads a number through String(n), the
+  // getters read the literal's source text, and the two differ only for
+  // exponent forms. Pinned so a change here is a deliberate one.
+  it('reads a number literal in exponent form through its JS value', () => {
+    expect(viaGetter(() => parse('v = 1e3').getDuration('v'))).toBe('error')
+    expect(viaMarker(hocon.duration(), 'v = 1e3')).toBe(1000)
+    expect(viaGetter(() => parse('v = 0.0000001').getDuration('v'))).toBe(1e-7)
+    expect(viaMarker(hocon.duration(), 'v = 0.0000001')).toBe('error')
   })
 })
 
@@ -158,7 +188,18 @@ describe('hocon.bytes()', () => {
     })
     expect(issueFor('limits.body = 1E')).toMatchObject({
       path: ['limits', 'body'],
-      message: expect.stringMatching(/overflows/),
+      message: 'byte size overflows the representable range: "1E"',
     })
+  })
+})
+
+describe('unit readers (coerce.ts)', () => {
+  it('report why a text is not a unit value', () => {
+    expect(readDuration('90s', 's')).toEqual({ ok: true, value: 90 })
+    expect(readDuration('90 parsecs')).toEqual({ ok: false, problem: 'invalid' })
+    expect(readBytes('1KiB')).toEqual({ ok: true, value: 1024 })
+    expect(readBytes('-1')).toEqual({ ok: false, problem: 'negative' })
+    expect(readBytes('1E')).toEqual({ ok: false, problem: 'overflow' })
+    expect(readBytes('abc')).toEqual({ ok: false, problem: 'invalid' })
   })
 })
