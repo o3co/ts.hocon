@@ -64,6 +64,20 @@ describe('Zod entry points on an unresolved Config', () => {
     }
   })
 
+  it('validates a subtree that a partial resolve has resolved (Codex on #210)', () => {
+    const cfg = parse('a { x = ${v} }\nv = 1\nu = ${missing}', { resolveSubstitutions: false })
+      .resolve({ allowUnresolved: true, useSystemEnvironment: false })
+    expect(getValidated(cfg, 'a', z.object({ x: z.number() }))).toEqual({ x: 1 })
+    expect(() => getValidated(cfg, 'u', z.any())).toThrow(NotResolvedError)
+    expect(() => validate(cfg, z.any())).toThrow(NotResolvedError)
+  })
+
+  it('treats an array left unresolved by a partial resolve as unresolved', () => {
+    const cfg = parse('arr = [1, ${y}]', { resolveSubstitutions: false })
+      .resolve({ allowUnresolved: true, useSystemEnvironment: false })
+    expect(() => validate(cfg, z.any())).toThrow(NotResolvedError)
+  })
+
   it('a deferred parse without substitutions validates as before', () => {
     expect(validate(parse('a = 1', { resolveSubstitutions: false }), z.object({ a: z.number() }))).toEqual({ a: 1 })
   })
