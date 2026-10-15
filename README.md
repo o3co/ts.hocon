@@ -444,6 +444,45 @@ JSON.parse is V8's native C++ implementation — the fastest possible baseline. 
 
 For typical application configs (loaded once at startup), the parsing cost is negligible — even a 1,000-key config parses in under 0.5 ms.
 
+### Comparison with other HOCON parsers
+
+✅ Full support / ⚠️ Partial / ❌ Not supported
+
+Verified against [@pushcorn/hocon-parser](https://www.npmjs.com/package/@pushcorn/hocon-parser) **v1.3.1** on 2026-10-16.
+
+| Feature | ts.hocon | @pushcorn/hocon-parser v1.3.1 |
+| --- | :---: | :---: |
+| Substitutions (`${path}`) | ✅ | ✅ |
+| Optional substitutions (`${?path}`) | ✅ | ✅ |
+| Self-referential substitutions (`path = ${path}":/bin"`) | ✅ | ✅ |
+| Object/Array concatenation | ✅ | ✅ |
+| String concatenation | ✅ | ⚠️ (a concatenation that looks like a number or boolean becomes one: `${major}.${minor}` → `1.2`) |
+| `+=` append | ✅ | ⚠️ (a scalar is appended as a string: `items += 2` adds `"2"`) |
+| Env variable fallback | ✅ | ✅ |
+| `include "file"` / `include file(...)` | ✅ | ✅ |
+| `include required(...)` | ✅ | ✅ |
+| `.json` includes | ✅ | ✅ |
+| `.properties` includes | ✅ | ⚠️ (parsed as HOCON text: no `!` comments or `\` line continuations; values become numbers and booleans unless `strict`) |
+| Circular include detection | ✅ | ✅ |
+| `include url(...)` | ❌ (by design — see [Known Limitations](#known-limitations)) | ✅ (http / https) |
+| `include classpath(...)` | ❌ (by design — see [Known Limitations](#known-limitations)) | ⚠️ (alias of `modulepath(...)`: a file search under the working directory and the library's ancestor directories) |
+| Include a file from an installed npm package | ✅ (`include package(...)`, E11) | ❌ (no package-name resolution; `modulepath(...)` searches cwd and the project root, not `node_modules`) |
+| Custom include sources | ⚠️ (custom `readFile` / `readFileSync` and `packageResolver`; no new include forms) | ✅ (register a `<Protocol>Source`) |
+| Include as a value, incl. non-HOCON files (`key = include host.crt`, `.js` modules) | ❌ (not in HOCON.md) | ✅ (`.js` is executed) |
+| Substitutions in keys, include targets and other substitutions; array indexes in paths (`${a.${b}}`, `${list.0}`) | ❌ (not in HOCON.md) | ✅ |
+| Value transforms (`[3, 1, 2] \| sort`, `\| filter`, `\| eval`) | ❌ (not in HOCON.md) | ✅ |
+| Duration / byte size / period parsing (`30s`, `512MiB`, `2w`) | ✅ | ❌ (values stay strings) |
+| Typed getters / schema validation | ✅ (`getString` …, Zod) | ❌ (returns a plain object) |
+| TypeScript type definitions | ✅ | ❌ (no `.d.ts`; no `types` field in package.json) |
+| Fallback layering / deferred resolution (E12) | ✅ (`withFallback`, `resolve`, `resolveWith`) | ⚠️ (`scope` option supplies substitution values; no fallback merge) |
+| Sync and async API | ✅ | ⚠️ (async only) |
+| Typed errors with line / column | ⚠️ (`ParseError`, `ResolveError`; include errors report position 0:0) | ⚠️ (plain `Error`; the position is in the message text) |
+| Render back to HOCON text | ✅ (`renderHocon()`) | ❌ |
+| Runs in browsers | ✅ (`parse` / `parseAsync`; see [Browser Compatibility](#browser-compatibility)) | ❌ (Node.js only) |
+| Bundled CLI (HOCON → JSON) | ❌ (separate tool: [hocon2](https://github.com/o3co/hocon2)) | ✅ (`parse-hocon`) |
+
+Rows marked *not in HOCON.md* are syntax extensions of @pushcorn/hocon-parser (see its README's "Divergence from the HOCON Spec"); ts.hocon keeps to the spec and either rejects that syntax or reads it as an ordinary value. The @pushcorn/hocon-parser cells describe its default mode; `strict: true` turns off its `@` include shorthand.
+
 ### Feature Comparison with node-config
 
 Feature-level comparison with [node-config](https://github.com/node-config/node-config) **v5.0.1** reading JSON config files, as of 2026-10-16:

@@ -443,6 +443,45 @@ JSON.parse は V8 のネイティブ C++ 実装であり、最速の基準線で
 
 一般的なアプリケーション設定（起動時に1回読み込み）であれば、パースコストは無視できるレベルです。1,000キーの設定でも 0.5 ms 未満でパースできます。
 
+### 他の HOCON パーサーとの比較
+
+✅ 対応 / ⚠️ 部分対応 / ❌ 非対応
+
+[@pushcorn/hocon-parser](https://www.npmjs.com/package/@pushcorn/hocon-parser) **v1.3.1** に対して 2026-10-16 に検証。
+
+| 機能 | ts.hocon | @pushcorn/hocon-parser v1.3.1 |
+| --- | :---: | :---: |
+| substitution（`${path}`） | ✅ | ✅ |
+| optional substitution（`${?path}`） | ✅ | ✅ |
+| 自己参照 substitution（`path = ${path}":/bin"`） | ✅ | ✅ |
+| オブジェクト / 配列の連結 | ✅ | ✅ |
+| 文字列の連結 | ✅ | ⚠️（数値や真偽値に見える連結結果はその型になる: `${major}.${minor}` → `1.2`） |
+| `+=` 追加 | ✅ | ⚠️（スカラーは文字列として追加される: `items += 2` で `"2"` が入る） |
+| 環境変数フォールバック | ✅ | ✅ |
+| `include "file"` / `include file(...)` | ✅ | ✅ |
+| `include required(...)` | ✅ | ✅ |
+| `.json` の include | ✅ | ✅ |
+| `.properties` の include | ✅ | ⚠️（HOCON テキストとして解析: `!` コメントと `\` 行継続は使えない。`strict` でなければ値は数値・真偽値になる） |
+| include の循環検出 | ✅ | ✅ |
+| `include url(...)` | ❌（設計上の選択 — [既知の制限](#既知の制限) を参照） | ✅（http / https） |
+| `include classpath(...)` | ❌（設計上の選択 — [既知の制限](#既知の制限) を参照） | ⚠️（`modulepath(...)` の別名: 作業ディレクトリとライブラリの祖先ディレクトリからファイルを探す） |
+| インストール済み npm パッケージ内のファイルの include | ✅（`include package(...)`、E11） | ❌（パッケージ名の解決は無い。`modulepath(...)` は作業ディレクトリとプロジェクトのルートを探し、`node_modules` は探さない） |
+| include の読み込み元の差し替え | ⚠️（独自の `readFile` / `readFileSync` と `packageResolver`。include の形式は増やせない） | ✅（`<Protocol>Source` を登録） |
+| 値としての include（HOCON 以外のファイルを含む: `key = include host.crt`、`.js` モジュール） | ❌（HOCON.md に無い） | ✅（`.js` は実行される） |
+| キー・include 先・他の substitution の中での substitution、パス中の配列添字（`${a.${b}}`、`${list.0}`） | ❌（HOCON.md に無い） | ✅ |
+| 値の変換（`[3, 1, 2] \| sort`、`\| filter`、`\| eval`） | ❌（HOCON.md に無い） | ✅ |
+| duration / byte size / period の解釈（`30s`、`512MiB`、`2w`） | ✅ | ❌（文字列のまま） |
+| 型付きゲッター / スキーマ検証 | ✅（`getString` など、Zod） | ❌（素のオブジェクトを返す） |
+| TypeScript の型定義 | ✅ | ❌（`.d.ts` も package.json の `types` も無い） |
+| フォールバックの重ね合わせ / 遅延解決（E12） | ✅（`withFallback`、`resolve`、`resolveWith`） | ⚠️（`scope` オプションで substitution の値を渡せる。フォールバックのマージは無い） |
+| 同期 API と非同期 API | ✅ | ⚠️（非同期のみ） |
+| 行 / 列を持つ型付きエラー | ⚠️（`ParseError`、`ResolveError`。include のエラーは位置が 0:0） | ⚠️（素の `Error`。位置はメッセージ文字列の中） |
+| HOCON テキストへの書き戻し | ✅（`renderHocon()`） | ❌ |
+| ブラウザで動く | ✅（`parse` / `parseAsync`。[ブラウザ対応](#ブラウザ対応) を参照） | ❌（Node.js 専用） |
+| 同梱 CLI（HOCON → JSON） | ❌（別ツール: [hocon2](https://github.com/o3co/hocon2)） | ✅（`parse-hocon`） |
+
+「HOCON.md に無い」と書いた行は @pushcorn/hocon-parser 独自の構文拡張です（同パッケージの README の "Divergence from the HOCON Spec" を参照）。ts.hocon は仕様の範囲にとどまり、その構文はエラーにするか、通常の値として読みます。@pushcorn/hocon-parser の欄は既定モードでの挙動です。`strict: true` にすると `@` による include の短縮記法が使えなくなります。
+
 ### node-config との機能比較
 
 JSON の設定ファイルを読む [node-config](https://github.com/node-config/node-config) **v5.0.1** との機能比較（2026-10-16 時点）:
