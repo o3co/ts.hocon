@@ -112,7 +112,7 @@ export class Config {
       // Absent: a placeholder leaf is omitted from the partial root, so an
       // unresolved scalar reads as "missing" — distinguish it from a genuinely
       // absent path (matches the typed scalar getters' requireScalar branch).
-      if (!this._resolved && this._resObjRootSubtreeHasPlaceholders(path)) {
+      if (!this._resolved && this._subtreeHasPlaceholders(path)) {
         throw new NotResolvedError(path)
       }
       return undefined
@@ -122,7 +122,7 @@ export class Config {
     // check, matching getString/getNumber. A present object/array container may
     // still hide placeholder children omitted from the partial root, so apply
     // the subtree check there, matching getConfig/getList.
-    if (v.kind !== 'scalar' && !this._resolved && this._resObjRootSubtreeHasPlaceholders(path)) {
+    if (v.kind !== 'scalar' && !this._resolved && this._subtreeHasPlaceholders(path)) {
       throw new NotResolvedError(path)
     }
     return v
@@ -268,7 +268,7 @@ export class Config {
   getConfig(path: string): Config {
     const v = this.lookupNode(path)
     if (v === undefined) {
-      if (!this._resolved && this._resObjRootSubtreeHasPlaceholders(path)) {
+      if (!this._resolved && this._subtreeHasPlaceholders(path)) {
         throw new NotResolvedError(path)
       }
       throw new ConfigError(`path not found: ${path}`, path)
@@ -277,10 +277,11 @@ export class Config {
     // T2: even when a partial value was found, the underlying ResObj subtree may
     // contain unresolved placeholders (omitted from the partial root). Throw
     // NotResolvedError when the subtree at this path is unresolved.
-    if (!this._resolved && this._resObjRootSubtreeHasPlaceholders(path)) {
+    if (!this._resolved && this._subtreeHasPlaceholders(path)) {
       throw new NotResolvedError(path)
     }
-    return new Config(v, { resolved: this._resolved })
+    // The subtree check above passed, so nothing under `path` is unresolved.
+    return new Config(v, { resolved: true })
   }
 
   /**
@@ -294,7 +295,7 @@ export class Config {
   getList(path: string): unknown[] {
     const v = this.lookupNode(path)
     if (v === undefined) {
-      if (!this._resolved && this._resObjRootSubtreeHasPlaceholders(path)) {
+      if (!this._resolved && this._subtreeHasPlaceholders(path)) {
         throw new NotResolvedError(path)
       }
       throw new ConfigError(`path not found: ${path}`, path)
@@ -303,7 +304,7 @@ export class Config {
     // (T1 handles the case where the array field is omitted from the partial root;
     // this guard handles the case where the field IS present but sub-paths of a
     // returned object in the list would be unresolved — belt-and-suspenders.)
-    if (!this._resolved && this._resObjRootSubtreeHasPlaceholders(path)) {
+    if (!this._resolved && this._subtreeHasPlaceholders(path)) {
       throw new NotResolvedError(path)
     }
     // S15: if the value is a numerically-keyed object, convert to array before type check.
@@ -579,8 +580,9 @@ export class Config {
   }
 
   /**
-   * _resObjRootSubtreeHasPlaceholders — walk _resObjRoot to the given path and
-   * return true if the subtree there contains any unresolved placeholder.
+   * _subtreeHasPlaceholders — walk the unresolved tree (`_pendingRoot` after a
+   * partial resolve, else `_resObjRoot`) to the given path and return true if
+   * the subtree there contains any unresolved placeholder.
    * Used by getConfig / getList (T2) to detect transitive unresolved placeholders
    * in object / array subtrees that would otherwise appear to be "resolved" in the
    * partial HoconValue root (because individual leaf fields are omitted rather than
@@ -588,7 +590,7 @@ export class Config {
    * sub-containers are retained in the partial root with the placeholder-keyed
    * fields omitted from them — so the object appears "present but empty-ish").
    */
-  private _resObjRootSubtreeHasPlaceholders(path: string): boolean {
+  private _subtreeHasPlaceholders(path: string): boolean {
     const tree = this._pendingRoot ?? this._resObjRoot
     if (!tree) return false
     const segments = splitConfigPath(path)
@@ -614,7 +616,7 @@ export class Config {
       // Distinguish placeholder paths (NotResolvedError) from truly-missing
       // paths (ConfigError) — even on unresolved configs, a path absent from
       // _resObjRoot is genuinely not present.
-      if (!this._resolved && this._resObjRootSubtreeHasPlaceholders(path)) {
+      if (!this._resolved && this._subtreeHasPlaceholders(path)) {
         throw new NotResolvedError(path)
       }
       throw new ConfigError(`path not found: ${path}`, path)
