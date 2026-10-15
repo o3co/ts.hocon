@@ -795,8 +795,9 @@ function renderHoconAsJSON(v: HoconValue): string {
           // xx.hocon#50. Fill in the digit JSON needs around a bare dot, as
           // Lightbend reads these as numbers (`1.`->1.0, `-.5`->-0.5,
           // `1.e5`->1.0e5; xx.hocon us60-us63, go#208). Render-only:
-          // getString/concat still see the verbatim lexeme (S10.11). Anything
-          // still not a JSON number is quoted, so the output is always JSON.
+          // getString/concat still see the verbatim lexeme (S10.11). Quoting
+          // what is still not a JSON number is defensive: the parser's number
+          // lexemes all complete to one.
           const norm = completeJsonNumber(normalizeLeadingZeroNumber(v.raw))
           return JSON_NUMBER_RE.test(norm) ? norm : JSON.stringify(v.raw)
         }
