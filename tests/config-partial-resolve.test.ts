@@ -44,6 +44,28 @@ describe('resolve({ allowUnresolved: true })', () => {
     expect(done.toObject()).toEqual({ a: { x: 1 }, v: 1, u: 'm', arr: [1, 2], missing: 'm', y: 2 })
   })
 
+  it('keeps an object with a substitution inside an array, and resolves it later', () => {
+    // It used to read as [{}] with isResolved() true, and a later resolve with
+    // a fallback kept [{}]: the value was lost.
+    const cfg = partial('arr = [{ p = ${y} }]')
+    expect(cfg.isResolved()).toBe(false)
+    expect(() => cfg.getList('arr')).toThrow(NotResolvedError)
+    const done = cfg.withFallback(fromMap({ y: 2 })).resolve({ useSystemEnvironment: false })
+    expect(done.getList('arr')).toEqual([{ p: 2 }])
+  })
+
+  it('keeps a += with a substitution left unresolved', () => {
+    const cfg = partial('a = [1]\na += ${m}')
+    expect(() => cfg.getList('a')).toThrow(NotResolvedError)
+    expect(cfg.withFallback(fromMap({ m: 2 })).resolve({ useSystemEnvironment: false }).getList('a')).toEqual([1, 2])
+  })
+
+  it('returns a resolved subtree from getConfig as resolved', () => {
+    const sub = partial('a { x = ${v} }\nv = 1\nu = ${missing}').getConfig('a')
+    expect(sub.isResolved()).toBe(true)
+    expect(sub.renderHocon()).toContain('x = 1')
+  })
+
   it('is fully resolved when nothing is left', () => {
     const cfg = partial('v = 1\na { x = ${v} }\narr = [${v}]')
     expect(cfg.isResolved()).toBe(true)

@@ -47,7 +47,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     reported `isResolved() === true` (`arr = [1, ${y}]` read as `[1, null]`).
     Such an array is now unresolved: `getList` throws `NotResolvedError`, as it
     does after a deferred parse, and a later `resolve()` with a fallback fills
-    it in.
+    it in. An object with a substitution inside an array (`[{ p = ${y} }]`)
+    read as `{}`, and a later resolve with a fallback kept `{}`: the value was
+    lost. It now resolves to `{ p: … }`.
+  - An optional substitution left undefined (`a = ${?m}`) reads as absent, as
+    after a full resolve, instead of throwing `NotResolvedError`.
+  - `getConfig` on a partially resolved Config returns the subtree as resolved
+    (it only returns one that has nothing unresolved), so `isResolved()` and
+    `renderHocon()` work on it.
 - **BREAKING: `getBytes` reports an overflowing byte size as `ConfigError`.** A
   size beyond 2^53-1 bytes (`1E`, `1ZB`, `9007199254740993`) threw a
   `RangeError` without the path, unlike every other getter error and unlike
