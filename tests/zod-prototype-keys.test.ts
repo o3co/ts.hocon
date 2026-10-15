@@ -15,6 +15,7 @@ import { join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
 import { z } from 'zod'
 import { parse } from '../src/parse.js'
+import { NotResolvedError } from '../src/errors.js'
 import { getValidated, parseFileWithSchema, parseWithSchema, validate } from '../src/zod.js'
 
 const message = (key: string) => `key "${key}" names an object's prototype`
@@ -106,10 +107,9 @@ describe('prototype-named keys', () => {
     expect(refused(() => parseFileWithSchema(file, schema))).toEqual([{ path: [], key: 'prototype' }])
   })
 
-  it('does not see a key whose value is still an unresolved substitution', () => {
-    // An unresolved value is left out of the plain value, so the schema never sees it either.
+  it('reports an unresolved value first, as NotResolvedError (#210)', () => {
     const cfg = parse('a { "constructor" = ${missing}, ok = 1 }', { resolveSubstitutions: false })
-    expect(validate(cfg, z.object({ a: z.object({ ok: z.number() }) }))).toEqual({ a: { ok: 1 } })
+    expect(() => validate(cfg, z.object({ a: z.object({ ok: z.number() }) }))).toThrow(NotResolvedError)
   })
 
   it('leaves keys that only resemble them alone', () => {

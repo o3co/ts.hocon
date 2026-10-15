@@ -276,6 +276,8 @@ getValidated(cfg, 'backup', Backup) // { keep: { years: 0, months: 0, days: 14 }
 
 不正な duration / byte size / period は、キーのパス付きのバリデーションエラーになります。マーカーは普通の Zod スキーマなので、`validate`・`getValidated`・`parseWithSchema`・`parseFileWithSchema` をはじめ、Zod が実行するところならどこでも使えます。数値は JavaScript の値として読むため、double の精度を超える桁数の数値リテラル（`1.99999999999999999` B は `getBytes()` では 1、マーカーでは 2）や、指数表記の数値リテラル（`1e3`、または JavaScript が指数表記で表示する 1e-6 未満・1e21 以上の値）は、リテラルの文字列を正確に読む getter と結果が異なることがあります（getter が拒否する値を通す場合も、その逆もあります）。period のマーカーは、小数点付きのリテラル（`7.0`）も整数として読みます（`getPeriod()` は拒否します）。単位付きで書けば（`30s`、`7d`）どちらの差も出ません。
 
+未解決の Config（`resolveSubstitutions: false` でパースしたもの、`resolve()` 前のフォールバックの重なり、または何かが残った `resolve({ allowUnresolved: true })` の結果）に対しては、`validate` は保留中の値が欠けたツリーを検証するのではなく、getter と同じく `NotResolvedError` を投げます。`getValidated` は、値が未解決のパスでは `NotResolvedError` を投げ、解決済みのパスなら検証します。先に `resolve()` を呼んでください。
+
 Zod をピア依存としてインストール:
 ```bash
 npm install zod
@@ -292,7 +294,7 @@ import { ParseError, ResolveError, PackageLookupError, ConfigError, NotResolvedE
 // ResolveError       — 代入・include 解決エラー: .path, .line, .col, .file?
 // PackageLookupError — include package(...) が見つからない（ResolveError のサブクラス）: .identifier, .packageFile
 // ConfigError        — 型不一致・パス不存在・不正な値: .path
-// NotResolvedError   — 未解決の値を getter で読んだ（ConfigError のサブクラス）: .path
+// NotResolvedError   — 未解決の値を getter や Zod の入口で読んだ（ConfigError のサブクラス）: .path
 ```
 
 どのエントリポイント（`/zod`、`/adapters/*`）もこれらと同じクラスを投げるので、同じモジュールシステムの中であれば、root の export に対する `instanceof` がエントリポイントをまたいで効きます。Zod の入口は、値がスキーマに合わないとき `ZodError` を投げます。
