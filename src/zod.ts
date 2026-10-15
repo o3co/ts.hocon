@@ -1,6 +1,8 @@
-import type { ZodType } from 'zod'
+import { z } from 'zod'
+import type { ZodTransform, ZodType } from 'zod'
 
-import { coerceBoolean, coerceNumber } from './coerce.js'
+import { coerceBoolean, coerceNumber, readBytes, readDuration } from './coerce.js'
+import type { ByteUnit, DurationUnit, UnitProblem, UnitReading } from './coerce.js'
 import type { Config } from './config.js'
 // NOTE: parse/parseFile are imported at module level. This means importing
 // '@o3co/ts.hocon/zod' pulls in Node.js built-ins (fs, path). Consumers
@@ -19,6 +21,75 @@ export function getValidated<T>(config: Config, path: string, schema: ZodType<T>
   const val = config.get(path)
   const coerced = coerceValue(val, schema)
   return schema.parse(coerced)
+}
+
+// ─── unit markers ─────────────────────────────────────────────────────────────
+// A unit marker is a Zod schema that reads a HOCON unit value (a duration, a
+// byte size) and gives a number. ts.hocon owns the unit rules (the readers in
+// coerce.ts); the schema the marker is piped into owns the constraints (range,
+// integer, …). A marker is a plain transform, so it works wherever Zod runs it.
+//
+// It reads the plain value: a string as written, a number through String(n).
+// String(n) is the literal's own text except for exponent forms (and -0), so a
+// number literal written with an exponent (`1e3`) or printed with one (below
+// 1e-6, at or above 1e21) can read differently from the getters, which read the
+// source text: a marker can accept a value the getter refuses, and the reverse.
+
+function unitMarker(what: string, read: (text: string) => UnitReading): ZodTransform<number, unknown> {
+  return z.transform((input: unknown, ctx): number => {
+    if (typeof input !== 'string' && typeof input !== 'number') {
+      ctx.issues.push({ code: 'custom', message: `expected ${what}, got ${describeInput(input)}`, input })
+      return z.NEVER
+    }
+    const text = typeof input === 'string' ? input : String(input)
+    const reading = read(text)
+    if (reading.ok) return reading.value
+    ctx.issues.push({ code: 'custom', message: unitProblemMessage(what, reading.problem, text), input })
+    return z.NEVER
+  })
+}
+
+function unitProblemMessage(what: string, problem: UnitProblem, text: string): string {
+  switch (problem) {
+    case 'invalid': return `invalid ${what}: ${JSON.stringify(text)}`
+    case 'negative': return `${what} must be non-negative: ${JSON.stringify(text)}`
+    case 'overflow': return `${what} overflows the representable range: ${JSON.stringify(text)}`
+  }
+}
+
+function describeInput(input: unknown): string {
+  if (input === null) return 'null'
+  if (Array.isArray(input)) return 'array'
+  return typeof input
+}
+
+/**
+ * Zod schema markers for HOCON unit values. Each reads the forms the matching
+ * Config getter reads and gives a number in the requested unit; pipe it into a
+ * number schema for the constraints:
+ *
+ * ```ts
+ * const Session = z.object({
+ *   lifetime: hocon.duration('s').pipe(z.number().int().min(60)),
+ *   maxBody: hocon.bytes().pipe(z.number().int().positive()),
+ * })
+ * ```
+ */
+export const hocon = {
+  /**
+   * A duration, read as {@link Config.getDuration} reads it (default unit `ms`),
+   * except that a number literal in exponent form can read differently.
+   */
+  duration(unit?: DurationUnit): ZodTransform<number, unknown> {
+    return unitMarker('duration', (text) => readDuration(text, unit))
+  },
+  /**
+   * A byte size, read as {@link Config.getBytes} reads it (default unit `B`),
+   * except that a number literal in exponent form can read differently.
+   */
+  bytes(unit?: ByteUnit): ZodTransform<number, unknown> {
+    return unitMarker('byte size', (text) => readBytes(text, unit))
+  },
 }
 
 function getDefType(schema: ZodType): string | undefined {

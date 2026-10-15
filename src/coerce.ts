@@ -180,3 +180,35 @@ export function parseBytes(value: string, outputUnit: ByteUnit = 'B'): number {
   const result = bytes / divisor
   return outputUnit === 'B' ? Math.round(result) : result
 }
+
+// ─── unit readers ─────────────────────────────────────────────────────────────
+// What a unit value accepts, as one rule per unit system: the grammar above plus
+// the unit system's own invariants. `text` is the value as written (a string
+// scalar, or a number in decimal form). The zod markers read through these;
+// Config.getDuration / getBytes are to follow.
+
+/** Why a text is not a value of a unit system. */
+export type UnitProblem = 'invalid' | 'negative' | 'overflow'
+
+export type UnitReading = { ok: true; value: number } | { ok: false; problem: UnitProblem }
+
+/** A duration in `outputUnit` (default `ms`; a bare number is milliseconds). */
+export function readDuration(text: string, outputUnit?: DurationUnit): UnitReading {
+  const value = parseDuration(text, outputUnit)
+  return Number.isNaN(value) ? { ok: false, problem: 'invalid' } : { ok: true, value }
+}
+
+/** A byte size in `outputUnit` (default `B`; a bare number is bytes). */
+export function readBytes(text: string, outputUnit?: ByteUnit): UnitReading {
+  let value: number
+  try {
+    value = parseBytes(text, outputUnit)
+  } catch (err) {
+    if (err instanceof RangeError) return { ok: false, problem: 'overflow' }
+    throw err
+  }
+  if (Number.isNaN(value)) return { ok: false, problem: 'invalid' }
+  // Lightbend getBytesBigInteger: byte sizes are non-negative.
+  if (value < 0) return { ok: false, problem: 'negative' }
+  return { ok: true, value }
+}

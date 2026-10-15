@@ -196,6 +196,22 @@ const app = validate(cfg, Schema)
 const port = getValidated(cfg, 'server.port', z.number().int())
 ```
 
+Durations and byte sizes are strings in HOCON (`30m`, `64KiB`), so `z.number()` refuses them. The `hocon.duration(unit?)` and `hocon.bytes(unit?)` markers read them with the same rules as `getDuration()` / `getBytes()` and give a number in the requested unit (default `ms` / `B`; a plain number keeps the getters' meaning). Pipe the marker into a number schema for range and integer checks:
+
+```ts
+import { hocon, getValidated } from '@o3co/ts.hocon/zod'
+
+const Session = z.object({
+  lifetime: hocon.duration('s').pipe(z.number().int().min(60).max(86_400)),
+  maxBody: hocon.bytes().pipe(z.number().int().positive()),
+})
+
+// session { lifetime = 30m, maxBody = 64KiB }
+getValidated(cfg, 'session', Session) // { lifetime: 1800, maxBody: 65536 }
+```
+
+An invalid duration or size fails validation with the key's path. The markers are ordinary Zod schemas, so they work in `validate`, `getValidated`, `parseWithSchema`, `parseFileWithSchema` and anywhere else Zod runs them. A marker reads a number through its JavaScript value, so a number literal in exponent form (`1e3`, or one JavaScript prints that way, below 1e-6 or from 1e21) can read differently from the getters (accepted where the getter refuses it, or the reverse); write durations and sizes with a unit to avoid this.
+
 Install Zod as a peer dependency:
 ```bash
 npm install zod
