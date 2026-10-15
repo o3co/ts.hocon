@@ -109,7 +109,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   gains `chunk-*.js` / `chunk-*.cjs` files; the `exports` map and the type
   declarations are unchanged. This holds within one module system: a process
   that loads the package through both `require()` and `import()` still gets
-  two copies of each class (the dual-package hazard).
+  two copies of each class (the dual-package hazard). The CJS chunks name no
+  `__filename`, `__dirname` or `import.meta` (tsup's `import.meta.url` shim
+  is not used), so a bundle of the CJS output also loads where `document` is
+  absent (Web / Service Workers, edge runtimes).
+- **Browser bundles: no configuration in Vite, an empty-module stub
+  elsewhere.** The package imports the Node built-ins `fs`, `path`, `module`
+  and `url` (file reading, `include package(...)`); `module` and `url` were
+  named imports, so a bundler that replaces Node built-ins with an empty
+  module failed the build (Vite 7: `"createRequire" is not exported by
+  "__vite-browser-external"`). They are namespace imports now: Vite 7 and 8
+  build and run it as is, and other bundlers need the four built-ins mapped
+  to an empty module. The README's "no Node.js required" overstated this.
 
 - **BREAKING (extra-spec E19, xx.hocon#97): a numeric literal whose magnitude
   overflows the double range (`1e999`) is now a parse error** instead of

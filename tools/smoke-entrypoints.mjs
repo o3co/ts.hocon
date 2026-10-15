@@ -8,7 +8,7 @@
 // throwing at load, and the ESM `include package(...)` regression that briefly
 // replaced it.
 //
-// So this gate runs against the built output, and does four things:
+// So this gate runs against the built output, and does five things:
 //
 //   1. LOADs every subpath in package.json "exports" under both module systems.
 //   2. USEs it — calls the entrypoint's real function and checks the answer.
@@ -16,6 +16,12 @@
 //   4. Checks that what a subpath returns or throws is an instance of the
 //      classes the root entrypoint exports (Config, ConfigError, ParseError,
 //      …), so `instanceof` holds across entrypoints in both module systems.
+//   5. Checks that no CJS file names `__filename`, `__dirname` or `import.meta`.
+//      A bundler that takes the "require" condition evaluates the CJS output
+//      without Node's module wrapper, so a load-time `__filename` crashes every
+//      entrypoint where there is no `document` either (what tsup's CJS shim
+//      did, in Web / Service Workers and edge runtimes), and `import.meta` is
+//      a SyntaxError in CJS anywhere.
 //
 // Step 2 is the point. A load-only check cannot see a defect whose whole nature
 // is that it defers work to first use, which is what the `require`-shim bug was.
@@ -25,7 +31,7 @@
 // Usage: node tools/smoke-entrypoints.mjs   (`pnpm smoke` builds first)
 
 import { createRequire } from 'node:module'
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, rmSync, existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { tmpdir } from 'node:os'
@@ -233,6 +239,23 @@ for (const subpath of subpaths) {
     } catch (e) {
       fail(`import('${specifier}') instanceof`, e)
     }
+  }
+}
+
+// ─── CJS output free of Node-wrapper globals ─────────────────────────────────
+// Node's CJS wrapper provides __filename / __dirname; a browser bundler that
+// consumes the CJS output does not. Checked by text: these names have no
+// business in the built CJS at all (the source never uses them), so any
+// occurrence is a bundler artifact.
+{
+  const cjsFiles = (dir) => readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
+    e.isDirectory() ? cjsFiles(join(dir, e.name)) : e.name.endsWith('.cjs') ? [join(dir, e.name)] : [])
+  for (const file of cjsFiles(join(root, 'dist'))) {
+    const text = readFileSync(file, 'utf-8')
+    const found = ['__filename', '__dirname', 'import.meta'].filter((name) => text.includes(name))
+    const label = file.slice(root.length + 1)
+    if (found.length > 0) fail(label, new Error(`CJS output names ${found.join(', ')}`))
+    else console.log(`ok   ${label} names no __filename / __dirname / import.meta`)
   }
 }
 

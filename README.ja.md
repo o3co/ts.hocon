@@ -84,7 +84,7 @@ HOCON は単なるシリアライズ形式ではなく、**プログラムに注
 - 同期・非同期 API（`parse` / `parseAsync` / `parseFile` / `parseFileAsync`）
 - ESM + CJS デュアルパッケージ（全エントリポイントを CI で両形式ロード検証）
 - [Zod](https://zod.dev/) スキーマバリデーション統合（オプション）
-- ブラウザ対応（`parse`/`parseAsync` — Node.js 不要）
+- ブラウザで動作（`parse`/`parseAsync`。bundler で Node の組み込みモジュールを stub する必要あり。[ブラウザ対応](#ブラウザ対応)を参照）
 
 ## API
 
@@ -289,7 +289,14 @@ ts.hocon は [node-config](https://github.com/node-config/node-config)（JSON）
 
 ## ブラウザ対応
 
-`parse()` と `parseAsync()` はブラウザで動作します。`parseFile()` と `parseFileAsync()` は Node.js（またはカスタムの `readFileSync`/`readFile` オプション）が必要です。
+`parse()` と `parseAsync()` はブラウザで動作します。adapter と Zod 連携も同じです。`parseFile()` と `parseFileAsync()` は Node.js（またはカスタムの `readFileSync`/`readFile` オプション）が必要です。
+
+パッケージは Node の組み込みモジュール `fs`・`path`・`module`・`url` を import しています（ファイルの読み込みと `include package(...)` のため）。使うのはその経路だけです。ブラウザ向けの bundle では、これらを空のモジュールに置き換える必要があります:
+
+- **Vite**（7 と 8）は既定でそうするので、設定は不要です。
+- **その他の bundler**: 4 つを空のモジュール（`export default {}`）に割り当ててください。たとえば esbuild の plugin や、webpack 5 の `resolve.fallback: { fs: false, path: false, module: false, url: false }` を使います。external にするだけでは足りません。ブラウザは `fs` を読み込めないからです。
+
+ここまでで動くのは、ファイルの include を使わない解析です。独自の `readFile` / `readFileSync`（下記）で include を読む場合は path も解決するので、`path` には空のモジュールではなく、`path-browserify` パッケージのようなブラウザ向けの実装を割り当ててください。`include package(...)` には独自の `packageResolver` が必要です（`ParseOptions` を参照）。
 
 ```ts
 // カスタムファイルローダーを使ったブラウザ利用
