@@ -222,7 +222,7 @@ const Backup = z.object({
 getValidated(cfg, 'backup', Backup) // { keep: { years: 0, months: 0, days: 14 } }
 ```
 
-An invalid duration, size or period fails validation with the key's path. The markers are ordinary Zod schemas, so they work in `validate`, `getValidated`, `parseWithSchema`, `parseFileWithSchema` and anywhere else Zod runs them. A marker reads a number through its JavaScript value, so a number literal in exponent form (`1e3`, or one JavaScript prints that way, below 1e-6 or from 1e21) can read differently from the getters (accepted where the getter refuses it, or the reverse); a period marker also reads a literal with a decimal point (`7.0`) as an integer, which `getPeriod()` refuses. Write unit values with a unit (`30s`, `7d`) to avoid both.
+An invalid duration, size or period fails validation with the key's path. The markers are ordinary Zod schemas, so they work in `validate`, `getValidated`, `parseWithSchema`, `parseFileWithSchema` and anywhere else Zod runs them. A marker reads a number through its JavaScript value, so a number literal with more significant digits than a double holds (`1.99999999999999999` B is 1 through `getBytes()`, 2 through the marker) or in exponent form (`1e3`, or one JavaScript prints that way, below 1e-6 or from 1e21) can read differently from the getters, which read the literal's text exactly (accepted where the getter refuses it, or the reverse); a period marker also reads a literal with a decimal point (`7.0`) as an integer, which `getPeriod()` refuses. Write unit values with a unit (`30s`, `7d`) to avoid both.
 
 Install Zod as a peer dependency:
 ```bash
@@ -292,8 +292,16 @@ c.getBytes('max-size')          // 536870912 (bytes)
 c.getBytes('max-size', 'MiB')  // 512
 ```
 
-Supported duration units: `ns`, `us`, `ms`, `s`, `m`, `h`, `d` (and long forms like `seconds`, `minutes`). Duration unit names are case-sensitive and must be lowercase (HOCON spec). Byte units are more case-tolerant: the canonical forms below plus lowercase aliases (`kb`, `kib`, …), any-case long forms (`megabytes`), and single-letter powers-of-two in both cases (`K`/`k`, per Lightbend).
-Supported byte units: `B`, `KB`/`KiB`, `MB`/`MiB`, `GB`/`GiB`, `TB`/`TiB` (and long forms like `megabytes`, `mebibytes`).
+Supported duration units: `ns`, `us`, `ms`, `s`, `m`, `h`, `d` (and long forms like `seconds`, `minutes`). Duration unit names are case-sensitive and must be lowercase (HOCON spec).
+
+Supported byte units, the same set as Lightbend and case-sensitive like it:
+
+- bytes: `B`, `b`, `byte`, `bytes`
+- powers of 1000: `kB`, `MB`, `GB`, `TB`, `PB`, `EB`, `ZB`, `YB`, and `kilobyte(s)` … `yottabyte(s)`
+- powers of 1024: `Ki`/`KiB`, `Mi`/`MiB`, … `Yi`/`YiB`, and `kibibyte(s)` … `yobibyte(s)`
+- single letters, powers of 1024 in either case (java `-Xmx` style): `K`/`k`, `M`/`m`, `G`/`g`, `T`/`t`, `P`/`p`, `E`/`e`, `Z`/`z`, `Y`/`y`
+
+Other spellings are errors: `KB`, `kb`, `kib`, `Kilobytes`, `MEGABYTES`. (`'KB'` and the other names in `getBytes(path, unit)` are output units, a separate list.)
 
 ### Periods
 

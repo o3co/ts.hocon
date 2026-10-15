@@ -36,6 +36,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Unit arithmetic is exact decimal (E20,
+  [o3co/xx.hocon#102](https://github.com/o3co/xx.hocon/issues/102)).** The
+  number in a duration or byte size is read from its text as an exact decimal
+  and multiplied by the unit exactly, in `getDuration` / `getBytes` and the
+  `hocon.duration()` / `hocon.bytes()` markers alike.
+  - **Duration — a deliberate divergence from Lightbend (E20).** The exact
+    product is rounded once, to the nearest double in the output unit:
+    `1.001s` is `1001` ms (was `1000.9999999999999`), `2.3h` is `8280000` ms
+    (was `8279999.999999999`), and integer values in units below a millisecond
+    are exact too (`9us` is `0.009` ms, was `0.009000000000000001`). Lightbend
+    multiplies in double and gives `1000999999` ns for `1.001s`.
+  - **Byte size — Lightbend parity.** The exact product is truncated toward
+    zero (`BigDecimal.toBigInteger`) and then converted to the output unit with
+    one rounding, for every output unit: `1.0009kB` is `1000` (the unit path
+    rounded it to `1001`), and `getBytes(path, 'KB')` truncates to whole bytes
+    first. Visible edge cases: `0.5B` / `1.5B` read `0` / `1` (were `1` / `2`);
+    `-0.6B` reads `0` (it rounded to `-1` and was refused as negative); the
+    2^53-1 overflow guard applies to the truncated value, so
+    `9007199254740991.5` reads `9007199254740991` (it threw); and a negative
+    zero (`-0`, `-0.5`) reads `0`, not `-0`, for byte sizes and durations.
+  - The getters read the literal's text exactly; the markers still read a
+    number literal through its JavaScript value, so a bare number with more
+    significant digits than a double holds can now read differently through
+    a marker (`1.99999999999999999` B: `getBytes()` gives 1, `hocon.bytes()`
+    gives 2). Written with a unit, it reads the same.
+- **A duration that is not a finite number is an error (E21,
+  [o3co/xx.hocon#102](https://github.com/o3co/xx.hocon/issues/102)).** A
+  value too large for a double in the output unit (`10^400` days, integer or
+  fractional) made `getDuration` return `Infinity`; it now throws
+  `ConfigError` (`duration overflows the representable range at <path>`), and
+  `hocon.duration()` fails validation with the key's path. A deliberate
+  divergence from Lightbend, which saturates the fractional form at
+  `Long.MAX_VALUE` ns; byte sizes already errored on overflow.
 - **BREAKING: the Zod entry points refuse a key named `__proto__`,
   `constructor` or `prototype`
   ([#201](https://github.com/o3co/ts.hocon/issues/201)).** `validate`,

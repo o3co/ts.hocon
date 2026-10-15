@@ -138,13 +138,23 @@ describe('hocon.duration()', () => {
   })
 
   // Documented difference: a marker reads a number through String(n), the
-  // getters read the literal's source text, and the two differ essentially only
-  // for exponent forms (and -0). Pinned so a change here is a deliberate one.
+  // getters read the literal's source text, and the two differ for exponent
+  // forms and for digits beyond a double's precision (below). Pinned so a change
+  // here is a deliberate one.
   it('reads a number literal in exponent form through its JS value', () => {
     expect(viaGetter(() => parse('v = 1e3').getDuration('v'))).toBe('error')
     expect(viaMarker(hocon.duration(), 'v = 1e3')).toBe(1000)
     expect(viaGetter(() => parse('v = 0.0000001').getDuration('v'))).toBe(1e-7)
     expect(viaMarker(hocon.duration(), 'v = 0.0000001')).toBe('error')
+  })
+
+  // Documented difference (E20): the getters read the literal's digits exactly,
+  // the marker reads the double they round to.
+  it('reads a number literal beyond double precision through its JS value', () => {
+    expect(parse('v = 1.0000000000000001').getDuration('v', 'ns')).toBe(1000000.0000000001)
+    expect(viaMarker(hocon.duration('ns'), 'v = 1.0000000000000001')).toBe(1000000)
+    // Written with a unit, it is a string and reads the same.
+    expect(viaMarker(hocon.duration('ns'), 'v = 1.0000000000000001ms')).toBe(1000000.0000000001)
   })
 })
 
@@ -164,6 +174,15 @@ describe('hocon.bytes()', () => {
       }
     })
   }
+
+  // Documented difference (E20): see the duration pin above.
+  it('reads a number literal beyond double precision through its JS value', () => {
+    expect(parse('v = 1.99999999999999999').getBytes('v')).toBe(1)
+    expect(viaMarker(hocon.bytes(), 'v = 1.99999999999999999')).toBe(2)
+    expect(parse('v = 9007199254740991.5').getBytes('v')).toBe(9007199254740991)
+    expect(viaMarker(hocon.bytes(), 'v = 9007199254740991.5')).toBe('error')
+    expect(viaMarker(hocon.bytes(), 'v = "1.99999999999999999"')).toBe(1)
+  })
 
   it('reads a plain number as bytes, like getBytes', () => {
     expect(getValidated(parse('n = 2048'), 'n', hocon.bytes('KiB'))).toBe(2)

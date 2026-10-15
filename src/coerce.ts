@@ -1,3 +1,5 @@
+import { ratioToNumber } from './internal/exact-ratio.js'
+
 export const DECIMAL_NUMBER_RE = /^-?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/
 
 // trimHoconWs: strip HOCON_WS characters from both ends of a string.
@@ -49,26 +51,22 @@ export function coerceNumber(value: string): number | undefined {
   return Number(value)
 }
 
-const DURATION_UNITS: Record<string, number> = {
-  // S19.1–S19.3: the bare nano/micro/milli (+plural) aliases are part of the
-  // spec's unit lists (HOCON.md L1307–L1309) and accepted by Lightbend
-  // (typesafe-config 1.4.6 probe, 2026-08-18); they were missing here.
-  ns: 1e-6, nano: 1e-6, nanos: 1e-6, nanosecond: 1e-6, nanoseconds: 1e-6,
-  us: 1e-3, micro: 1e-3, micros: 1e-3, microsecond: 1e-3, microseconds: 1e-3,
-  ms: 1, milli: 1, millis: 1, millisecond: 1, milliseconds: 1,
-  s: 1_000, second: 1_000, seconds: 1_000,
-  m: 60_000, minute: 60_000, minutes: 60_000,
-  h: 3_600_000, hour: 3_600_000, hours: 3_600_000,
-  d: 86_400_000, day: 86_400_000, days: 86_400_000,
+// ─── exact unit arithmetic (E20) ──────────────────────────────────────────────
+// The number in a unit value is read from its text as an exact decimal and
+// multiplied by the unit exactly (xx.hocon E20): `1.001s` is 1001 ms, not the
+// 1000.9999999999999 a double product gives, and `9us` is 0.009 ms. A duration
+// is then rounded once, to the nearest double in the output unit; a byte size
+// is truncated toward zero first (Lightbend BigDecimal.toBigInteger).
+
+/** A unit value split into its exact number (`mantissa / 10^scale`) and its unit text. */
+interface UnitText {
+  readonly mantissa: bigint
+  readonly scale: number
+  readonly unit: string
 }
 
-const OUTPUT_DURATION_UNITS: Record<string, number> = {
-  ns: 1e-6, us: 1e-3, ms: 1, s: 1_000, m: 60_000, h: 3_600_000, d: 86_400_000,
-}
-
-export type DurationUnit = 'ns' | 'us' | 'ms' | 's' | 'm' | 'h' | 'd'
-
-export function parseDuration(value: string, outputUnit: DurationUnit = 'ms'): number {
+/** `[ws] number [ws] unit [ws]`, or undefined when there is no number. */
+function splitUnitText(value: string): UnitText | undefined {
   const trimmed = trimHoconWs(value)
   let i = 0
   while (i < trimmed.length) {
@@ -77,65 +75,89 @@ export function parseDuration(value: string, outputUnit: DurationUnit = 'ms'): n
     if (ch !== '.' && (ch < '0' || ch > '9')) break
     i++
   }
-  if (i === 0) return NaN
-  const num = Number(trimmed.slice(0, i))
-  if (Number.isNaN(num)) return NaN
-  // S19.8 — unit match is case-sensitive per HOCON.md L1304 (lowercase only).
-  const unit = trimHoconWs(trimmed.slice(i))
-  const divisor = OUTPUT_DURATION_UNITS[outputUnit]
-  if (divisor === undefined) return NaN
-  // S18.1 + S18.4: bare number (no unit) → treat as default unit (ms)
-  if (unit === '') {
-    return num / divisor
+  const number = trimmed.slice(0, i)
+  // Number() decides which spellings are numbers (`1.`, `.5`, `+1` are; `.`,
+  // `-`, `1.2.3` are not), as before; the digits are then read exactly.
+  if (i === 0 || Number.isNaN(Number(number))) return undefined
+  const unsigned = number[0] === '-' || number[0] === '+' ? number.slice(1) : number
+  const dot = unsigned.indexOf('.')
+  const fraction = dot === -1 ? '' : unsigned.slice(dot + 1)
+  const magnitude = BigInt((dot === -1 ? unsigned : unsigned.slice(0, dot) + fraction) || '0')
+  return {
+    mantissa: number[0] === '-' ? -magnitude : magnitude,
+    scale: fraction.length,
+    unit: trimHoconWs(trimmed.slice(i)),
   }
-  const mult = DURATION_UNITS[unit]
-  if (mult === undefined) return NaN
-  const ms = num * mult
-  return ms / divisor
 }
 
-const BYTE_UNITS: Record<string, number> = {
+/** Nanoseconds per duration unit. */
+const DURATION_UNITS = new Map<string, bigint>([
+  // S19.1–S19.3: the bare nano/micro/milli (+plural) aliases are part of the
+  // spec's unit lists (HOCON.md L1307–L1309) and accepted by Lightbend
+  // (typesafe-config 1.4.6 probe, 2026-08-18).
+  ...['ns', 'nano', 'nanos', 'nanosecond', 'nanoseconds'].map((u) => [u, 1n] as const),
+  ...['us', 'micro', 'micros', 'microsecond', 'microseconds'].map((u) => [u, 1_000n] as const),
+  ...['ms', 'milli', 'millis', 'millisecond', 'milliseconds'].map((u) => [u, 1_000_000n] as const),
+  ...['s', 'second', 'seconds'].map((u) => [u, 1_000_000_000n] as const),
+  ...['m', 'minute', 'minutes'].map((u) => [u, 60_000_000_000n] as const),
+  ...['h', 'hour', 'hours'].map((u) => [u, 3_600_000_000_000n] as const),
+  ...['d', 'day', 'days'].map((u) => [u, 86_400_000_000_000n] as const),
+])
+
+/** Nanoseconds per output unit. */
+const OUTPUT_DURATION_UNITS = new Map<string, bigint>([
+  ['ns', 1n], ['us', 1_000n], ['ms', 1_000_000n], ['s', 1_000_000_000n],
+  ['m', 60_000_000_000n], ['h', 3_600_000_000_000n], ['d', 86_400_000_000_000n],
+])
+
+export type DurationUnit = 'ns' | 'us' | 'ms' | 's' | 'm' | 'h' | 'd'
+
+export function parseDuration(value: string, outputUnit: DurationUnit = 'ms'): number {
+  const text = splitUnitText(value)
+  if (text === undefined) return NaN
+  const per = OUTPUT_DURATION_UNITS.get(outputUnit)
+  if (per === undefined) return NaN
+  // S18.1 + S18.4: no unit means milliseconds. S19.8: units are case-sensitive
+  // (HOCON.md L1304, lowercase only).
+  const unit = text.unit === '' ? 1_000_000n : DURATION_UNITS.get(text.unit)
+  if (unit === undefined) return NaN
+  return ratioToNumber(text.mantissa * unit, 10n ** BigInt(text.scale) * per)
+}
+
+const BYTE_UNITS = new Map<string, bigint>([
   // S21.1–S21.4 — the EXACT Lightbend/typesafe-config unit set (1.4.6 probe,
   // 2026-08-18). Multi-letter units are case-sensitive: the SI decimal short
   // form is `kB` (NOT `KB`/`kb` — Lightbend rejects both), higher decimals
   // are `MB`…`YB`, binary prefixes are `Ki`/`KiB`…`Yi`/`YiB` with capital
   // first letter, and long forms are lowercase only (`kilobyte`, never
   // `Kilobyte`). Only the bare byte unit (`B`/`b`) and the single-letter
-  // -Xmx forms accept both cases. The old case-insensitive fallback and the
-  // lowercase alias rows accepted spellings Lightbend rejects — removed.
-  B: 1, b: 1, byte: 1, bytes: 1,
-  kB: 1_000, kilobyte: 1_000, kilobytes: 1_000,
-  MB: 1_000_000, megabyte: 1_000_000, megabytes: 1_000_000,
-  GB: 1_000_000_000, gigabyte: 1_000_000_000, gigabytes: 1_000_000_000,
-  TB: 1_000_000_000_000, terabyte: 1_000_000_000_000, terabytes: 1_000_000_000_000,
-  PB: 1e15, petabyte: 1e15, petabytes: 1e15,
-  EB: 1e18, exabyte: 1e18, exabytes: 1e18,
-  ZB: 1e21, zettabyte: 1e21, zettabytes: 1e21,
-  YB: 1e24, yottabyte: 1e24, yottabytes: 1e24,
-  Ki: 1_024, KiB: 1_024, kibibyte: 1_024, kibibytes: 1_024,
-  Mi: 1_048_576, MiB: 1_048_576, mebibyte: 1_048_576, mebibytes: 1_048_576,
-  Gi: 1_073_741_824, GiB: 1_073_741_824, gibibyte: 1_073_741_824, gibibytes: 1_073_741_824,
-  Ti: 1_099_511_627_776, TiB: 1_099_511_627_776, tebibyte: 1_099_511_627_776, tebibytes: 1_099_511_627_776,
-  Pi: 1_024 ** 5, PiB: 1_024 ** 5, pebibyte: 1_024 ** 5, pebibytes: 1_024 ** 5,
-  Ei: 1_024 ** 6, EiB: 1_024 ** 6, exbibyte: 1_024 ** 6, exbibytes: 1_024 ** 6,
-  Zi: 1_024 ** 7, ZiB: 1_024 ** 7, zebibyte: 1_024 ** 7, zebibytes: 1_024 ** 7,
-  Yi: 1_024 ** 8, YiB: 1_024 ** 8, yobibyte: 1_024 ** 8, yobibytes: 1_024 ** 8,
-  // S21.4 — single-letter abbreviations → powers of two (java -Xmx
-  // convention); Lightbend accepts BOTH cases here, through the full ladder.
-  K: 1_024, k: 1_024,
-  M: 1_024 ** 2, m: 1_024 ** 2,
-  G: 1_024 ** 3, g: 1_024 ** 3,
-  T: 1_024 ** 4, t: 1_024 ** 4,
-  P: 1_024 ** 5, p: 1_024 ** 5,
-  E: 1_024 ** 6, e: 1_024 ** 6,
-  Z: 1_024 ** 7, z: 1_024 ** 7,
-  Y: 1_024 ** 8, y: 1_024 ** 8,
-}
+  // -Xmx forms accept both cases.
+  ...['B', 'b', 'byte', 'bytes'].map((u) => [u, 1n] as const),
+  ...([
+    ['kB', 'kilo'], ['MB', 'mega'], ['GB', 'giga'], ['TB', 'tera'],
+    ['PB', 'peta'], ['EB', 'exa'], ['ZB', 'zetta'], ['YB', 'yotta'],
+  ] as const).flatMap(([short, prefix], i) => {
+    const size = 1000n ** BigInt(i + 1)
+    return [[short, size], [`${prefix}byte`, size], [`${prefix}bytes`, size]] as const
+  }),
+  ...([
+    ['K', 'kibi'], ['M', 'mebi'], ['G', 'gibi'], ['T', 'tebi'],
+    ['P', 'pebi'], ['E', 'exbi'], ['Z', 'zebi'], ['Y', 'yobi'],
+  ] as const).flatMap(([letter, prefix], i) => {
+    const size = 1024n ** BigInt(i + 1)
+    return [
+      [`${letter}i`, size], [`${letter}iB`, size], [`${prefix}byte`, size], [`${prefix}bytes`, size],
+      // S21.4 — single letters are powers of two (java -Xmx convention), in
+      // both cases, through the full ladder.
+      [letter, size], [letter.toLowerCase(), size],
+    ] as const
+  }),
+])
 
-const OUTPUT_BYTE_UNITS: Record<string, number> = {
-  B: 1, KB: 1_000, KiB: 1_024, MB: 1_000_000, MiB: 1_048_576,
-  GB: 1_000_000_000, GiB: 1_073_741_824, TB: 1_000_000_000_000, TiB: 1_099_511_627_776,
-}
+const OUTPUT_BYTE_UNITS = new Map<string, number>([
+  ['B', 1], ['KB', 1_000], ['KiB', 1_024], ['MB', 1_000_000], ['MiB', 1_048_576],
+  ['GB', 1_000_000_000], ['GiB', 1_073_741_824], ['TB', 1_000_000_000_000], ['TiB', 1_099_511_627_776],
+])
 
 export type ByteUnit = 'B' | 'KB' | 'KiB' | 'MB' | 'MiB' | 'GB' | 'GiB' | 'TB' | 'TiB'
 
@@ -151,46 +173,23 @@ export function byteSizeOverflow(): RangeError {
 }
 
 export function parseBytes(value: string, outputUnit: ByteUnit = 'B'): number {
-  const trimmed = trimHoconWs(value)
-  let i = 0
-  while (i < trimmed.length) {
-    const ch = trimmed[i]
-    if (i === 0 && (ch === '-' || ch === '+')) { i++; continue }
-    if (ch !== '.' && (ch < '0' || ch > '9')) break
-    i++
-  }
-  if (i === 0) return NaN
-  const num = Number(trimmed.slice(0, i))
-  if (Number.isNaN(num)) return NaN
-  const unit = trimHoconWs(trimmed.slice(i))
-  const divisor = OUTPUT_BYTE_UNITS[outputUnit]
-  if (divisor === undefined) return NaN
-  // S18.1 + S18.4: bare number (no unit) → treat as default unit (bytes)
-  // Use Math.trunc per Lightbend BigDecimal.toBigInteger (truncate toward zero)
-  // S21.4 overflow guard applies to unit-less path too: a bare integer like
-  // 9007199254740993 (2^53+1) cannot be represented exactly in float64 and must
-  // throw rather than silently return an imprecise result.
-  if (unit === '') {
-    const bytes = Math.trunc(num)
-    if (Math.abs(bytes) > Number.MAX_SAFE_INTEGER) {
-      throw byteSizeOverflow()
-    }
-    return bytes / divisor
-  }
-  // Exact, case-sensitive match — Lightbend's unit table is case-sensitive
-  // (`kB` parses, `KB`/`kb`/`Megabytes` are errors), so no case folding.
-  const mult = BYTE_UNITS[unit]
-  if (mult === undefined) return NaN
-  const bytes = num * mult
-  // S21.4 overflow guard: JS number is float64 (MAX_SAFE_INTEGER = 2^53-1 ≈ 9.0e15).
-  // Values like 1E (2^60 ≈ 1.15e18) exceed MAX_SAFE_INTEGER and cannot be represented
-  // exactly — throw rather than silently return an imprecise result.
-  if (Math.abs(bytes) > Number.MAX_SAFE_INTEGER) {
-    throw byteSizeOverflow()
-  }
-  const result = bytes / divisor
-  return outputUnit === 'B' ? Math.round(result) : result
+  const text = splitUnitText(value)
+  if (text === undefined) return NaN
+  const per = OUTPUT_BYTE_UNITS.get(outputUnit)
+  if (per === undefined) return NaN
+  // S18.1 + S18.4: no unit means bytes. Units are matched exactly, with case.
+  const unit = text.unit === '' ? 1n : BYTE_UNITS.get(text.unit)
+  if (unit === undefined) return NaN
+  // The exact product, truncated toward zero (BigInt division).
+  const bytes = (text.mantissa * unit) / 10n ** BigInt(text.scale)
+  // S21.4: a JS number holds bytes exactly only up to 2^53-1; beyond that,
+  // throw rather than return an imprecise result.
+  if (bytes > MAX_SAFE_BYTES || bytes < -MAX_SAFE_BYTES) throw byteSizeOverflow()
+  // Exact integer over an exact divisor: one rounding.
+  return Number(bytes) / per
 }
+
+const MAX_SAFE_BYTES = BigInt(Number.MAX_SAFE_INTEGER)
 
 // ─── unit readers ─────────────────────────────────────────────────────────────
 // What a unit value accepts, as one rule per unit system: the grammar above plus
@@ -211,9 +210,13 @@ export type UnitReading<T = number, P extends UnitProblem = UnitProblem> =
   | { ok: false; problem: P }
 
 /** A duration in `outputUnit` (default `ms`; a bare number is milliseconds). */
-export function readDuration(text: string, outputUnit?: DurationUnit): UnitReading<number, 'invalid'> {
+export function readDuration(text: string, outputUnit?: DurationUnit): UnitReading<number, 'invalid' | 'overflow'> {
   const value = parseDuration(text, outputUnit)
-  return Number.isNaN(value) ? { ok: false, problem: 'invalid' } : { ok: true, value }
+  if (Number.isNaN(value)) return { ok: false, problem: 'invalid' }
+  // E21: a duration that does not fit the representation (here, a finite
+  // double in the output unit) is an error, never Infinity.
+  if (!Number.isFinite(value)) return { ok: false, problem: 'overflow' }
+  return { ok: true, value }
 }
 
 /** A byte size in `outputUnit` (default `B`; a bare number is bytes). */

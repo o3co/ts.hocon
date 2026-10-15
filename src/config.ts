@@ -156,6 +156,8 @@ export class Config {
     switch (reading.problem) {
       case 'invalid':
         throw new ConfigError(`invalid duration at ${path}: ${JSON.stringify(v.raw)}`, path)
+      case 'overflow':
+        throw new ConfigError(`duration overflows the representable range at ${path}: ${JSON.stringify(v.raw)}`, path)
     }
   }
 

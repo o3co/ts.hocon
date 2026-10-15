@@ -79,13 +79,16 @@ function collectPrototypeKeys(value: unknown, path: PropertyKey[], issues: z.cor
 // so it works wherever Zod runs it.
 //
 // It reads the plain value: a string as written, a number through String(n).
-// The getters read the literal's source text instead, and String(n) drops what
-// the number does not keep: trailing fraction zeros (`7.0` → "7"), leading
-// zeros, and the exponent form (`1e3` → "1000"; JavaScript prints values below
-// 1e-6 or from 1e21 with one). So a marker can accept a value the getter
-// refuses, and the reverse: a number literal in exponent form for every unit
-// system, and a literal with a decimal point (`7.0`) for an integer-only one
-// (a period). A value written with a unit is a string and reads the same.
+// The getters read the literal's source text instead, exactly (E20), and
+// String(n) drops what the number does not keep: digits beyond a double's
+// precision (`1.99999999999999999` → "2"), trailing fraction zeros (`7.0` →
+// "7"), leading zeros, and the exponent form (`1e3` → "1000"; JavaScript prints
+// values below 1e-6 or from 1e21 with one). So a marker can read a different
+// value than the getter, or accept what the getter refuses, and the reverse: a
+// number literal with more significant digits than a double holds, or in
+// exponent form, for every unit system, and a literal with a decimal point
+// (`7.0`) for an integer-only one (a period). A value written with a unit is a
+// string and reads the same.
 
 function unitMarker<T>(what: string, read: (text: string) => UnitReading<T>): ZodTransform<T, unknown> {
   return z.transform((input: unknown, ctx): T => {

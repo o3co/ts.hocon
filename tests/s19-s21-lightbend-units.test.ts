@@ -68,19 +68,20 @@ describe('S21.3 — binary units through Yi/YiB', () => {
     expect(parseBytes(text)).toBe(want)
   })
 
+  // E20: the exact product, truncated toward zero (not rounded).
   it('pins Ei/Zi/Yi recognition with fractional counts', () => {
-    expect(parseBytes('0.001EiB')).toBe(Math.round(1e-3 * 1024 ** 6))
-    expect(parseBytes('0.000001Zi')).toBe(Math.round(1e-6 * 1024 ** 7))
-    expect(parseBytes('0.000000001yobibyte')).toBe(Math.round(1e-9 * 1024 ** 8))
+    expect(parseBytes('0.001EiB')).toBe(Number(1024n ** 6n / 1_000n))
+    expect(parseBytes('0.000001Zi')).toBe(Number(1024n ** 7n / 1_000_000n))
+    expect(parseBytes('0.000000001yobibyte')).toBe(Number(1024n ** 8n / 1_000_000_000n))
   })
 })
 
 describe('S21.4 — single letters both cases through Z/Y', () => {
   it('accepts Z/z/Y/y with fractional counts (count 1 overflows the guard)', () => {
-    expect(parseBytes('0.000001Z')).toBe(Math.round(1e-6 * 1024 ** 7))
-    expect(parseBytes('0.000001z')).toBe(Math.round(1e-6 * 1024 ** 7))
-    expect(parseBytes('0.000000001Y')).toBe(Math.round(1e-9 * 1024 ** 8))
-    expect(parseBytes('0.000000001y')).toBe(Math.round(1e-9 * 1024 ** 8))
+    expect(parseBytes('0.000001Z')).toBe(Number(1024n ** 7n / 1_000_000n))
+    expect(parseBytes('0.000001z')).toBe(Number(1024n ** 7n / 1_000_000n))
+    expect(parseBytes('0.000000001Y')).toBe(Number(1024n ** 8n / 1_000_000_000n))
+    expect(parseBytes('0.000000001y')).toBe(Number(1024n ** 8n / 1_000_000_000n))
   })
 })
 
