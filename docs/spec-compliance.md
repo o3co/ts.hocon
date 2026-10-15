@@ -695,13 +695,15 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
 ## S18. Units format
 
 - **S18.1** Number value taken as default unit — §Units format (L1279)
-  tests: tests/config.test.ts (S18.1 describe block), tests/s18-units-default.test.ts (ud01-ud08)
+  tests: tests/config.test.ts (S18.1 describe block), tests/s18-units-default.test.ts (ud01-ud13, ub01-ub08), tests/e20-exact-unit-arithmetic.test.ts
   status: ✅
-  notes: Fixed in Phase 6 #3d (branch fix/s18-duration-default-unit). `parseDuration` and
-  `parseBytes` now include an `if (unit === '')` branch that returns `num / divisor` (duration,
-  default ms) or `Math.trunc(num) / divisor` (bytes, default B) before the unit-map lookup.
-  The same fix resolves S18.4. `trimHoconWs()` helper added to use HOCON_WS character set
-  instead of stdlib `trim()`. Scanner extended to accept `+` prefix.
+  notes: Fixed in Phase 6 #3d (branch fix/s18-duration-default-unit): no unit means the default
+  unit (ms for a duration, bytes for a byte size), and the same fix resolves S18.4. Since E20 the
+  number is read from its source text as an exact decimal and multiplied exactly (BigInt): a
+  duration is rounded once in the output unit, a byte size is truncated toward zero first
+  (`splitUnitText`, `parseDuration` and `parseBytes` in `src/coerce.ts`). Since E21 a duration that is not a finite number is an
+  error. `trimHoconWs()` uses the HOCON_WS character set instead of stdlib `trim()`; the scanner
+  accepts a `+` prefix.
 - **S18.2** String parsed as: optional ws + number + ws + unit + ws — §Units format (L1281-1294)
   tests: tests/config.test.ts:239
   status: ✅
@@ -714,16 +716,16 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
   tested inputs. ⚠️ would apply only if a non-letter unit string happened to match a
   map key — which is structurally impossible given the map's contents.
 - **S18.4** String with no unit → interpreted with default unit — §Units format (L1290)
-  tests: tests/config.test.ts (S18.4 describe block), tests/s18-units-default.test.ts (ud01-ud08, ub01-ub06, un01-un03, up01-up05)
+  tests: tests/config.test.ts (S18.4 describe block), tests/s18-units-default.test.ts (ud01-ud13, ub01-ub08, un01-un03, up01-up05), tests/e20-exact-unit-arithmetic.test.ts
   status: ✅
-  notes: Fixed in Phase 6 #3d alongside S18.1 — same fix site. The `if (unit === '')` branch
-  in `parseDuration`/`parseBytes` handles both number-value (S18.1) and string-value (S18.4)
-  paths, since both route `v.raw` through the same parse helper. Fractional duration strings
-  (e.g. `"500.5"`) accepted and returned as ms (Lightbend double-parse faithful). Fractional
-  byte strings (e.g. `"1024.5"`) accepted and truncated via `Math.trunc` (Lightbend
-  `BigDecimal.toBigInteger()` faithful). `getBytes()` rejects negative byte sizes
-  (Lightbend positive-only accessor invariant). xx.hocon fixtures ud01-ud08, ub01-ub06,
-  un01-un03 pass. Period fixtures up01-up05 pass with `getPeriod` (S20): a bare integer is days, and
+  notes: Fixed in Phase 6 #3d alongside S18.1 — same fix site. Number values (S18.1) and
+  strings (S18.4) take the same path, since both read `v.raw`. Fractional duration strings
+  (e.g. `"500.5"`) are accepted and read exactly (E20: `"1.001s"` is 1001 ms, where Lightbend's
+  double product gives 1000.999999 ms, a deliberate divergence). Fractional byte strings
+  (e.g. `"1024.5"`) are accepted and truncated toward zero after the exact product (Lightbend
+  `BigDecimal.toBigInteger()` parity). `getBytes()` rejects negative byte sizes
+  (Lightbend positive-only accessor invariant). A duration that is not a finite number is an
+  error (E21). xx.hocon fixtures ud01-ud13, ub01-ub08, un01-un03 pass. Period fixtures up01-up05 pass with `getPeriod` (S20): a bare integer is days, and
   `"7.5"` is rejected (integer only, Lightbend `Integer.parseInt`).
 
 ## S19. Duration format

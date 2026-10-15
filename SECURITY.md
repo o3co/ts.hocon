@@ -47,6 +47,17 @@ option in this library can neutralize them. If you parse untrusted config:
 - or take `cfg.toObject({ nullPrototype: true })`, whose objects inherit nothing,
   when handing config data to code you do not control.
 
+### In the Zod integration
+
+The Zod entry points (`validate`, `getValidated`, `parseWithSchema`,
+`parseFileWithSchema`) take the other route: they **refuse** an object key named
+`__proto__`, `constructor` or `prototype` anywhere in the value handed to the
+schema, with a `ZodError` issue at the object that holds the key (#202). Zod
+builds plain objects from the value, and drops a `__proto__` key from a record
+without an error, so letting such a key through would lose configuration
+silently. The issue carries the key, not its value. The plain getters still
+read these keys by name (`cfg.getNumber('limits."constructor"')`).
+
 ## Reporting a vulnerability
 
 Please **do not** open a public GitHub issue for security vulnerabilities.

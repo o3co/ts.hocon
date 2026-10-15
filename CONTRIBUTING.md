@@ -21,8 +21,15 @@ Open an issue first to discuss the proposal before sending a PR. This avoids was
 git clone https://github.com/o3co/ts.hocon.git
 cd ts.hocon
 pnpm install
+make testdata   # fetch the shared conformance fixtures from o3co/xx.hocon
 pnpm test
 ```
+
+`make testdata` downloads the fixtures and expected values the Lightbend,
+deferred-resolution, emitter round-trip and other conformance suites read
+(into `tests/lightbend/testdata/` and `tests/testdata/`). Without it those
+suites fail or skip, so run it once after cloning and again when xx.hocon
+changes (it is a no-op when the local copy is current).
 
 ## Running Tests
 
@@ -39,9 +46,18 @@ pnpm coverage
 # Type check only
 pnpm typecheck
 
-# Lightbend spec compliance suite
+# Lightbend spec compliance suite (needs `make testdata`)
 pnpm vitest run tests/lightbend/
+
+# Build, then load and use every entrypoint from dist/ under require() and import()
+pnpm smoke
 ```
+
+`pnpm smoke` checks the built package, which `pnpm test` (run against `src/`)
+cannot see: every export loads and works in both module systems, declares its
+own types, shares the root's classes (`instanceof`), and the CJS output names no
+`__filename` / `__dirname` / `import.meta`. CI runs it on every pull request
+and push to develop / main, and before each release.
 
 ## Code Style
 
@@ -54,7 +70,7 @@ pnpm vitest run tests/lightbend/
 
 1. Fork the repository and create a branch from `develop`
 2. Write tests for your change
-3. Ensure `pnpm test` and `pnpm typecheck` pass
+3. Ensure `pnpm test`, `pnpm typecheck` and `pnpm smoke` pass
 4. Open a PR against `develop` with a clear description of what and why
 
 ## Releasing
