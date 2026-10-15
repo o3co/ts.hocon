@@ -112,7 +112,9 @@ function buildResolveContext(input: string, opts: ParseOptions): { ast: ReturnTy
  * Parse a HOCON string into a Config. Substitutions are resolved unless
  * `opts.resolveSubstitutions` is false (then the Config is unresolved; finish
  * it with `resolve()` / `resolveWith()`). Includes are read with
- * `opts.readFileSync` (default: `fs`), relative to `opts.baseDir` (default: the current directory).
+ * `opts.readFileSync` (default: `fs`). A bare `include "x.conf"` resolves
+ * relative to `opts.baseDir` (default: the current directory); a relative
+ * `include file("x.conf")` always resolves from the current directory.
  *
  * @throws {@link ParseError} on a syntax error, or a document nested too deeply.
  * @throws {@link ResolveError} on a substitution that cannot be resolved, a cycle,
@@ -207,9 +209,10 @@ async function parseStringInnerAsync(input: string, opts: ParseOptions): Promise
 }
 
 /**
- * Read and parse a HOCON file, as {@link parse} does with the file's text;
- * includes resolve relative to the file (unless `opts.baseDir` is set). Needs
- * Node.js, or `opts.readFileSync` elsewhere.
+ * Read and parse a HOCON file, as {@link parse} does with the file's text; a
+ * bare `include` resolves relative to the file's directory (unless
+ * `opts.baseDir` is set), a relative `include file(...)` from the current
+ * directory. Needs Node.js, or `opts.readFileSync` elsewhere.
  *
  * @throws as {@link parse}, plus whatever reading the file throws.
  */

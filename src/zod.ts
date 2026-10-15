@@ -161,8 +161,10 @@ export const hocon = {
    * except for a number literal the getter reads by its text and the marker by
    * its JS value: one with more significant digits than a double holds can read
    * differently (`1.0000000000000001` in `us`: 1000.0000000000001 through the
-   * getter, 1000 here), and one in exponent form (`1e3`) is refused by the
-   * getter and read as the number here.
+   * getter, 1000 here); one in exponent form (`1e3`) is refused by the getter
+   * and read as the number here; and one JavaScript prints in exponent form
+   * (below 1e-6 or from 1e21, e.g. `0.0000001`) reads through the getter but is
+   * refused here.
    */
   duration(unit?: DurationUnit): ZodTransform<number, unknown> {
     return unitMarker('duration', (text) => readDuration(text, unit))
@@ -171,8 +173,10 @@ export const hocon = {
    * A byte size, read as {@link Config.getBytes} reads it (default unit `B`),
    * except for a number literal the getter reads by its text and the marker by
    * its JS value: one with more significant digits than a double holds can read
-   * differently (`1.99999999999999999`: 1 through the getter, 2 here), and one
-   * in exponent form is refused by the getter and read as the number here.
+   * differently (`1.99999999999999999`: 1 through the getter, 2 here); one in
+   * exponent form is refused by the getter and read as the number here; and
+   * one JavaScript prints in exponent form (below 1e-6 or from 1e21, e.g.
+   * `0.0000001`) reads through the getter but is refused here.
    */
   bytes(unit?: ByteUnit): ZodTransform<number, unknown> {
     return unitMarker('byte size', (text) => readBytes(text, unit))
