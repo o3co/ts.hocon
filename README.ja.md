@@ -173,12 +173,12 @@ period の単位は `d`/`day`/`days`、`w`/`week`/`weeks`（日数に畳み込�
 
 不正な duration / byte size / period は、キーのパス付きのバリデーションエラーになります。マーカーは普通の Zod スキーマなので、`validate`・`getValidated`・`parseWithSchema`・`parseFileWithSchema` をはじめ、Zod が実行するところならどこでも使えます。数値は JavaScript の値として読むため、指数表記の数値リテラル（`1e3`、または JavaScript が指数表記で表示する 1e-6 未満・1e21 以上の値）は getter と結果が異なることがあります（getter が拒否する値を通す場合も、その逆もあります）。period のマーカーは、小数点付きのリテラル（`7.0`）も整数として読みます（`getPeriod()` は拒否します）。単位付きで書けば（`30s`、`7d`）どちらの差も出ません。
 
-Zod の入口（`validate`・`getValidated`・`parseWithSchema`・`parseFileWithSchema`）は、値のどこかに `__proto__`・`constructor`・`prototype` という名前のキーがあると、そのキーの path を持つ `ZodError` の issue（`a key that names an object's prototype`）で拒否します。このキーから作った JavaScript オブジェクトでは、値が消えたり、prototype のメンバーが読まれたりするためです。キー名を変えるか、影響を受けない通常の getter（`cfg.getNumber('limits."constructor"')`）で読んでください。
-
 Zod をピア依存としてインストール:
 ```bash
 npm install zod
 ```
+
+Zod の入口（`validate`・`getValidated`・`parseWithSchema`・`parseFileWithSchema`）は、値のどこかに `__proto__`・`constructor`・`prototype` という名前のキーがあると拒否します。Zod は record から `__proto__` キーをエラーなしで落とすため、また結果が schema によって変わらないように、3 つとも同じく拒否します。`ZodError` にはキーごとに 1 つの issue が入ります。issue はそのキーを持つオブジェクトの位置に付き、キー名は message と `params.key` に入ります（`key "__proto__" names an object's prototype → at limits`）。キー名を変えるか、影響を受けない通常の getter（`cfg.getNumber('limits."constructor"')`）で読んでください。
 
 ### エラー型
 

@@ -41,15 +41,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ([#201](https://github.com/o3co/ts.hocon/issues/201)).** `validate`,
   `getValidated`, `parseWithSchema` and `parseFileWithSchema` now throw a
   `ZodError` with one issue per such key, wherever it is in the value handed
-  to the schema (`limits.__proto__: a key that names an object's prototype`,
-  path `['limits', '__proto__']`, relative to that value like Zod's own
-  issues). Before, Zod dropped a `__proto__` key from a record without an
-  error, so a configured value silently disappeared. `constructor` and
+  to the schema. Before, Zod dropped a `__proto__` key from a record without
+  an error, so a configured value silently disappeared. `constructor` and
   `prototype` did reach the result, but are refused too, so the rule does not
   depend on what each schema position does with them; a config that used one
-  of them as a key and validated before now fails. Workaround: rename the key
-  (`"constructor" = …` → `ctor = …`), or read it with the plain getters, which
-  are unchanged (`cfg.getNumber('limits."constructor"')`).
+  of them as a key and validated before now fails. The issue sits at the
+  object that holds the key, relative to the value like Zod's own issues, with
+  the key in the message and in `params.key` (`z.prettifyError` prints
+  `✖ key "__proto__" names an object's prototype → at limits`). It does not
+  carry the refused value. A path through the key itself would make Zod's
+  `treeifyError` / `format()` / `flattenError` throw. Workaround: rename the
+  key (`"constructor" = …` → `ctor = …`), or read it with the plain getters,
+  which are unchanged (`cfg.getNumber('limits."constructor"')`).
 - **`instanceof` now holds across entrypoints
   ([o3co/xx.hocon#102](https://github.com/o3co/xx.hocon/issues/102)).** Each
   built entrypoint (`@o3co/ts.hocon`, `/zod`, `/adapters/*`) used to carry its

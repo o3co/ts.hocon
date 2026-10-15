@@ -31,12 +31,17 @@ export function getValidated<T>(config: Config, path: string, schema: ZodType<T>
 // property. A JS object built from it can lose it or read the prototype's
 // member instead: Zod drops `__proto__` from a record without an error
 // (ts.hocon#201). So the Zod entry points refuse such a key wherever it is in
-// the value, before the schema sees it, with the key's path like any other
-// validation error. The plain getters read keys by name and are unaffected.
+// the value, before the schema sees it. The plain getters read keys by name and
+// are unaffected.
+//
+// The issue sits at the object holding the key, with the key in the message and
+// in `params.key`, as Zod's own unrecognized_keys does. A path that contains
+// `__proto__` or `constructor` makes Zod's treeifyError / format / flattenError
+// throw (zod 4.4), and a `__proto__` segment before the last one makes them
+// write to Object.prototype. So no path built here contains such a key: the
+// issue stops at the parent, and the walk does not descend into a refused key.
 
 const PROTOTYPE_KEYS: ReadonlySet<string> = new Set(['__proto__', 'constructor', 'prototype'])
-
-const PROTOTYPE_KEY_MESSAGE = "a key that names an object's prototype"
 
 function refusePrototypeKeys(value: unknown): void {
   const issues: z.core.$ZodIssue[] = []
@@ -50,7 +55,15 @@ function collectPrototypeKeys(value: unknown, path: PropertyKey[], issues: z.cor
   } else if (typeof value === 'object' && value !== null) {
     for (const [key, item] of Object.entries(value)) {
       if (PROTOTYPE_KEYS.has(key)) {
-        issues.push({ code: 'custom', path: [...path, key], message: PROTOTYPE_KEY_MESSAGE, input: item })
+        // No `input`: Zod leaves it out of the issues it finalizes unless asked
+        // to report input, and an issue built here would otherwise carry the
+        // value (a secret, perhaps) into error.message.
+        issues.push({
+          code: 'custom',
+          path,
+          message: `key ${JSON.stringify(key)} names an object's prototype`,
+          params: { key },
+        })
       } else {
         collectPrototypeKeys(item, [...path, key], issues)
       }
