@@ -1,6 +1,8 @@
 import { ratioToNumber } from './internal/exact-ratio.js'
 
-export const DECIMAL_NUMBER_RE = /^-?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/
+// The integer and fraction digits are separate groups so the match stays
+// linear on a long digit string (`\d+\.?\d*` backtracks quadratically).
+export const DECIMAL_NUMBER_RE = /^-?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/
 
 // trimHoconWs: strip HOCON_WS characters from both ends of a string.
 // Mirrors isHoconWhitespace in src/internal/lexer/lexer.ts byte-for-byte.

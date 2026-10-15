@@ -36,6 +36,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`getNumber` and the Zod number coercion take linear time on long digit
+  strings.** The decimal-number pattern backtracked quadratically, so reading
+  a 40 000-digit string that is not a number took about 8 seconds.
 - **BREAKING (S8.1 + E8 step 4, xx.hocon us15): a `+` outside quotes is a
   parse error unless it is the exponent sign of a number**
   ([#73](https://github.com/o3co/ts.hocon/issues/73)). HOCON.md forbids `+`
