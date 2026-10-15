@@ -40,8 +40,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `originDescription`.** They always resolved, so `resolveSubstitutions: false`
   threw `ResolveError` on an unresolved substitution instead of returning an
   unresolved `Config` (E12), and the `Config` did not carry
-  `originDescription`. They now behave like `parse` / `parseFile`, with
-  includes still loaded through `readFile`.
+  `originDescription`. They now behave like `parse` / `parseFile`; includes
+  are still loaded asynchronously (through `readFile` when given).
 - **Unit arithmetic is exact decimal (E20,
   [o3co/xx.hocon#102](https://github.com/o3co/xx.hocon/issues/102)).** The
   number in a duration or byte size is read from its text as an exact decimal

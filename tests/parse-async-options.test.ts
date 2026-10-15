@@ -5,8 +5,8 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterAll, describe, expect, it } from 'vitest'
-import { parse, parseAsync, parseFile, parseFileAsync } from '../src/index.js'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { ParseError, parse, parseAsync, parseFile, parseFileAsync } from '../src/index.js'
 
 const dir = mkdtempSync(join(tmpdir(), 'ts-hocon-parse-async-'))
 afterAll(() => rmSync(dir, { recursive: true, force: true }))
@@ -30,6 +30,19 @@ describe('parseAsync options', () => {
     expect(c.getNumber('a')).toBe(1)
   })
 
+  it('merges a fallback and resolves later, like parse', async () => {
+    const text = 'a = ${b}, list = [1], list += ${extra}'
+    const fallback = parse('b = 1, extra = 2')
+    const sync = parse(text, { resolveSubstitutions: false }).withFallback(fallback).resolve()
+    const async = (await parseAsync(text, { resolveSubstitutions: false })).withFallback(fallback).resolve()
+    expect(async.toObject()).toEqual(sync.toObject())
+  })
+
+  it('still guards deep nesting on the deferred path', async () => {
+    const deep = 'a = ' + '['.repeat(100_000) + ']'.repeat(100_000)
+    await expect(parseAsync(deep, { resolveSubstitutions: false, originDescription: 'deep' })).rejects.toThrow(ParseError)
+  })
+
   it('carries originDescription on the Config, resolved or not', async () => {
     expect((await parseAsync('a = 1', { originDescription: 'unit-test' }))._originDescription).toBe('unit-test')
     const deferred = await parseAsync('a = ${b}', { originDescription: 'unit-test', resolveSubstitutions: false })
@@ -41,8 +54,10 @@ describe('parseAsync options', () => {
 })
 
 describe('parseFileAsync options', () => {
-  writeFileSync(join(dir, 'base.conf'), 'base { host = local }\n')
-  writeFileSync(join(dir, 'app.conf'), 'include "base.conf"\nport = ${?PORT}\nurl = ${base.host}":"${listen}\n')
+  beforeAll(() => {
+    writeFileSync(join(dir, 'base.conf'), 'base { host = local }\n')
+    writeFileSync(join(dir, 'app.conf'), 'include "base.conf"\nport = ${?PORT}\nurl = ${base.host}":"${listen}\n')
+  })
 
   it('resolveSubstitutions: false expands includes asynchronously and defers substitutions', async () => {
     const reads: string[] = []

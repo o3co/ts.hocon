@@ -124,6 +124,6 @@ export async function resolveAsync(
   ast: AstNode,
   opts: ResolveOptions,
 ): Promise<HoconValue> {
-  const root = await new StructureBuilder(opts).buildAsync(ast)
+  const root = await buildTreeAsync(ast, opts)
   return resolveTree(root, { ...opts, useSystemEnvironment: true, allowUnresolved: false })
 }
