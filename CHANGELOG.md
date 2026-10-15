@@ -35,6 +35,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   now imports `zod` at runtime (it was a type-only import before); zod stays an
   optional peer dependency.
 
+### Changed
+
+- **`has(path)` answers `true` for a path whose value is an unresolved
+  substitution.** On an unresolved Config (`resolveSubstitutions: false`, or a
+  partial `resolve({ allowUnresolved: true })`), `has('a')` for `a = ${x}`
+  returned `false`, as if the key were absent; it now returns `true` without
+  throwing, and reading the value still throws `NotResolvedError`. A path
+  *under* such a value (`a.b`) still answers `false`, since it is not known
+  yet. This aligns the four o3co implementations on go.hocon's behaviour
+  (Lightbend throws instead).
+
 ### Fixed
 
 - **The JSON render writes `1.`, `-.5` and `1.e5` as numbers.** The canonical

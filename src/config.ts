@@ -315,8 +315,15 @@ export class Config {
     return v.items.map(item => hoconToJs(item))
   }
 
+  /**
+   * Whether `path` is present. A path whose value is still an unresolved
+   * substitution is present too (`true`, no throw), as in go.hocon; reading it
+   * throws {@link NotResolvedError}. A path *under* such a value is not known
+   * yet and answers `false`.
+   */
   has(path: string): boolean {
-    return this.lookupNode(path) !== undefined
+    if (this.lookupNode(path) !== undefined) return true
+    return !this._resolved && this._unresolvedTreeHas(path)
   }
 
   keys(): string[] {
@@ -575,6 +582,19 @@ export class Config {
       current = next
     }
     return current
+  }
+
+  /** Whether `path` names a field in the unresolved tree (a placeholder included). */
+  private _unresolvedTreeHas(path: string): boolean {
+    let cur: ResObj | undefined = this._pendingRoot ?? this._resObjRoot
+    const segments = splitConfigPath(path)
+    for (let i = 0; cur !== undefined && i < segments.length; i++) {
+      const val = cur.fields.get(segments[i]!)
+      if (val === undefined) return false
+      if (i === segments.length - 1) return true
+      cur = isResObj(val) ? val : undefined
+    }
+    return false
   }
 
   /**
