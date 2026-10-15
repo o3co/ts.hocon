@@ -159,6 +159,47 @@ describe('E21 — unrepresentable duration (ud12-ud13)', () => {
 })
 
 // ---------------------------------------------------------------------------
+// E20 exponent forms (ud14-ud20, ub09-ub13, xx.hocon#111)
+// ---------------------------------------------------------------------------
+describe('E20 — exponent forms (ud14-ud20, ub09-ub13)', () => {
+  it.each([
+    ['ud14-duration-exponent-unit.conf', 100000],
+    ['ud15-duration-exponent-fraction.conf', 150000],
+    ['ud16-duration-exponent-no-unit.conf', 1000],
+    ['ud17-duration-exponent-number-value.conf', 1000],
+    ['ud18-duration-negative-exponent.conf', 1],
+  ] as const)('%s → %d ms', (file, ms) => {
+    expect(loadConf(file).getDuration('t')).toBe(ms)
+  })
+
+  it('ud18 in ns is exact', () => {
+    expect(loadConf('ud18-duration-negative-exponent.conf').getDuration('t', 'ns')).toBe(1000000)
+  })
+
+  it('ud19: 1e400s overflows (E21)', () => {
+    expect(() => loadConf('ud19-duration-exponent-overflow.conf').getDuration('t')).toThrow(ConfigError)
+  })
+
+  it('ud20: 1e3.5ms is invalid', () => {
+    expect(() => loadConf('ud20-duration-exponent-bad-mantissa.conf').getDuration('t')).toThrow(ConfigError)
+  })
+
+  it.each([
+    ['ub09-bytes-exponent-unit.conf', 'b', 1000000],
+    ['ub10-bytes-exponent-no-unit.conf', 'b', 1000],
+    ['ub11-bytes-exponent-binary.conf', 'b', 204800],
+    ['ub12-bytes-negative-exponent-truncated.conf', 'b', 1],
+    ['ub12-bytes-negative-exponent-truncated.conf', 'b2', 1000],
+  ] as const)('%s %s → %d bytes', (file, key, bytes) => {
+    expect(loadConf(file).getBytes(key)).toBe(bytes)
+  })
+
+  it('ub13: 1e400B overflows', () => {
+    expect(() => loadConf('ub13-bytes-exponent-overflow.conf').getBytes('b')).toThrow(ConfigError)
+  })
+})
+
+// ---------------------------------------------------------------------------
 // Negative edge cases (un01-un03): empty / ws-only / unit-only strings
 // ---------------------------------------------------------------------------
 describe('S18.4 — negative edge cases (un01-un03)', () => {

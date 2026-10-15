@@ -119,15 +119,12 @@ function collectPrototypeKeys(value: unknown, path: PropertyKey[], issues: z.cor
 // so it works wherever Zod runs it.
 //
 // It reads the plain value: a string as written, a number through String(n).
-// The getters read the literal's source text instead, exactly (E20), and
-// String(n) drops what the number does not keep: digits beyond a double's
-// precision (`1.99999999999999999` → "2"), trailing fraction zeros (`7.0` →
-// "7"), leading zeros, and the exponent form (`1e3` → "1000"; JavaScript prints
-// values below 1e-6 or from 1e21 with one). So a marker can read a different
-// value than the getter, or accept what the getter refuses, and the reverse: a
-// number literal with more significant digits than a double holds, or in
-// exponent form, for every unit system, and a literal with a decimal point
-// (`7.0`) for an integer-only one (a period). A value written with a unit is a
+// The getters read the literal's source text instead, exactly (E20). Both read
+// exponent forms (`1e3`, and the `1e-7` JavaScript prints for 0.0000001), so
+// what String(n) changes matters only where the number does not keep it:
+// digits beyond a double's precision (`1.99999999999999999` → "2"), and for an
+// integer-only unit system (a period) a decimal point or an exponent (`7.0` →
+// "7", `1e2` → "100") the getter refuses. A value written with a unit is a
 // string and reads the same.
 
 function unitMarker<T>(what: string, read: (text: string) => UnitReading<T>): ZodTransform<T, unknown> {
@@ -174,25 +171,20 @@ function describeInput(input: unknown): string {
 export const hocon = {
   /**
    * A duration, read as {@link Config.getDuration} reads it (default unit `ms`),
-   * except for a number literal the getter reads by its text and the marker by
-   * its JS value: one with more significant digits than a double holds can read
-   * differently (`1.0000000000000001` in `us`: 1000.0000000000001 through the
-   * getter, 1000 here); one in exponent form (`1e3`) is refused by the getter
-   * and read as the number here; and one JavaScript prints in exponent form
-   * (below 1e-6 or from 1e21, e.g. `0.0000001`) reads through the getter but is
-   * refused here.
+   * exponent forms included, except that a number literal with more
+   * significant digits than a double holds can read differently: the getter
+   * reads its text, the marker its JS value (`1.0000000000000001` in `us`:
+   * 1000.0000000000001 through the getter, 1000 here).
    */
   duration(unit?: DurationUnit): ZodTransform<number, unknown> {
     return unitMarker('duration', (text) => readDuration(text, unit))
   },
   /**
    * A byte size, read as {@link Config.getBytes} reads it (default unit `B`),
-   * except for a number literal the getter reads by its text and the marker by
-   * its JS value: one with more significant digits than a double holds can read
-   * differently (`1.99999999999999999`: 1 through the getter, 2 here); one in
-   * exponent form is refused by the getter and read as the number here; and
-   * one JavaScript prints in exponent form (below 1e-6 or from 1e21, e.g.
-   * `0.0000001`) reads through the getter but is refused here.
+   * exponent forms included, except that a number literal with more
+   * significant digits than a double holds can read differently: the getter
+   * reads its text, the marker its JS value (`1.99999999999999999`: 1 through
+   * the getter, 2 here).
    */
   bytes(unit?: ByteUnit): ZodTransform<number, unknown> {
     return unitMarker('byte size', (text) => readBytes(text, unit))

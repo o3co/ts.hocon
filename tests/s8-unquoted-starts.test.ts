@@ -19,7 +19,7 @@
 // composition, not value-position unquoted strings, and remain out of E8
 // scope.
 import { describe, it, expect } from 'vitest'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parse } from '../src/index.js'
@@ -71,6 +71,36 @@ const SUCCESS_FIXTURES = [
 const ERROR_FIXTURES = [
   'us15-incomplete-exp',
 ]
+
+// Every unquoted-starts fixture from xx.hocon, by its sidecar: an `.error`
+// file means Lightbend 1.4.6 rejects it, otherwise `-expected.json` is its
+// value. This covers us31-us67 (xx.hocon#110: the `+` rule and the number-lex
+// edges) and any fixture added later, alongside the named lists above.
+describe('unquoted-starts fixtures, discovered (xx.hocon#110)', () => {
+  const names = readdirSync(confDir)
+    .filter((f) => f.endsWith('.conf'))
+    .map((f) => f.slice(0, -'.conf'.length))
+    .sort()
+
+  it('found the fixtures (run `make testdata`)', () => {
+    expect(names.length).toBeGreaterThanOrEqual(67)
+  })
+
+  for (const name of names) {
+    const errorSidecar = join(expectedDir, `${name}.error`)
+    const expectedJson = join(expectedDir, `${name}-expected.json`)
+    if (existsSync(errorSidecar)) {
+      it(`${name}: rejected (Lightbend .error)`, () => {
+        expect(() => parse(readFileSync(join(confDir, `${name}.conf`), 'utf-8'))).toThrow(ParseError)
+      })
+    } else {
+      it(`${name}: matches the Lightbend expected JSON`, () => {
+        const expected = JSON.parse(readFileSync(expectedJson, 'utf-8'))
+        expect(parse(readFileSync(join(confDir, `${name}.conf`), 'utf-8')).toObject()).toEqual(expected)
+      })
+    }
+  }
+})
 
 describe('S8.6 — unquoted-starts conformance (post-E8 amendment)', () => {
   for (const name of SUCCESS_FIXTURES) {

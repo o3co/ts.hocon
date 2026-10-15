@@ -186,8 +186,7 @@ export class Config {
    *
    * @throws {@link NotResolvedError} when the value is an unresolved substitution.
    * @throws {@link ConfigError} when `path` is missing or is not a string or number, the text is
-   *   not a duration (a number literal in exponent form, `1e3`, is not), or
-   *   the result is not a finite number (E21).
+   *   not a duration, or the result is not a finite number (E21).
    */
   getDuration(path: string, unit?: DurationUnit): number {
     const v = this.requireScalar(path)
@@ -213,8 +212,7 @@ export class Config {
    *
    * @throws {@link NotResolvedError} when the value is an unresolved substitution.
    * @throws {@link ConfigError} when `path` is missing or is not a string or number, the text is
-   *   not a byte size (a number literal in exponent form is not), the size is
-   *   negative, or it exceeds 2^53-1 bytes (the
+   *   not a byte size, the size is negative, or it exceeds 2^53-1 bytes (the
    *   largest integer a JS number holds exactly).
    */
   getBytes(path: string, unit?: ByteUnit): number {
