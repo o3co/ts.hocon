@@ -177,7 +177,8 @@ export class Config {
    *
    * @throws {@link NotResolvedError} when the value is an unresolved substitution.
    * @throws {@link ConfigError} when `path` is missing or is not a string or number, the text is
-   *   not a duration, or the result is not a finite number (E21).
+   *   not a duration (a number literal in exponent form, `1e3`, is not), or
+   *   the result is not a finite number (E21).
    */
   getDuration(path: string, unit?: DurationUnit): number {
     const v = this.requireScalar(path)
@@ -203,7 +204,8 @@ export class Config {
    *
    * @throws {@link NotResolvedError} when the value is an unresolved substitution.
    * @throws {@link ConfigError} when `path` is missing or is not a string or number, the text is
-   *   not a byte size, the size is negative, or it exceeds 2^53-1 bytes (the
+   *   not a byte size (a number literal in exponent form is not), the size is
+   *   negative, or it exceeds 2^53-1 bytes (the
    *   largest integer a JS number holds exactly).
    */
   getBytes(path: string, unit?: ByteUnit): number {
@@ -273,8 +275,9 @@ export class Config {
   }
 
   /**
-   * The list at `path` as plain values (see {@link get}). An object whose keys
-   * are all integers is read as a list too (S15: `{ "0": a, "1": b }`).
+   * The list at `path` as plain values (see {@link get}). An object with integer
+   * keys (`"0"`, `"1"`, …) is read as a list too, in key order with gaps closed
+   * up; its other keys are ignored (S15).
    *
    * @throws {@link NotResolvedError} when the list holds an unresolved substitution.
    * @throws {@link ConfigError} when `path` is missing or is not a list.

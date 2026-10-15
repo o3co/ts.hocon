@@ -13,8 +13,11 @@ import type { ParseOptions } from './parse.js'
 
 /**
  * The whole config, validated against `schema`. HOCON strings are coerced
- * where the schema expects a number or a boolean (`"8080"` → 8080); unit values
- * go through the {@link hocon} markers.
+ * where the schema expects a number or a boolean (`"8080"` → 8080), through
+ * objects, arrays and optional / nullable / default / catch / readonly
+ * wrappers (not unions, records, tuples or pipes); unit values go through the
+ * {@link hocon} markers. On an unresolved Config, values that are still
+ * substitutions are absent from what the schema sees.
  *
  * An object key named `__proto__`, `constructor` or `prototype` anywhere in
  * the value is refused with a `ZodError` issue at the object that holds it
@@ -155,19 +158,21 @@ function describeInput(input: unknown): string {
 export const hocon = {
   /**
    * A duration, read as {@link Config.getDuration} reads it (default unit `ms`),
-   * except that a number literal with more significant digits than a double
-   * holds (`1.0000000000000001`) or in exponent form (`1e3`) can read
-   * differently: the getter reads the literal's text, the marker its JS value.
+   * except for a number literal the getter reads by its text and the marker by
+   * its JS value: one with more significant digits than a double holds can read
+   * differently (`1.0000000000000001` in `us`: 1000.0000000000001 through the
+   * getter, 1000 here), and one in exponent form (`1e3`) is refused by the
+   * getter and read as the number here.
    */
   duration(unit?: DurationUnit): ZodTransform<number, unknown> {
     return unitMarker('duration', (text) => readDuration(text, unit))
   },
   /**
    * A byte size, read as {@link Config.getBytes} reads it (default unit `B`),
-   * except that a number literal with more significant digits than a double
-   * holds (`1.99999999999999999`: 1 through the getter, 2 here) or in exponent
-   * form can read differently: the getter reads the literal's text, the marker
-   * its JS value.
+   * except for a number literal the getter reads by its text and the marker by
+   * its JS value: one with more significant digits than a double holds can read
+   * differently (`1.99999999999999999`: 1 through the getter, 2 here), and one
+   * in exponent form is refused by the getter and read as the number here.
    */
   bytes(unit?: ByteUnit): ZodTransform<number, unknown> {
     return unitMarker('byte size', (text) => readBytes(text, unit))

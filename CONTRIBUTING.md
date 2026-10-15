@@ -56,7 +56,8 @@ pnpm smoke
 `pnpm smoke` checks the built package, which `pnpm test` (run against `src/`)
 cannot see: every export loads and works in both module systems, declares its
 own types, shares the root's classes (`instanceof`), and the CJS output names no
-`__filename` / `__dirname` / `import.meta`. CI runs it on every push.
+`__filename` / `__dirname` / `import.meta`. CI runs it on every pull request
+and push to develop / main, and before each release.
 
 ## Code Style
 

@@ -112,10 +112,11 @@ function buildResolveContext(input: string, opts: ParseOptions): { ast: ReturnTy
  * Parse a HOCON string into a Config. Substitutions are resolved unless
  * `opts.resolveSubstitutions` is false (then the Config is unresolved; finish
  * it with `resolve()` / `resolveWith()`). Includes are read with
- * `opts.readFileSync` (default: `fs`), relative to `opts.baseDir`.
+ * `opts.readFileSync` (default: `fs`), relative to `opts.baseDir` (default: the current directory).
  *
  * @throws {@link ParseError} on a syntax error, or a document nested too deeply.
- * @throws {@link ResolveError} on a substitution that cannot be resolved, or a cycle.
+ * @throws {@link ResolveError} on a substitution that cannot be resolved, a cycle,
+ *   or a required include that cannot be found.
  * @throws {@link ConfigError} when the document root is not an object.
  */
 export function parse(input: string, opts: ParseOptions = {}): Config {
