@@ -7,8 +7,7 @@
 // Bytes fixtures (ub01-ub06): getBytes default unit = bytes (Math.trunc for fractional).
 // Negative edge cases (un01-un03): empty/ws-only/unit-only strings → error.
 //
-// Period fixtures (up01-up05): SKIPPED — S20 ➖ out-of-scope for ts.hocon
-// (getPeriod is not implemented). These fixtures are inapplicable.
+// Period fixtures (up01-up05): getPeriod default unit = days, integer only.
 //
 // Fixture path: copied from xx.hocon into ts.hocon via `make testdata`.
 // Local path: tests/lightbend/testdata/hocon/units-default/
@@ -130,8 +129,31 @@ describe('S18.4 — negative edge cases (un01-un03)', () => {
 })
 
 // ---------------------------------------------------------------------------
-// Period fixtures (up01-up05): SKIPPED
-// S20 ➖ out-of-scope for ts.hocon — getPeriod is not implemented.
-// Fixtures exist in xx.hocon but are inapplicable to this impl.
+// Period fixtures (up01-up05)
 // ---------------------------------------------------------------------------
-// describe.skip('S18.4 — period no-unit (up01-up05) — S20 ➖ out-of-scope', () => { ... })
+describe('S18.4 — period no-unit (up01-up05)', () => {
+  it('up01: "7" bare string → getPeriod("p") = 7 days', () => {
+    const c = loadConf('up01-period-bare.conf')
+    expect(c.getPeriod('p')).toEqual({ years: 0, months: 0, days: 7 })
+  })
+
+  it('up02: " 7 " leading+trailing WS string → getPeriod("p") = 7 days', () => {
+    const c = loadConf('up02-period-leading-trailing-ws.conf')
+    expect(c.getPeriod('p')).toEqual({ years: 0, months: 0, days: 7 })
+  })
+
+  it('up03: "7.5" fractional string → getPeriod("p") throws ConfigError (integer only)', () => {
+    const c = loadConf('up03-period-fractional-rejected.conf')
+    expect(() => c.getPeriod('p')).toThrow(ConfigError)
+  })
+
+  it('up04: "-7" negative string → getPeriod("p") = -7 days (negative allowed)', () => {
+    const c = loadConf('up04-period-negative.conf')
+    expect(c.getPeriod('p')).toEqual({ years: 0, months: 0, days: -7 })
+  })
+
+  it('up05: "7w" → getPeriod("p") = 49 days (weeks fold into days)', () => {
+    const c = loadConf('up05-period-with-unit.conf')
+    expect(c.getPeriod('p')).toEqual({ years: 0, months: 0, days: 49 })
+  })
+})

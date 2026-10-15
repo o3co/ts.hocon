@@ -1,4 +1,4 @@
-export type { ByteUnit, DurationUnit } from './coerce.js'
+export type { ByteUnit, DurationUnit, Period } from './coerce.js'
 export { Config } from './config.js'
 export { ConfigError, NotResolvedError, PackageLookupError, ParseError, ResolveError } from './errors.js'
 export {

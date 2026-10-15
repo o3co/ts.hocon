@@ -1,5 +1,5 @@
-import { coerceBoolean, coerceNumber, readBytes, readDuration } from './coerce.js'
-import type { ByteUnit, DurationUnit } from './coerce.js'
+import { coerceBoolean, coerceNumber, readBytes, readDuration, readPeriod } from './coerce.js'
+import type { ByteUnit, DurationUnit, Period } from './coerce.js'
 import { ConfigError, NotResolvedError } from './errors.js'
 import {
   buildPartialHoconFromResObj,
@@ -171,6 +171,20 @@ export class Config {
         // A RangeError without the path, as getBytes has always thrown here.
         throw new RangeError('byte size overflows representable range (max 2^53-1 bytes)')
     }
+  }
+
+  /**
+   * The calendar period at `path` (`7d`, `2w`, `3m`, `1y`; a bare integer is
+   * days). Integer only, unlike {@link getDuration} / {@link getBytes}.
+   */
+  getPeriod(path: string): Period {
+    const v = this.requireScalar(path)
+    if (v.valueType !== 'string' && v.valueType !== 'number') {
+      throw new ConfigError(`expected period at ${path}, got ${v.valueType}`, path)
+    }
+    const reading = readPeriod(v.raw)
+    if (!reading.ok) throw new ConfigError(`invalid period at ${path}: ${JSON.stringify(v.raw)}`, path)
+    return reading.value
   }
 
   getConfig(path: string): Config {
