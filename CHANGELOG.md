@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.14.1] - 2026-10-16
+
+This patch release fixes the Zod integration and the environment lookup. No
+value that validated on 1.14.0 changes, except that a `.catch()` inside a
+record, tuple, union, pipe or lazy schema now sees the coerced value, as it
+already did inside an object (see #225 below).
+
 ### Documented — `adapters/toml`: `smol-toml` 1.9.0 or later recommended
 
 - No behaviour change. `smol-toml` before 1.9.0 is affected by one or both of
