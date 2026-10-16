@@ -63,10 +63,16 @@ function parseValue<T>(value: unknown, schema: ZodType<T>): T {
   let result: ReturnType<ZodType<T>['safeParse']>
   try {
     result = schema.safeParse(coerced)
-  } catch {
+  } catch (err) {
     // A schema that cannot run synchronously (an async refinement): the
-    // refusals still stand, as they did before the schema ran (#201).
-    throw new z.ZodError(refused)
+    // refusals still stand, as they did before the schema ran (#201). Anything
+    // else the schema throws is its own error and goes to the caller, as it
+    // does when no key is refused. The name check covers a schema built with
+    // another copy of zod (the CJS and ESM builds side by side).
+    if (err instanceof z.core.$ZodAsyncError || (err as Error | undefined)?.constructor?.name === '$ZodAsyncError') {
+      throw new z.ZodError(refused)
+    }
+    throw err
   }
   if (result.success) throw new z.ZodError(refused)
   throw new z.ZodError([...refused, ...withoutPrototypeKeyIssues(result.error.issues)])

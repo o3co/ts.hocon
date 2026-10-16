@@ -232,6 +232,14 @@ describe('prototype-named keys with the schema\'s other issues', () => {
     expect(refused(() => validate(cfg, schema))).toEqual([{ path: [], key: '__proto__' }])
   })
 
+  it('lets an error the schema throws reach the caller', () => {
+    const cfg = parse('a { "constructor" = 1 }\nn = 5')
+    const schema = z
+      .object({ a: z.looseObject({}), n: z.number() })
+      .refine((v) => (v as unknown as { missing: { deep: boolean } }).missing.deep)
+    expect(() => validate(cfg, schema)).toThrow(TypeError)
+  })
+
   it('does not hand the schema the refused key or its value', () => {
     const seen: unknown[] = []
     const cfg = parse('db { "__proto__" { password = "s3cret" }, host = h }')
