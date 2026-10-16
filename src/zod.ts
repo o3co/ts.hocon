@@ -166,16 +166,26 @@ function unitMarker<T>(what: string, read: (text: string) => UnitReading<T>): Zo
     const text = typeof input === 'string' ? input : String(input)
     const reading = read(text)
     if (reading.ok) return reading.value
-    ctx.issues.push({ code: 'custom', message: unitProblemMessage(what, reading.problem, text), input })
+    // The message names the problem, never the value: validation messages end
+    // up in boot logs, and a value can be a secret set under the wrong key
+    // (#226). The value stays in `input`, which Zod leaves out of the issues it
+    // finalizes unless asked to report input; `params.problem` names the
+    // problem for code.
+    ctx.issues.push({
+      code: 'custom',
+      message: unitProblemMessage(what, reading.problem),
+      input,
+      params: { problem: reading.problem },
+    })
     return z.NEVER
   })
 }
 
-function unitProblemMessage(what: string, problem: UnitProblem, text: string): string {
+function unitProblemMessage(what: string, problem: UnitProblem): string {
   switch (problem) {
-    case 'invalid': return `invalid ${what}: ${JSON.stringify(text)}`
-    case 'negative': return `${what} must be non-negative: ${JSON.stringify(text)}`
-    case 'overflow': return `${what} overflows the representable range: ${JSON.stringify(text)}`
+    case 'invalid': return `not a ${what}`
+    case 'negative': return `${what} must be non-negative`
+    case 'overflow': return `${what} overflows the representable range`
   }
 }
 

@@ -276,7 +276,7 @@ const Backup = z.object({
 getValidated(cfg, 'backup', Backup) // { keep: { years: 0, months: 0, days: 14 } }
 ```
 
-不正な duration / byte size / period は、キーのパス付きのバリデーションエラーになります。マーカーは普通の Zod スキーマなので、`validate`・`getValidated`・`parseWithSchema`・`parseFileWithSchema` をはじめ、Zod が実行するところならどこでも使えます。指数表記（`1e3`、`"1.5e2s"`）は getter もマーカーも読みます。ただしマーカーは数値を JavaScript の値として読むため、double の精度を超える桁数の数値リテラルは、リテラルの文字列を正確に読む getter と結果が異なることがあります（`1.99999999999999999` B は `getBytes()` では 1、マーカーでは 2）。period のマーカーは、小数点や指数を含むリテラル（`7.0`、`1e2`）も整数として読みます（`getPeriod()` は拒否します）。単位付きで書けば（`30s`、`7d`）どちらの差も出ません。
+不正な duration / byte size / period は、キーのパス付きのバリデーションエラーになります。issue の message は問題だけを示し、値は含めません（`not a duration`、`byte size must be non-negative`）。誤ったキーに置かれたシークレットがログに出ないようにするためです。`params.problem` は `invalid`・`negative`・`overflow` のいずれかで、値は Zod に input の報告を求めたときだけ issue の `input` に入ります。マーカーは普通の Zod スキーマなので、`validate`・`getValidated`・`parseWithSchema`・`parseFileWithSchema` をはじめ、Zod が実行するところならどこでも使えます。指数表記（`1e3`、`"1.5e2s"`）は getter もマーカーも読みます。ただしマーカーは数値を JavaScript の値として読むため、double の精度を超える桁数の数値リテラルは、リテラルの文字列を正確に読む getter と結果が異なることがあります（`1.99999999999999999` B は `getBytes()` では 1、マーカーでは 2）。period のマーカーは、小数点や指数を含むリテラル（`7.0`、`1e2`）も整数として読みます（`getPeriod()` は拒否します）。単位付きで書けば（`30s`、`7d`）どちらの差も出ません。
 
 未解決の Config（`resolveSubstitutions: false` でパースしたもの、`resolve()` 前のフォールバックの重なり、または何かが残った `resolve({ allowUnresolved: true })` の結果）に対しては、`validate` は保留中の値が欠けたツリーを検証するのではなく、getter と同じく `NotResolvedError` を投げます。`getValidated` は、値が未解決のパスでは `NotResolvedError` を投げ、解決済みのパスなら検証します。先に `resolve()` を呼んでください。
 

@@ -73,7 +73,7 @@ describe('hocon.duration()', () => {
     expect(result).toBeInstanceOf(z.ZodError)
     const issue = (result as z.ZodError).issues[0]
     expect(issue.path).toEqual(['server', 'timeout'])
-    expect(issue.message).toBe('invalid duration: "5 parsecs"')
+    expect(issue.message).toBe('not a duration')
   })
 
   it('names the type it got for a non-scalar or boolean', () => {
@@ -201,15 +201,18 @@ describe('hocon.bytes()', () => {
     }
     expect(issueFor('limits.body = -1k')).toMatchObject({
       path: ['limits', 'body'],
-      message: 'byte size must be non-negative: "-1k"',
+      message: 'byte size must be non-negative',
+      params: { problem: 'negative' },
     })
     expect(issueFor('limits.body = 3 parsecs')).toMatchObject({
       path: ['limits', 'body'],
-      message: 'invalid byte size: "3 parsecs"',
+      message: 'not a byte size',
+      params: { problem: 'invalid' },
     })
     expect(issueFor('limits.body = 1E')).toMatchObject({
       path: ['limits', 'body'],
-      message: 'byte size overflows the representable range: "1E"',
+      message: 'byte size overflows the representable range',
+      params: { problem: 'overflow' },
     })
   })
 })
@@ -245,7 +248,8 @@ describe('hocon.period()', () => {
     } catch (err) {
       expect((err as z.ZodError).issues[0]).toMatchObject({
         path: ['backup', 'keep'],
-        message: 'invalid period: "7.5"',
+        message: 'not a period',
+        params: { problem: 'invalid' },
       })
     }
   })
@@ -274,5 +278,46 @@ describe('unit readers (coerce.ts)', () => {
     expect(readBytes('-1')).toEqual({ ok: false, problem: 'negative' })
     expect(readBytes('1E')).toEqual({ ok: false, problem: 'overflow' })
     expect(readBytes('abc')).toEqual({ ok: false, problem: 'invalid' })
+  })
+})
+
+// #226 — a marker's issue names the problem, never the value: validation
+// messages end up in boot logs, and the value may be a secret set under the
+// wrong key.
+describe('marker issues keep the value out', () => {
+  const secret = 's3cret-token'
+
+  for (const [name, schema, input] of [
+    ['duration', hocon.duration(), `"${secret}"`],
+    ['byte size', hocon.bytes(), `"${secret}"`],
+    ['negative byte size', hocon.bytes(), '"-123456789k"'],
+    ['overflowing byte size', hocon.bytes(), '"987654321E"'],
+    ['period', hocon.period(), `"${secret}"`],
+  ] as const) {
+    it(`leaves the ${name} out of every rendering of the error`, () => {
+      const value = input.slice(1, -1)
+      let err: z.ZodError | undefined
+      try {
+        validate(parse(`a.b = ${input}`), z.object({ a: z.object({ b: schema }) }))
+      } catch (e) {
+        err = e as z.ZodError
+      }
+      expect(err).toBeInstanceOf(z.ZodError)
+      for (const rendered of [
+        err!.message,
+        z.prettifyError(err!),
+        JSON.stringify(err!.issues),
+        JSON.stringify(z.treeifyError(err!)),
+        JSON.stringify(z.flattenError(err!)),
+      ]) {
+        expect(rendered).not.toContain(value)
+      }
+    })
+  }
+
+  it('keeps the value in input when the caller asks Zod to report it', () => {
+    const result = hocon.duration().safeParse(secret, { reportInput: true })
+    expect(result.success).toBe(false)
+    expect(result.error!.issues[0]).toMatchObject({ message: 'not a duration', input: secret })
   })
 })
