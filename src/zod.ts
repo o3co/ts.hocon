@@ -15,9 +15,10 @@ import type { ParseOptions } from './parse.js'
 /**
  * The whole config, validated against `schema`. HOCON strings are coerced
  * where the schema expects a number or a boolean (`"8080"` → 8080), through
- * objects, arrays and optional / nullable / default / catch / readonly
- * wrappers (not unions, records, tuples or pipes); unit values go through the
- * {@link hocon} markers.
+ * objects, arrays, records, tuples, unions, pipes (by their input schema), lazy
+ * schemas and optional / nullable / default / prefault / nonoptional / catch /
+ * readonly wrappers; a union coerces by the option that takes the value (see
+ * the README). Unit values go through the {@link hocon} markers.
  *
  * An object key named `__proto__`, `constructor` or `prototype` anywhere in
  * the value is refused with a `ZodError` issue at the object that holds it
@@ -234,6 +235,10 @@ function getDefType(schema: ZodType): string | undefined {
   return zod?.def?.type
 }
 
+function getDef(schema: ZodType): Record<string, unknown> | undefined {
+  return (schema as any)._zod?.def
+}
+
 function getInnerSchema(schema: ZodType): ZodType | undefined {
   const def = (schema as any)._zod?.def
   // Zod v4 wrapper types (optional, nullable, default, catch, readonly) store
@@ -245,6 +250,13 @@ function getInnerSchema(schema: ZodType): ZodType | undefined {
 function getObjectShape(schema: ZodType): Record<string, ZodType> | undefined {
   const shape = (schema as any)._zod?.def?.shape
   return typeof shape === 'object' && shape !== null ? shape : undefined
+}
+
+// The literal values each key of an object (or a union of objects) can take,
+// which is what Zod's discriminated union picks an option by: present for an
+// object, and for a nested discriminated union, alike.
+function getPropValues(schema: ZodType): Record<string, ReadonlySet<unknown>> | undefined {
+  return (schema as any)._zod?.propValues
 }
 
 function getArrayElement(schema: ZodType): ZodType | undefined {
@@ -296,6 +308,13 @@ function coerceValue(value: unknown, schema: ZodType): unknown {
       }
       return value
 
+    case 'literal': {
+      // A number or boolean literal expects that number or boolean: `"1"` for
+      // z.literal(1), as a discriminator tag from an environment variable is.
+      const values = getDef(schema)?.values as readonly unknown[] | undefined
+      return values ? coerceToLiteral(value, new Set(values)) : value
+    }
+
     case 'object': {
       if (typeof value !== 'object' || Array.isArray(value)) return value
       const shape = getObjectShape(schema)
@@ -323,9 +342,47 @@ function coerceValue(value: unknown, schema: ZodType): unknown {
       return value.map((item) => coerceValue(item, elementSchema))
     }
 
+    case 'record': {
+      // Keys stay strings; each value is coerced by the value schema.
+      if (typeof value !== 'object' || Array.isArray(value)) return value
+      const valueSchema = getDef(schema)?.valueType as ZodType | undefined
+      if (!valueSchema) return value
+      const result: Record<string, unknown> = {}
+      for (const [key, item] of Object.entries(value)) result[key] = coerceValue(item, valueSchema)
+      return result
+    }
+
+    case 'tuple': {
+      if (!Array.isArray(value)) return value
+      const def = getDef(schema)
+      const items = (def?.items ?? []) as ZodType[]
+      const rest = def?.rest as ZodType | null | undefined
+      return value.map((item, i) => {
+        const itemSchema = i < items.length ? items[i] : rest
+        return itemSchema ? coerceValue(item, itemSchema) : item
+      })
+    }
+
+    case 'union':
+      return coerceUnion(value, schema)
+
+    case 'pipe': {
+      // The input schema is what sees the HOCON value; the output schema sees
+      // what the input schema (a transform, say) made of it.
+      const input = getDef(schema)?.in as ZodType | undefined
+      return input ? coerceValue(value, input) : value
+    }
+
+    case 'lazy': {
+      const getter = getDef(schema)?.getter as (() => ZodType) | undefined
+      return getter ? coerceValue(value, getter()) : value
+    }
+
     case 'optional':
     case 'nullable':
     case 'default':
+    case 'prefault':
+    case 'nonoptional':
     case 'catch':
     case 'readonly': {
       const inner = getInnerSchema(schema)
@@ -334,5 +391,64 @@ function coerceValue(value: unknown, schema: ZodType): unknown {
 
     default:
       return value
+  }
+}
+
+// A union is coerced by the option that takes the value: for a discriminated
+// union, the option its discriminator picks (coerced even if it then fails, so
+// the issues are about the coerced value). Any other union takes the value as
+// it is when an option accepts it (`"5"` stays a string for number | string),
+// and is coerced otherwise, by the first option that accepts the value coerced
+// for it. This is how py.hocon (a Pydantic smart union) and rs.hocon (a serde
+// untagged enum) read the same value; Lightbend has no unions. When no option
+// takes the value, it goes to the schema as it is.
+function coerceUnion(value: unknown, schema: ZodType): unknown {
+  const def = getDef(schema)
+  const options = (def?.options ?? []) as ZodType[]
+  const discriminator = def?.discriminator as string | undefined
+  if (discriminator !== undefined) {
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) return value
+    // An absent tag is `undefined`, which an option with an optional tag takes.
+    const tag = Object.prototype.hasOwnProperty.call(value, discriminator)
+      ? (value as Record<string, unknown>)[discriminator]
+      : undefined
+    // The tag as it is first, in every option, then the tag coerced: an exact
+    // `"1"` option wins over a `1` option, as a plain union keeps the value.
+    const tagsOf = (o: ZodType) => getPropValues(o)?.[discriminator]
+    const option =
+      options.find((o) => tagsOf(o)?.has(tag)) ??
+      options.find((o) => {
+        const tags = tagsOf(o)
+        return tags !== undefined && tags.has(coerceToLiteral(tag, tags))
+      })
+    return option ? coerceValue(value, option) : value
+  }
+  if (options.some((option) => accepts(option, value))) return value
+  for (const option of options) {
+    const coerced = coerceValue(value, option)
+    if (accepts(option, coerced)) return coerced
+  }
+  return value
+}
+
+// `value`, or the number or boolean among `literals` that the string `value`
+// reads as.
+function coerceToLiteral(value: unknown, literals: ReadonlySet<unknown>): unknown {
+  if (typeof value !== 'string' || literals.has(value)) return value
+  const n = coerceNumber(value)
+  if (n !== undefined && literals.has(n)) return n
+  const b = coerceBoolean(value)
+  if (b !== undefined && literals.has(b)) return b
+  return value
+}
+
+// Whether `schema` accepts `value`. An option that throws instead of answering
+// (an async refinement, a refinement that throws on an unexpected value) does
+// not; the schema's own parse reports what it does.
+function accepts(schema: ZodType, value: unknown): boolean {
+  try {
+    return schema.safeParse(value).success
+  } catch {
+    return false
   }
 }
