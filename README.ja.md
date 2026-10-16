@@ -249,6 +249,8 @@ const app = validate(cfg, Schema)
 const port = getValidated(cfg, 'server.port', z.number().int())
 ```
 
+スキーマが数値や真偽値を求める位置では文字列を変換するので、`PORT=8081` のとき `port = ${?PORT}` は `z.number()` を通ります。変換はスキーマに沿って、object・array・record（各値）・tuple・union・pipe（入力側のスキーマ）・lazy と、optional / nullable / default / prefault / nonoptional / catch / readonly の各ラッパーの中まで届きます。数値や真偽値の literal にも変換します（`z.literal(1)` に対する `"1"`）。object の `catchall` と intersection の中には届きません。`z.discriminatedUnion` は discriminator が選ぶ option に従って変換します。それ以外の union は、値をそのまま受け入れる option があれば変換せず（`z.union([z.number(), z.string()])` では `"5"` は文字列のまま）、なければ変換後の値を受け入れる最初の option に従って変換します（`z.union([z.number(), z.literal('auto')])` では `"8081"` は 8081）。その option を探すために option を順に試すので、深く再帰する通常の union は検証が遅くなります。そこでは `z.discriminatedUnion` を使ってください。
+
 HOCON の duration と byte size は文字列（`30m`、`64KiB`）なので、`z.number()` では通りません。`hocon.duration(unit?)` / `hocon.bytes(unit?)` マーカーは `getDuration()` / `getBytes()` と同じ規則で読み、指定した単位の数値を返します（既定は `ms` / `B`。単位のない数値は getter と同じ意味）。範囲や整数のチェックは、マーカーを数値スキーマに pipe して書きます:
 
 ```ts

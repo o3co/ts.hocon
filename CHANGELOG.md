@@ -45,6 +45,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   schema that cannot run synchronously still gets the refusals. The entry
   points still throw a `ZodError` whenever such a key is present.
 
+### Fixed — Zod: strings inside records, unions, pipes, tuples and lazy schemas were not coerced
+
+- **A string is coerced to a number or a boolean wherever the schema puts
+  one** ([#225](https://github.com/o3co/ts.hocon/issues/225)). The coercion
+  that lets `port = ${?PORT}` validate against `z.number()` walked only
+  objects, arrays and the optional / nullable / default / catch / readonly
+  wrappers, so the same environment variable was refused inside
+  `z.record(...)`, `z.union(...)` / `z.discriminatedUnion(...)`, `.pipe(...)`,
+  `z.tuple(...)` and `z.lazy(...)`. It now walks those too, plus `prefault`
+  and `nonoptional`: a record coerces each value (keys stay strings), a tuple
+  each item by its position (the rest by the rest schema), a pipe by its input
+  schema, a lazy schema by the schema it returns. A string also coerces to a
+  number or boolean literal (`"1"` for `z.literal(1)`). A discriminated union
+  coerces by the option the discriminator picks (a nested discriminated union,
+  an optional tag and a number or boolean tag included; a tag that matches an
+  option as it is wins over one it would coerce to). Any other union takes
+  the value as it is when an option accepts it, so no value that validated in
+  1.14.0 changes (`z.union([z.number(), z.string()])` keeps `"5"` a string, as
+  py.hocon's Pydantic smart union and rs.hocon's serde untagged enum do), and
+  coerces it otherwise, by the first option that accepts the coerced value
+  (`z.union([z.number(), z.literal('auto')])` reads `"8081"` as 8081).
+  Finding that option runs the options' `safeParse` once more, so a refinement
+  with side effects in a union option runs again. A value no option takes
+  reaches the schema unchanged, as before. One value can change: a `.catch()`
+  inside these wrappers now sees the coerced value, as it already did inside an
+  object (`z.record(z.string(), z.number().catch(0))` reads `"5"` as 5, not 0).
+
 ## [1.14.0] - 2026-10-16
 
 This minor release contains behavior changes marked **BREAKING** below: a

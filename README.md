@@ -250,6 +250,8 @@ const app = validate(cfg, Schema)
 const port = getValidated(cfg, 'server.port', z.number().int())
 ```
 
+A string is coerced where the schema expects a number or a boolean, so `port = ${?PORT}` with `PORT=8081` validates against `z.number()`. The coercion follows the schema through objects, arrays, records (each value), tuples, unions, pipes (by the input schema), lazy schemas and the optional / nullable / default / prefault / nonoptional / catch / readonly wrappers, and turns a string into a number or boolean literal (`"1"` for `z.literal(1)`). It does not walk an object's `catchall` or an intersection. A `z.discriminatedUnion` coerces by the option the discriminator picks. Any other union takes the value as it is when an option accepts it, so `z.union([z.number(), z.string()])` keeps `"5"` a string, and coerces it otherwise, by the first option that accepts the coerced value (`z.union([z.number(), z.literal('auto')])` reads `"8081"` as 8081). Finding that option tries the options in turn, so a deeply recursive plain union validates slowly; prefer `z.discriminatedUnion` there.
+
 Durations and byte sizes are strings in HOCON (`30m`, `64KiB`), so `z.number()` refuses them. The `hocon.duration(unit?)` and `hocon.bytes(unit?)` markers read them with the same rules as `getDuration()` / `getBytes()` and give a number in the requested unit (default `ms` / `B`; a plain number keeps the getters' meaning). Pipe the marker into a number schema for range and integer checks:
 
 ```ts
