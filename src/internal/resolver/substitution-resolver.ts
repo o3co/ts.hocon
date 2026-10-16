@@ -497,9 +497,9 @@ export class SubstitutionResolver {
       if (this.opts.useSystemEnvironment !== false) {
         const envKey = s.segments.map((seg: Segment) => seg.text).join('.')
         const envVal =
-          this.opts.env[envKey] ??
+          this.envVar(envKey) ??
           (s.prefixLen > 0
-            ? this.opts.env[s.segments.slice(s.prefixLen).map((seg: Segment) => seg.text).join('.')]
+            ? this.envVar(s.segments.slice(s.prefixLen).map((seg: Segment) => seg.text).join('.'))
             : undefined)
         if (envVal !== undefined) {
           const result: HoconValue = { kind: 'scalar', raw: envVal, valueType: 'string' }
@@ -539,17 +539,27 @@ export class SubstitutionResolver {
     const bases = this.candidateBases(s)
     for (const base of bases) {
       const key0 = base + '_0'
-      if (!(key0 in this.opts.env)) continue
+      if (this.envVar(key0) === undefined) continue
       // _0 is present — scan _0, _1, … until first absent index
       const items: HoconValue[] = []
       for (let i = 0; ; i++) {
-        const k = base + '_' + i
-        if (!(k in this.opts.env)) break
-        items.push({ kind: 'scalar', raw: this.opts.env[k] as string, valueType: 'string' })
+        const v = this.envVar(base + '_' + i)
+        if (v === undefined) break
+        items.push({ kind: 'scalar', raw: v, valueType: 'string' })
       }
       return { kind: 'array', items }
     }
     return undefined
+  }
+
+  /**
+   * The environment variable `name`, or undefined when it is not set. Own keys
+   * only: the environment is a plain object (process.env, or the caller's
+   * `env`), so `env[name]` would answer `${?constructor}` or `${?toString}`
+   * from Object.prototype (#228).
+   */
+  private envVar(name: string): string | undefined {
+    return Object.prototype.hasOwnProperty.call(this.opts.env, name) ? this.opts.env[name] : undefined
   }
 
   /**

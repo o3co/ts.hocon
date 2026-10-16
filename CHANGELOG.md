@@ -17,6 +17,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   stays `>= 1.0` for now, so existing installs keep working; raising it is
   tracked in [#221](https://github.com/o3co/ts.hocon/issues/221).
 
+### Fixed — a substitution read an unset variable from `Object.prototype`
+
+- **A substitution reads the environment through its own keys only**
+  ([#228](https://github.com/o3co/ts.hocon/issues/228)). The environment
+  (`process.env`, or the `env` option) is a plain object, and the lookup was
+  `env[name]`, so `${?constructor}`, `${?toString}` or `${?__proto__}`
+  resolved to an `Object.prototype` member (with `env: { ... }`,
+  `"x"${?constructor}` read as `"xfunction Object() { [native code] }"`)
+  instead of being unset. Such a
+  name is now unset unless the environment sets it itself: an optional
+  substitution is dropped and a required one is a `ResolveError`. The
+  `NAME_0`, `NAME_1`, … list expansion (S13c) follows the same rule.
+
 ## [1.14.0] - 2026-10-16
 
 This minor release contains behavior changes marked **BREAKING** below: a
