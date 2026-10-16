@@ -169,6 +169,106 @@ describe('#225 coercion inside records, tuples, unions, pipes and lazy schemas',
     expect(getValidated(parse('a = "6"'), 'a', schema)).toBe('number')
   })
 
+  it('coerces to a numeric enum value', () => {
+    enum Level { Low = 1, High = 2 }
+    const cfg = parse('a = "1", b = ${?LEVEL}, c = x', { env: { LEVEL: '2' } })
+    expect(getValidated(cfg, 'a', z.enum({ A: 1, B: 2 }))).toBe(1)
+    expect(getValidated(cfg, 'b', z.nativeEnum(Level))).toBe(Level.High)
+    expect(getValidated(cfg, 'c', z.enum(['x', 'y']))).toBe('x')
+  })
+
+  it('reads an enum value only as a value Zod accepts', () => {
+    enum Level { Low = 1 }
+    // A nativeEnum's reverse-mapping name is not a value; an exact string
+    // value wins over a number it would coerce to.
+    expect(() => getValidated(parse('a = Low'), 'a', z.nativeEnum(Level))).toThrow(z.ZodError)
+    expect(getValidated(parse('a = "1"'), 'a', z.enum({ A: 1, B: '1' }))).toBe('1')
+  })
+
+  it('coerces a discriminator tag to a numeric enum value', () => {
+    const schema = z.discriminatedUnion('k', [
+      z.object({ k: z.enum({ A: 1 }), n: z.number() }),
+      z.object({ k: z.literal('b'), s: z.string() }),
+    ])
+    expect(getValidated(parse('x { k = "1", n = "5" }'), 'x', schema)).toEqual({ k: 1, n: 5 })
+  })
+
+  it('coerces the keys an object\'s catchall covers', () => {
+    const cfg = parse('o { port = "80", x = "5", on = "yes" }')
+    const schema = z.object({ port: z.number() }).catchall(z.union([z.number(), z.boolean()]))
+    expect(getValidated(cfg, 'o', schema)).toEqual({ port: 80, x: 5, on: true })
+    expect(getValidated(cfg, 'o', z.looseObject({ port: z.number() }))).toEqual({ port: 80, x: '5', on: 'yes' })
+  })
+
+  it('hands a .catch() in the new positions the coerced value', () => {
+    // The one documented value change: the fallback used to take the string.
+    const cfg = parse('o { x = "5" }, e = "1"')
+    expect(getValidated(cfg, 'o', z.object({}).catchall(z.number().catch(-1)))).toEqual({ x: 5 })
+    expect(getValidated(cfg, 'e', z.enum({ A: 1, B: 2 }).catch(2))).toBe(1)
+  })
+
+  it('coerces a catchall alongside a refused prototype-named key', () => {
+    // `y` is coerced; `x` is not a number; the refusal comes first.
+    const cfg = parse('o { "constructor" = 1, x = abc, y = "5" }')
+    const err = (() => {
+      try {
+        getValidated(cfg, 'o', z.object({}).catchall(z.number()))
+      } catch (e) {
+        return e as z.ZodError
+      }
+    })()
+    expect(err?.issues.map((issue) => [issue.code, issue.path])).toEqual([['custom', []], ['invalid_type', ['x']]])
+  })
+
+  it('coerces for both sides of an intersection', () => {
+    const cfg = parse('o { port = "80", tls = "true" }')
+    const schema = z.intersection(z.object({ port: z.number() }), z.object({ tls: z.boolean() }))
+    expect(getValidated(cfg, 'o', schema)).toEqual({ port: 80, tls: true })
+    expect(getValidated(cfg, 'o', z.object({ port: z.number() }).and(z.object({ tls: z.boolean() })))).toEqual({
+      port: 80, tls: true,
+    })
+  })
+
+  it('keeps a value an intersection accepts as it is', () => {
+    // Coercing for the right side would hand the left side a number.
+    const cfg = parse('a = "5", o { x = "5" }')
+    expect(getValidated(cfg, 'a', z.intersection(z.string().transform(Number), z.coerce.number()))).toBe(5)
+    const objects = z.intersection(
+      z.object({ x: z.string().transform(Number) }),
+      z.object({ x: z.coerce.number() }),
+    )
+    expect(getValidated(cfg, 'o', objects)).toEqual({ x: 5 })
+  })
+
+  it('coerces for one side of an intersection when that is the form both accept', () => {
+    // `x` passes both sides as the string; only `y` needs coercing, for
+    // whichever side names it. Coercing `x` for the coercing side too would
+    // break the transforming side.
+    const cfg = parse('o { x = "5", y = "6" }')
+    const leftNeeds = z.intersection(
+      z.object({ x: z.string().transform(Number), y: z.number() }),
+      z.object({ x: z.coerce.number() }),
+    )
+    expect(getValidated(cfg, 'o', leftNeeds)).toEqual({ x: 5, y: 6 })
+    const rightNeeds = z.intersection(z.object({ x: z.string() }), z.object({ y: z.number() }))
+    expect(getValidated(cfg, 'o', rightNeeds)).toEqual({ x: '5', y: 6 })
+  })
+
+  it('leaves an intersection whose sides need different forms of one key to Zod', () => {
+    // `x` must stay a string for the left and `y` become a number for the
+    // right, which coerces `x` too: no single form passes both sides.
+    const cfg = parse('o { x = "5", y = "6" }')
+    const schema = z.intersection(
+      z.object({ x: z.string().transform(Number) }),
+      z.object({ x: z.coerce.number(), y: z.number() }),
+    )
+    expect(() => getValidated(cfg, 'o', schema)).toThrow(z.ZodError)
+  })
+
+  it('coerces inside z.success', () => {
+    expect(getValidated(parse('a = "5"'), 'a', z.success(z.number()))).toBe(true)
+  })
+
   describe('pipe', () => {
     it('coerces by the input schema', () => {
       const cfg = parse('a = "5"')
