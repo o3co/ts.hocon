@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.14.3] - 2026-10-16
+
+This patch release adds an opt-in option; no schema, config or getter reads
+differently unless a schema sets it.
+
 ### Added — Zod: `requireUnit` on the unit markers
 
 - **`hocon.duration(unit, { requireUnit: true })`, `hocon.bytes(unit, {
