@@ -150,5 +150,96 @@ describe('prototype-named keys', () => {
   })
 })
 
+// #227 — the refusal does not stop the schema: it validates the value without
+// the refused keys, and its issues come in the same ZodError, after the
+// refusals, so one run lists everything wrong.
+describe('prototype-named keys with the schema\'s other issues', () => {
+  it('reports the schema\'s issues together with the refusal', () => {
+    const cfg = parse('limits { "__proto__" = 5, ok = 1 }\nport = abc\ndebug = maybe')
+    const schema = z.object({
+      limits: z.record(z.string(), z.number()),
+      port: z.number(),
+      debug: z.boolean(),
+    })
+    const issues = zodErrorOf(() => validate(cfg, schema)).issues
+    expect(issues.map((issue) => [issue.code, issue.path])).toEqual([
+      ['custom', ['limits']],
+      ['invalid_type', ['port']],
+      ['invalid_type', ['debug']],
+    ])
+  })
+
+  it('reports issues below the object that held the refused key', () => {
+    const cfg = parse('limits { "constructor" = 5, api = slow }')
+    const issues = zodErrorOf(() => getValidated(cfg, 'limits', z.record(z.string(), z.number()))).issues
+    expect(issues.map((issue) => [issue.code, issue.path])).toEqual([
+      ['custom', []],
+      ['invalid_type', ['api']],
+    ])
+  })
+
+  it('still coerces the rest of the value for the schema', () => {
+    const cfg = parse('a { "prototype" = 1 }\nport = "8080"\nname = 5')
+    const schema = z.object({ a: z.object({}), port: z.number(), name: z.string() })
+    const issues = zodErrorOf(() => validate(cfg, schema)).issues
+    expect(issues.map((issue) => [issue.code, issue.path])).toEqual([
+      ['custom', ['a']],
+      ['invalid_type', ['name']],
+    ])
+  })
+
+  it('leaves out the schema\'s issue at the refused key, so every formatter renders', () => {
+    // The schema wants a field the value no longer holds; that issue is the
+    // refusal again, and a `constructor` path segment breaks Zod's formatters.
+    const cfg = parse('"constructor" = 1\nport = abc')
+    const schema = z.object({ constructor: z.number(), port: z.number() })
+    const err = zodErrorOf(() => validate(cfg, schema))
+    expect(err.issues.map((issue) => [issue.code, issue.path])).toEqual([
+      ['custom', []],
+      ['invalid_type', ['port']],
+    ])
+    expect(() => z.treeifyError(err)).not.toThrow()
+    expect(() => err.format()).not.toThrow()
+    expect(() => z.flattenError(err)).not.toThrow()
+  })
+
+  it('leaves such issues out inside a union\'s per-option issues too', () => {
+    const cfg = parse('"constructor" = 1\ns { x {} }')
+    const schema = z.object({
+      s: z.union([z.string(), z.object({ constructor: z.number(), x: z.object({ ['__proto__']: z.number() }) })]),
+    })
+    const err = zodErrorOf(() => validate(cfg, schema))
+    expect(err.issues[0]).toMatchObject({ code: 'custom', path: [] })
+    expect(err.issues[1]).toMatchObject({ code: 'invalid_union', path: ['s'] })
+    const optionPaths = (err.issues[1] as z.core.$ZodIssueInvalidUnion).errors.flat().map((issue) => issue.path)
+    expect(optionPaths.flat()).not.toContain('constructor')
+    expect(optionPaths.flat()).not.toContain('__proto__')
+    expect(() => z.treeifyError(err)).not.toThrow()
+    expect(() => err.format()).not.toThrow()
+    expect(Object.prototype).not.toHaveProperty('properties')
+  })
+
+  it('leaves out an issue at such a key elsewhere in the value as well', () => {
+    // No value can satisfy it through these entry points, which refuse the key.
+    const cfg = parse('a { "constructor" = 1 }\nb {}')
+    const schema = z.object({ a: z.object({}), b: z.object({ constructor: z.number() }) })
+    expect(zodErrorOf(() => validate(cfg, schema)).issues.map((issue) => issue.path)).toEqual([['a']])
+  })
+
+  it('still reports the refusal when the schema cannot run synchronously', () => {
+    const cfg = parse('"__proto__" = 1\nok = 2')
+    const schema = z.record(z.string(), z.number()).refine(async () => true)
+    expect(refused(() => validate(cfg, schema))).toEqual([{ path: [], key: '__proto__' }])
+  })
+
+  it('does not hand the schema the refused key or its value', () => {
+    const seen: unknown[] = []
+    const cfg = parse('db { "__proto__" { password = "s3cret" }, host = h }')
+    const schema = z.object({ db: z.looseObject({}).refine((v) => { seen.push(v); return true }) })
+    zodErrorOf(() => validate(cfg, schema))
+    expect(seen).toEqual([{ host: 'h' }])
+  })
+})
+
 const dir = mkdtempSync(join(tmpdir(), 'ts-hocon-proto-keys-'))
 afterAll(() => rmSync(dir, { recursive: true, force: true }))

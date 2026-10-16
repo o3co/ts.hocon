@@ -30,6 +30,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   substitution is dropped and a required one is a `ResolveError`. The
   `NAME_0`, `NAME_1`, … list expansion (S13c) follows the same rule.
 
+### Changed — Zod: a prototype-named key is reported with the schema's other issues
+
+- **The refusal of a `__proto__`, `constructor` or `prototype` key (#201) no
+  longer stops validation** ([#227](https://github.com/o3co/ts.hocon/issues/227)).
+  The schema now validates the value without the refused keys, and the
+  `ZodError` lists the refusals first, then the schema's own issues, so one run
+  shows everything wrong instead of one problem per restart. The refused key
+  and its value are never handed to the schema. An issue the schema raises at
+  a prototype-named key (a schema field named `constructor`), anywhere in the
+  value and also inside a union's per-option issues, is left out: these entry
+  points never hand the schema such a key, so the issue only repeats a refusal
+  or asks for a key they refuse, and its path breaks Zod's error formatters. A
+  schema that cannot run synchronously still gets the refusals. The entry
+  points still throw a `ZodError` whenever such a key is present.
+
 ## [1.14.0] - 2026-10-16
 
 This minor release contains behavior changes marked **BREAKING** below: a

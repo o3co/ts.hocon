@@ -21,7 +21,8 @@ import type { ParseOptions } from './parse.js'
  *
  * An object key named `__proto__`, `constructor` or `prototype` anywhere in
  * the value is refused with a `ZodError` issue at the object that holds it
- * (#202); read such a key with the plain getters instead.
+ * (#202), reported together with the schema's issues for the rest of the value
+ * (#227); read such a key with the plain getters instead.
  *
  * @throws {@link NotResolvedError} when the config still holds an unresolved
  *   substitution (#210); call `resolve()` first.
@@ -29,10 +30,7 @@ import type { ParseOptions } from './parse.js'
  */
 export function validate<T>(config: Config, schema: ZodType<T>): T {
   requireResolved(config, '')
-  const plain = config.toObject()
-  refusePrototypeKeys(plain)
-  const coerced = coerceValue(plain, schema)
-  return schema.parse(coerced)
+  return parseValue(config.toObject(), schema)
 }
 
 /**
@@ -41,7 +39,8 @@ export function validate<T>(config: Config, schema: ZodType<T>): T {
  *
  * An object key named `__proto__`, `constructor` or `prototype` anywhere in
  * the value is refused with a `ZodError` issue at the object that holds it
- * (#202); read such a key with the plain getters instead.
+ * (#202), reported together with the schema's issues for the rest of the value
+ * (#227); read such a key with the plain getters instead.
  *
  * @throws {@link NotResolvedError} when the value at `path` still holds an
  *   unresolved substitution (#210); a resolved subtree of an otherwise
@@ -50,10 +49,40 @@ export function validate<T>(config: Config, schema: ZodType<T>): T {
  */
 export function getValidated<T>(config: Config, path: string, schema: ZodType<T>): T {
   requireResolved(config, path)
-  const val = config.get(path)
-  refusePrototypeKeys(val)
-  const coerced = coerceValue(val, schema)
-  return schema.parse(coerced)
+  return parseValue(config.get(path), schema)
+}
+
+// The plain value without its prototype-named keys, coerced and parsed. A
+// refused key is one more issue next to the schema's, so one run reports
+// everything wrong with the value (#227).
+function parseValue<T>(value: unknown, schema: ZodType<T>): T {
+  const refused: z.core.$ZodIssue[] = []
+  const coerced = coerceValue(dropPrototypeKeys(value, [], refused), schema)
+  if (refused.length === 0) return schema.parse(coerced)
+  let result: ReturnType<ZodType<T>['safeParse']>
+  try {
+    result = schema.safeParse(coerced)
+  } catch {
+    // A schema that cannot run synchronously (an async refinement): the
+    // refusals still stand, as they did before the schema ran (#201).
+    throw new z.ZodError(refused)
+  }
+  if (result.success) throw new z.ZodError(refused)
+  throw new z.ZodError([...refused, ...withoutPrototypeKeyIssues(result.error.issues)])
+}
+
+// The schema's issues without those at a prototype-named key, at any depth
+// (also inside a union's per-option issues). These entry points never hand the
+// schema such a key, so an issue there only repeats a refusal or asks for a key
+// they refuse; and its path would break Zod's formatters (see below).
+function withoutPrototypeKeyIssues(issues: readonly z.core.$ZodIssue[]): z.core.$ZodIssue[] {
+  return issues
+    .filter((issue) => !issue.path.some((seg) => typeof seg === 'string' && PROTOTYPE_KEYS.has(seg)))
+    .map((issue) =>
+      issue.code === 'invalid_union'
+        ? ({ ...issue, errors: issue.errors.map(withoutPrototypeKeyIssues) } as z.core.$ZodIssue)
+        : issue,
+    )
 }
 
 // The plain value (toObject / get) leaves out what is still a substitution, so
@@ -71,7 +100,8 @@ function requireResolved(config: Config, path: string): void {
 // property. A JS object built from it can lose it or read the prototype's
 // member instead: Zod drops `__proto__` from a record without an error
 // (ts.hocon#201). So the Zod entry points refuse such a key wherever it is in
-// the value, before the schema sees it. The plain getters read keys by name and
+// the value: the schema sees the value without it, and the refusal is reported
+// with the schema's own issues (#227). The plain getters read keys by name and
 // are unaffected.
 //
 // The issue sits at the object holding the key, with the key in the message and
@@ -83,32 +113,31 @@ function requireResolved(config: Config, path: string): void {
 
 const PROTOTYPE_KEYS: ReadonlySet<string> = new Set(['__proto__', 'constructor', 'prototype'])
 
-function refusePrototypeKeys(value: unknown): void {
-  const issues: z.core.$ZodIssue[] = []
-  collectPrototypeKeys(value, [], issues)
-  if (issues.length > 0) throw new z.ZodError(issues)
-}
-
-function collectPrototypeKeys(value: unknown, path: PropertyKey[], issues: z.core.$ZodIssue[]): void {
-  if (Array.isArray(value)) {
-    value.forEach((item, i) => collectPrototypeKeys(item, [...path, i], issues))
-  } else if (typeof value === 'object' && value !== null) {
-    for (const [key, item] of Object.entries(value)) {
-      if (PROTOTYPE_KEYS.has(key)) {
-        // No `input`: Zod leaves it out of the issues it finalizes unless asked
-        // to report input, and an issue built here would otherwise carry the
-        // value (a secret, perhaps) into error.message.
-        issues.push({
-          code: 'custom',
-          path,
-          message: `key ${JSON.stringify(key)} names an object's prototype`,
-          params: { key },
-        })
-      } else {
-        collectPrototypeKeys(item, [...path, key], issues)
-      }
+/**
+ * `value` without its prototype-named keys, at any depth, with one issue in
+ * `issues` for each key left out.
+ */
+function dropPrototypeKeys(value: unknown, path: PropertyKey[], issues: z.core.$ZodIssue[]): unknown {
+  if (Array.isArray(value)) return value.map((item, i) => dropPrototypeKeys(item, [...path, i], issues))
+  if (typeof value !== 'object' || value === null) return value
+  // Assigning to a fresh object is safe: no key written here names a prototype.
+  const kept: Record<string, unknown> = {}
+  for (const [key, item] of Object.entries(value)) {
+    if (PROTOTYPE_KEYS.has(key)) {
+      // No `input`: Zod leaves it out of the issues it finalizes unless asked
+      // to report input, and an issue built here would otherwise carry the
+      // value (a secret, perhaps) into error.message.
+      issues.push({
+        code: 'custom',
+        path,
+        message: `key ${JSON.stringify(key)} names an object's prototype`,
+        params: { key },
+      })
+    } else {
+      kept[key] = dropPrototypeKeys(item, [...path, key], issues)
     }
   }
+  return kept
 }
 
 // ─── unit markers ─────────────────────────────────────────────────────────────
