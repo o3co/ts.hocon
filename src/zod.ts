@@ -15,10 +15,12 @@ import type { ParseOptions } from './parse.js'
 /**
  * The whole config, validated against `schema`. HOCON strings are coerced
  * where the schema expects a number or a boolean (`"8080"` → 8080), through
- * objects, arrays, records, tuples, unions, pipes (by their input schema), lazy
- * schemas and optional / nullable / default / prefault / nonoptional / catch /
- * readonly wrappers; a union coerces by the option that takes the value (see
- * the README). Unit values go through the {@link hocon} markers.
+ * objects (and their catchall), arrays, records, tuples, unions,
+ * intersections, pipes (by their input schema), lazy schemas, numeric literals
+ * and enums, and optional / nullable / default / prefault / nonoptional /
+ * success / catch / readonly wrappers; a union coerces by the option that
+ * takes the value (see the README). Unit values go through the {@link hocon}
+ * markers.
  *
  * An object key named `__proto__`, `constructor` or `prototype` anywhere in
  * the value is refused with a `ZodError` issue at the object that holds it
@@ -324,6 +326,14 @@ function coerceValue(value: unknown, schema: ZodType): unknown {
       }
       return value
 
+    case 'enum': {
+      // An enum with number values (z.enum({ A: 1 }), z.nativeEnum) expects a
+      // number, as a number literal does. `_zod.values` is the set Zod checks
+      // against, a nativeEnum's reverse-mapping names left out (zod >= 4.0).
+      const values = (schema as any)._zod.values as ReadonlySet<unknown>
+      return coerceToLiteral(value, values)
+    }
+
     case 'literal': {
       // A number or boolean literal expects that number or boolean: `"1"` for
       // z.literal(1), as a discriminator tag from an environment variable is.
@@ -348,7 +358,30 @@ function coerceValue(value: unknown, schema: ZodType): unknown {
           result[key] = coerceValue(obj[key], shape[key])
         }
       }
+      // Keys the shape does not name go by the catchall, if there is one
+      // (`unknown` / `never` from looseObject / strictObject leave them as is).
+      const catchall = getDef(schema)?.catchall as ZodType | undefined
+      if (catchall) {
+        for (const key of Object.keys(obj)) {
+          if (!Object.prototype.hasOwnProperty.call(shape, key)) result[key] = coerceValue(obj[key], catchall)
+        }
+      }
       return result
+    }
+
+    case 'intersection': {
+      // Both sides see one value, so coercing it for one side can break the
+      // other. Take the first form the intersection accepts: the value as it
+      // is (as a union does), coerced for the left side only, for the right
+      // side only; otherwise coerced for both. When the two sides need
+      // different forms of one key, no form passes and Zod reports it.
+      if (accepts(schema, value)) return value
+      const def = getDef(schema) as { left: ZodType; right: ZodType }
+      const forLeft = coerceValue(value, def.left)
+      if (accepts(schema, forLeft)) return forLeft
+      const forRight = coerceValue(value, def.right)
+      if (accepts(schema, forRight)) return forRight
+      return coerceValue(forLeft, def.right)
     }
 
     case 'array': {
@@ -399,6 +432,7 @@ function coerceValue(value: unknown, schema: ZodType): unknown {
     case 'default':
     case 'prefault':
     case 'nonoptional':
+    case 'success':
     case 'catch':
     case 'readonly': {
       const inner = getInnerSchema(schema)

@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+No value that validated on 1.14.1 changes, except that a `.catch()` on a
+numeric enum or inside an object's catchall now sees the coerced value, as it
+already did inside an object (see below).
+
+### Fixed — Zod: strings inside enums, intersections, catchalls and `z.success` were not coerced
+
+- **The coercion added in 1.14.1 (#225) also walks the remaining schema
+  positions a configuration value reaches.** A string is now coerced for a
+  numeric enum value (`"1"` for `z.enum({ A: 1 })` or a numeric
+  `z.nativeEnum`, also as a discriminated-union tag), for both sides of
+  `z.intersection` / `.and()` (the first form the intersection accepts: the
+  value as it is, as with a union, then coerced for the left side, for the
+  right side, or for both; when the two sides need different forms of one key,
+  no form passes and Zod reports it), for the keys an object's `.catchall(...)`
+  covers, and inside `z.success(...)`. These positions refused an
+  environment-variable string that the same value written as a literal
+  passed. `looseObject` / `strictObject` (catchall `unknown` / `never`) leave
+  their extra keys as they are.
+
 ### Fixed — Zod: an error the schema throws was lost behind a prototype-key refusal
 
 - **When a `__proto__` / `constructor` / `prototype` key is refused, an
