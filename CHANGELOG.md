@@ -72,6 +72,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   inside these wrappers now sees the coerced value, as it already did inside an
   object (`z.record(z.string(), z.number().catch(0))` reads `"5"` as 5, not 0).
 
+### Changed — Zod: unit marker issues no longer carry the value in the message
+
+- **`hocon.duration()`, `hocon.bytes()` and `hocon.period()` name the problem,
+  not the value** ([#226](https://github.com/o3co/ts.hocon/issues/226)). The
+  issue message was `invalid duration: "<text>"`, so a consumer that prints
+  validation messages in its boot log printed configuration values, which may
+  be secrets set under the wrong key. The messages are now `not a duration` /
+  `not a byte size` / `not a period`, `byte size must be non-negative` and
+  `byte size overflows the representable range`; the issue's
+  `params.problem` is `invalid`, `negative` or `overflow`. The value stays in
+  the issue's `input`, which Zod includes only when asked to report input. Code
+  that matched the old message text needs updating. The getters' `ConfigError`
+  messages are unchanged.
+
 ## [1.14.0] - 2026-10-16
 
 This minor release contains behavior changes marked **BREAKING** below: a
