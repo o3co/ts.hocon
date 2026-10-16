@@ -10,7 +10,7 @@ import { z } from 'zod'
 import { parse } from '../src/parse.js'
 import { NotResolvedError } from '../src/errors.js'
 import { getValidated, hocon, parseWithSchema, validate } from '../src/zod.js'
-import { readBytes, readDuration } from '../src/coerce.js'
+import { namesMagnitudeUnit, namesPeriodUnit, readBytes, readDuration } from '../src/coerce.js'
 import type { ByteUnit, DurationUnit, Period } from '../src/coerce.js'
 
 /** The getter's answer: its value, or 'error' when it throws. */
@@ -271,6 +271,16 @@ describe('hocon.period()', () => {
 })
 
 describe('unit readers (coerce.ts)', () => {
+  it('tell whether a magnitude names its unit, by the readers\' split', () => {
+    for (const text of ['30s', ' 30 s ', '1e3ms', '1E', '0.5G', '64KiB']) expect([text, namesMagnitudeUnit(text)]).toEqual([text, true])
+    for (const text of ['30', ' 30 ', '1e3', '1E+3', '.5', '-0']) expect([text, namesMagnitudeUnit(text)]).toEqual([text, false])
+  })
+
+  it('tell whether a period names its unit, by readPeriod\'s split', () => {
+    for (const text of ['7d', '2 w', '-7d', '+1y']) expect([text, namesPeriodUnit(text)]).toEqual([text, true])
+    for (const text of ['14', ' 14 ', '-7', '+0']) expect([text, namesPeriodUnit(text)]).toEqual([text, false])
+  })
+
   it('report why a text is not a unit value', () => {
     expect(readDuration('90s', 's')).toEqual({ ok: true, value: 90 })
     expect(readDuration('90 parsecs')).toEqual({ ok: false, problem: 'invalid' })
@@ -319,5 +329,130 @@ describe('marker issues keep the value out', () => {
     const result = hocon.duration().safeParse(secret, { reportInput: true })
     expect(result.success).toBe(false)
     expect(result.error!.issues[0]).toMatchObject({ message: 'not a duration', input: secret })
+  })
+})
+
+// #233 — `requireUnit` makes the unit part of the schema's contract: a value
+// without one (a number, or a string of the number alone, which is what an
+// environment variable gives) is refused instead of read in the default unit.
+describe('requireUnit', () => {
+  const issueOf = (src: string, schema: z.ZodType, env: Record<string, string> = {}) => {
+    try {
+      validate(parse(src, { env }), schema)
+    } catch (err) {
+      return (err as z.ZodError).issues[0]
+    }
+    throw new Error(`expected ${src} to fail`)
+  }
+
+  const ttl = z.object({ ttl: hocon.duration('s', { requireUnit: true }).pipe(z.number().int().min(1).max(3600)) })
+
+  it('reads a value that names its unit', () => {
+    expect(validate(parse('ttl = 30s'), ttl)).toEqual({ ttl: 30 })
+    expect(validate(parse('ttl = "30 s"'), ttl)).toEqual({ ttl: 30 })
+    expect(validate(parse('ttl = 1m'), ttl)).toEqual({ ttl: 60 })
+    expect(validate(parse('ttl = ${?TTL}', { env: { TTL: '2m' } }), ttl)).toEqual({ ttl: 120 })
+  })
+
+  it('refuses a number, a bare numeric string and an exponent without a unit', () => {
+    for (const [src, env] of [
+      ['ttl = 30', {}],
+      ['ttl = "30"', {}],
+      ['ttl = ${?TTL}', { TTL: '30' }],
+      ['ttl = "1e3"', {}],
+      ['ttl = " 30 "', {}],
+    ] as const) {
+      expect(issueOf(src, ttl, env)).toMatchObject({
+        code: 'custom',
+        path: ['ttl'],
+        message: 'duration must name its unit',
+        params: { problem: 'missing-unit' },
+      })
+    }
+  })
+
+  it('reports a value that does not read as a value, not as a missing unit', () => {
+    expect(issueOf('ttl = abc', ttl)).toMatchObject({ params: { problem: 'invalid' } })
+    expect(issueOf('ttl = "5 parsecs"', ttl)).toMatchObject({ params: { problem: 'invalid' } })
+  })
+
+  it('applies to byte sizes and periods', () => {
+    const limits = z.object({
+      max: hocon.bytes('B', { requireUnit: true }).pipe(z.number().int().positive()),
+      keep: hocon.period({ requireUnit: true }),
+    })
+    expect(validate(parse('max = 64KiB, keep = 2w'), limits)).toEqual({
+      max: 65536,
+      keep: { years: 0, months: 0, days: 14 },
+    })
+    expect(issueOf('max = 65536, keep = 2w', limits)).toMatchObject({
+      path: ['max'],
+      message: 'byte size must name its unit',
+      params: { problem: 'missing-unit' },
+    })
+    expect(issueOf('max = 1k, keep = 14', limits)).toMatchObject({
+      path: ['keep'],
+      message: 'period must name its unit',
+      params: { problem: 'missing-unit' },
+    })
+    expect(issueOf('max = "-1k", keep = 2w', limits)).toMatchObject({ params: { problem: 'negative' } })
+  })
+
+  it('keeps the default: a bare number reads in the default unit', () => {
+    expect(validate(parse('ttl = 30'), z.object({ ttl: hocon.duration('s') }))).toEqual({ ttl: 0.03 })
+    expect(validate(parse('ttl = 30'), z.object({ ttl: hocon.duration('s', { requireUnit: false }) }))).toEqual({
+      ttl: 0.03,
+    })
+    expect(validate(parse('keep = 14'), z.object({ keep: hocon.period() }))).toEqual({
+      keep: { years: 0, months: 0, days: 14 },
+    })
+  })
+
+  it('reads the unit forms the readers accept', () => {
+    const d = hocon.duration('s', { requireUnit: true })
+    expect(d.parse('1e3ms')).toBe(1)
+    expect(d.parse('.5s')).toBe(0.5)
+    expect(d.parse('+30s')).toBe(30)
+    expect(hocon.bytes('B', { requireUnit: true }).parse('0.5k')).toBe(512)
+    expect(validate(parse('max = ${?MAX}', { env: { MAX: '1k' } }), z.object({ max: hocon.bytes('B', { requireUnit: true }) }))).toEqual({ max: 1024 })
+    expect(validate(parse('keep = ${?KEEP}', { env: { KEEP: '2 w' } }), z.object({ keep: hocon.period({ requireUnit: true }) }))).toEqual({
+      keep: { years: 0, months: 0, days: 14 },
+    })
+  })
+
+  it('keeps the problem of a value that does not read, unit or not', () => {
+    const problem = (schema: z.ZodType, input: unknown) =>
+      (schema.safeParse(input).error?.issues[0] as z.core.$ZodIssueCustom | undefined)?.params?.problem
+    expect(problem(hocon.bytes('B', { requireUnit: true }), -1)).toBe('negative')
+    expect(problem(hocon.bytes('B', { requireUnit: true }), '-1')).toBe('negative')
+    expect(problem(hocon.duration('ms', { requireUnit: true }), '1e400')).toBe('overflow')
+    expect(problem(hocon.period({ requireUnit: true }), '7.5')).toBe('invalid')
+    expect(problem(hocon.duration('ms', { requireUnit: true }), '30S')).toBe('invalid')
+  })
+
+  it('keeps the default for byte sizes and periods with requireUnit false', () => {
+    expect(hocon.bytes('B', { requireUnit: false }).parse(30)).toBe(30)
+    expect(hocon.period({ requireUnit: false }).parse('14')).toEqual({ years: 0, months: 0, days: 14 })
+  })
+
+  it('keeps the value in input only when Zod is asked to report it', () => {
+    const d = hocon.duration('s', { requireUnit: true })
+    expect(d.safeParse('30', { reportInput: true }).error?.issues[0]).toMatchObject({
+      params: { problem: 'missing-unit' },
+      input: '30',
+    })
+    expect(d.safeParse('30').error?.issues[0]).not.toHaveProperty('input')
+  })
+
+  it('keeps the value out of the message', () => {
+    const err = (() => {
+      try {
+        validate(parse('ttl = "31536000"'), ttl)
+      } catch (e) {
+        return e as z.ZodError
+      }
+    })()
+    expect(err?.message).not.toContain('31536000')
+    expect(z.prettifyError(err!)).not.toContain('31536000')
   })
 })

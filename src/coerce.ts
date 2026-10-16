@@ -299,6 +299,32 @@ export function readBytes(text: string, outputUnit?: ByteUnit): UnitReading {
 }
 
 /**
+ * Whether a duration or byte size names its unit (`30s`, `"64 KiB"`, `1E`), as
+ * the readers split it: a bare number (`30`, `"30"`, `"1e3"`) does not. Only
+ * meaningful for a text the reader accepts.
+ */
+export function namesMagnitudeUnit(text: string): boolean {
+  const split = splitUnitText(text)
+  return split !== undefined && split.unit !== ''
+}
+
+/**
+ * Whether a period names its unit (`7d`, `"2 w"`): a bare integer, which is
+ * days, does not. Only meaningful for a text {@link readPeriod} accepts.
+ */
+export function namesPeriodUnit(text: string): boolean {
+  return splitPeriodText(text).unit !== ''
+}
+
+/** A period's leading sign-and-digit run and its unit text, both trimmed. */
+function splitPeriodText(text: string): { digits: string; unit: string } {
+  const trimmed = trimHoconWs(text)
+  let i = 0
+  while (i < trimmed.length && '+-0123456789'.includes(trimmed[i])) i++
+  return { digits: trimmed.slice(0, i), unit: trimHoconWs(trimmed.slice(i)) }
+}
+
+/**
  * A calendar period, as {@link Config.getPeriod} returns it. Weeks are folded
  * into days (`2w` is 14 days). A component may be negative.
  */
@@ -330,11 +356,9 @@ const I32_MAX = 2 ** 31 - 1
  * unlike a duration or a byte size; a bare number is days.
  */
 export function readPeriod(text: string): UnitReading<Period, 'invalid'> {
-  const trimmed = trimHoconWs(text)
-  let i = 0
-  while (i < trimmed.length && '+-0123456789'.includes(trimmed[i])) i++
-  const digits = trimmed.slice(0, i)
-  const unit = PERIOD_UNITS.get(trimHoconWs(trimmed.slice(i)))
+  const split = splitPeriodText(text)
+  const digits = split.digits
+  const unit = PERIOD_UNITS.get(split.unit)
   if (!/^[+-]?\d+$/.test(digits) || unit === undefined) return { ok: false, problem: 'invalid' }
   const n = Number(digits) * unit.factor
   if (n < I32_MIN || n > I32_MAX) return { ok: false, problem: 'invalid' }

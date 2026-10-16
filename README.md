@@ -266,6 +266,16 @@ const Session = z.object({
 getValidated(cfg, 'session', Session) // { lifetime: 1800, maxBody: 65536 }
 ```
 
+A bare number reads in the default unit (`lifetime = 30` is 30 ms), as the getters read it. To make the unit part of the schema's contract, pass `{ requireUnit: true }`: a number or a string of the number alone (`"30"`, what an environment variable gives) is then refused with the key's path (`duration must name its unit`, `params.problem` `missing-unit`), and `30s`, `"30 s"` or `64KiB` read as before. `hocon.period({ requireUnit: true })` refuses a bare number of days the same way.
+
+```ts
+const Token = z.object({
+  ttl: hocon.duration('s', { requireUnit: true }).pipe(z.number().int().min(1).max(3600)),
+})
+// getValidated(cfg, 'token', Token) with token { ttl = 30 }:  ZodError at ttl, duration must name its unit
+// getValidated(cfg, 'token', Token) with token { ttl = 30s }: { ttl: 30 }
+```
+
 `hocon.period()` reads a period the way `getPeriod()` does and gives a `Period` (`{ years, months, days }`); refine it in the schema:
 
 ```ts
@@ -277,7 +287,7 @@ const Backup = z.object({
 getValidated(cfg, 'backup', Backup) // { keep: { years: 0, months: 0, days: 14 } }
 ```
 
-An invalid duration, size or period fails validation with the key's path. The issue message names the problem, not the value (`not a duration`, `byte size must be non-negative`), so a secret set under the wrong key does not reach the logs; `params.problem` is `invalid`, `negative` or `overflow`, and the value is in the issue's `input` only when Zod is asked to report input. The markers are ordinary Zod schemas, so they work in `validate`, `getValidated`, `parseWithSchema`, `parseFileWithSchema` and anywhere else Zod runs them. Getters and markers both read exponent forms (`1e3`, `"1.5e2s"`). A marker reads a number through its JavaScript value, though, so a number literal with more significant digits than a double holds can read differently from the getters, which read the literal's text exactly (`1.99999999999999999` B is 1 through `getBytes()`, 2 through the marker); a period marker also reads a literal with a decimal point or an exponent (`7.0`, `1e2`) as an integer, which `getPeriod()` refuses. Write unit values with a unit (`30s`, `7d`) to avoid both.
+An invalid duration, size or period fails validation with the key's path. The issue message names the problem, not the value (`not a duration`, `byte size must be non-negative`), so a secret set under the wrong key does not reach the logs; `params.problem` is `invalid`, `negative` or `overflow` (or `missing-unit` with `requireUnit`), and the value is in the issue's `input` only when Zod is asked to report input. The markers are ordinary Zod schemas, so they work in `validate`, `getValidated`, `parseWithSchema`, `parseFileWithSchema` and anywhere else Zod runs them. Getters and markers both read exponent forms (`1e3`, `"1.5e2s"`). A marker reads a number through its JavaScript value, though, so a number literal with more significant digits than a double holds can read differently from the getters, which read the literal's text exactly (`1.99999999999999999` B is 1 through `getBytes()`, 2 through the marker); a period marker also reads a literal with a decimal point or an exponent (`7.0`, `1e2`) as an integer, which `getPeriod()` refuses. Write unit values with a unit (`30s`, `7d`) to avoid both.
 
 On an unresolved Config (parsed with `resolveSubstitutions: false`, a fallback stack not yet `resolve()`d, or the result of `resolve({ allowUnresolved: true })` with something left), `validate` throws `NotResolvedError`, as the getters do, rather than validating a tree with the pending values missing; `getValidated` throws it for a path whose value is unresolved and validates a resolved one. Call `resolve()` first.
 

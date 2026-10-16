@@ -265,6 +265,16 @@ const Session = z.object({
 getValidated(cfg, 'session', Session) // { lifetime: 1800, maxBody: 65536 }
 ```
 
+単位のない数値は、getter と同じく既定の単位で読みます（`lifetime = 30` は 30 ms）。単位をスキーマの契約にするには `{ requireUnit: true }` を渡します。数値や、数値だけの文字列（環境変数が渡す `"30"`）はキーのパス付きで拒否され（`duration must name its unit`、`params.problem` は `missing-unit`）、`30s`・`"30 s"`・`64KiB` はこれまでどおり読みます。`hocon.period({ requireUnit: true })` も、単位のない日数を同じように拒否します。
+
+```ts
+const Token = z.object({
+  ttl: hocon.duration('s', { requireUnit: true }).pipe(z.number().int().min(1).max(3600)),
+})
+// token { ttl = 30 } を getValidated(cfg, 'token', Token):  ttl で ZodError、duration must name its unit
+// token { ttl = 30s } を getValidated(cfg, 'token', Token): { ttl: 30 }
+```
+
 `hocon.period()` は `getPeriod()` と同じ規則で period を読み、`Period`（`{ years, months, days }`）を返します。制約はスキーマ側で refine します:
 
 ```ts
@@ -276,7 +286,7 @@ const Backup = z.object({
 getValidated(cfg, 'backup', Backup) // { keep: { years: 0, months: 0, days: 14 } }
 ```
 
-不正な duration / byte size / period は、キーのパス付きのバリデーションエラーになります。issue の message は問題だけを示し、値は含めません（`not a duration`、`byte size must be non-negative`）。誤ったキーに置かれたシークレットがログに出ないようにするためです。`params.problem` は `invalid`・`negative`・`overflow` のいずれかで、値は Zod に input の報告を求めたときだけ issue の `input` に入ります。マーカーは普通の Zod スキーマなので、`validate`・`getValidated`・`parseWithSchema`・`parseFileWithSchema` をはじめ、Zod が実行するところならどこでも使えます。指数表記（`1e3`、`"1.5e2s"`）は getter もマーカーも読みます。ただしマーカーは数値を JavaScript の値として読むため、double の精度を超える桁数の数値リテラルは、リテラルの文字列を正確に読む getter と結果が異なることがあります（`1.99999999999999999` B は `getBytes()` では 1、マーカーでは 2）。period のマーカーは、小数点や指数を含むリテラル（`7.0`、`1e2`）も整数として読みます（`getPeriod()` は拒否します）。単位付きで書けば（`30s`、`7d`）どちらの差も出ません。
+不正な duration / byte size / period は、キーのパス付きのバリデーションエラーになります。issue の message は問題だけを示し、値は含めません（`not a duration`、`byte size must be non-negative`）。誤ったキーに置かれたシークレットがログに出ないようにするためです。`params.problem` は `invalid`・`negative`・`overflow`（`requireUnit` のときは `missing-unit` も）のいずれかで、値は Zod に input の報告を求めたときだけ issue の `input` に入ります。マーカーは普通の Zod スキーマなので、`validate`・`getValidated`・`parseWithSchema`・`parseFileWithSchema` をはじめ、Zod が実行するところならどこでも使えます。指数表記（`1e3`、`"1.5e2s"`）は getter もマーカーも読みます。ただしマーカーは数値を JavaScript の値として読むため、double の精度を超える桁数の数値リテラルは、リテラルの文字列を正確に読む getter と結果が異なることがあります（`1.99999999999999999` B は `getBytes()` では 1、マーカーでは 2）。period のマーカーは、小数点や指数を含むリテラル（`7.0`、`1e2`）も整数として読みます（`getPeriod()` は拒否します）。単位付きで書けば（`30s`、`7d`）どちらの差も出ません。
 
 未解決の Config（`resolveSubstitutions: false` でパースしたもの、`resolve()` 前のフォールバックの重なり、または何かが残った `resolve({ allowUnresolved: true })` の結果）に対しては、`validate` は保留中の値が欠けたツリーを検証するのではなく、getter と同じく `NotResolvedError` を投げます。`getValidated` は、値が未解決のパスでは `NotResolvedError` を投げ、解決済みのパスなら検証します。先に `resolve()` を呼んでください。
 
