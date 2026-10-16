@@ -7,9 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-No value that validated on 1.14.1 changes, except that a `.catch()` on a
-numeric enum or inside an object's catchall now sees the coerced value, as it
-already did inside an object (see below).
+## [1.14.2] - 2026-10-16
+
+This patch release completes the Zod coercion of 1.14.1. No value that
+validated on 1.14.1 changes, except that a `.catch()` on a numeric enum or
+inside an object's catchall now sees the coerced value, as it already did
+inside an object (see below).
 
 ### Fixed — Zod: strings inside enums, intersections, catchalls and `z.success` were not coerced
 
