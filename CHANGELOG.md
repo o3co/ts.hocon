@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Zod: `requireUnit` on the unit markers
+
+- **`hocon.duration(unit, { requireUnit: true })`, `hocon.bytes(unit, {
+  requireUnit: true })` and `hocon.period({ requireUnit: true })` refuse a
+  value that does not name its unit**
+  ([#233](https://github.com/o3co/ts.hocon/issues/233)). A number
+  (`ttl = 30`) or a string of the number alone (`"30"`, what an environment
+  variable gives) otherwise reads in the default unit (milliseconds, bytes,
+  days), which turns a key migrated from `ttl-seconds = 30` to `ttl = 30`
+  into 30 ms without a word. With the option such a value is a validation
+  error at the key (`duration must name its unit`, `params.problem`
+  `missing-unit`, without the value), and `30s`, `"30 s"`, `64KiB`, `2w`
+  read as before. Whether a unit is named follows the readers' own split, so
+  `"1e3"` names none and `"0.5G"` does. The default stays
+  `false`, so no existing schema or config reads differently, and the getters
+  are unchanged.
+
 ## [1.14.2] - 2026-10-16
 
 This patch release completes the Zod coercion of 1.14.1. No value that

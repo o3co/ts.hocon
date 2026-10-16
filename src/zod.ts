@@ -1,7 +1,15 @@
 import { z } from 'zod'
 import type { ZodTransform, ZodType } from 'zod'
 
-import { coerceBoolean, coerceNumber, readBytes, readDuration, readPeriod } from './coerce.js'
+import {
+  coerceBoolean,
+  coerceNumber,
+  namesMagnitudeUnit,
+  namesPeriodUnit,
+  readBytes,
+  readDuration,
+  readPeriod,
+} from './coerce.js'
 import type { ByteUnit, DurationUnit, Period, UnitProblem, UnitReading } from './coerce.js'
 import type { Config } from './config.js'
 import type { NotResolvedError } from './errors.js'
@@ -165,7 +173,28 @@ function dropPrototypeKeys(value: unknown, path: PropertyKey[], issues: z.core.$
 // "7", `1e2` → "100") the getter refuses. A value written with a unit is a
 // string and reads the same.
 
-function unitMarker<T>(what: string, read: (text: string) => UnitReading<T>): ZodTransform<T, unknown> {
+/**
+ * Options for the {@link hocon} unit markers.
+ */
+export interface UnitMarkerOptions {
+  /**
+   * Refuse a value that does not name its unit: a number (`ttl = 30`) or a
+   * string of the number alone (`"30"`, what an environment variable gives),
+   * which would otherwise read in the default unit (milliseconds, bytes, days).
+   * `30s`, `"30 s"`, `64KiB`, `2w` read as before. Default `false` (#233).
+   */
+  readonly requireUnit?: boolean
+}
+
+// A problem the marker reports beyond the readers': the value reads, but the
+// schema asked for its unit to be written.
+type MarkerProblem = UnitProblem | 'missing-unit'
+
+function unitMarker<T>(
+  what: string,
+  read: (text: string) => UnitReading<T>,
+  namesUnit: ((text: string) => boolean) | undefined,
+): ZodTransform<T, unknown> {
   return z.transform((input: unknown, ctx): T => {
     if (typeof input !== 'string' && typeof input !== 'number') {
       ctx.issues.push({ code: 'custom', message: `expected ${what}, got ${describeInput(input)}`, input })
@@ -173,27 +202,36 @@ function unitMarker<T>(what: string, read: (text: string) => UnitReading<T>): Zo
     }
     const text = typeof input === 'string' ? input : String(input)
     const reading = read(text)
+    // A number never names a unit; a string, as the reader splits it.
+    if (reading.ok && namesUnit !== undefined && (typeof input === 'number' || !namesUnit(text))) {
+      pushProblem(ctx, what, 'missing-unit', input)
+      return z.NEVER
+    }
     if (reading.ok) return reading.value
-    // The message names the problem, never the value: validation messages end
-    // up in boot logs, and a value can be a secret set under the wrong key
-    // (#226). The value stays in `input`, which Zod leaves out of the issues it
-    // finalizes unless asked to report input; `params.problem` names the
-    // problem for code.
-    ctx.issues.push({
-      code: 'custom',
-      message: unitProblemMessage(what, reading.problem),
-      input,
-      params: { problem: reading.problem },
-    })
+    pushProblem(ctx, what, reading.problem, input)
     return z.NEVER
   })
 }
 
-function unitProblemMessage(what: string, problem: UnitProblem): string {
+// The message names the problem, never the value: validation messages end up
+// in boot logs, and a value can be a secret set under the wrong key (#226). The
+// value stays in `input`, which Zod leaves out of the issues it finalizes unless
+// asked to report input; `params.problem` names the problem for code.
+function pushProblem(
+  ctx: { issues: z.core.$ZodRawIssue[] },
+  what: string,
+  problem: MarkerProblem,
+  input: unknown,
+): void {
+  ctx.issues.push({ code: 'custom', message: unitProblemMessage(what, problem), input, params: { problem } })
+}
+
+function unitProblemMessage(what: string, problem: MarkerProblem): string {
   switch (problem) {
     case 'invalid': return `not a ${what}`
     case 'negative': return `${what} must be non-negative`
     case 'overflow': return `${what} overflows the representable range`
+    case 'missing-unit': return `${what} must name its unit`
   }
 }
 
@@ -223,9 +261,10 @@ export const hocon = {
    * significant digits than a double holds can read differently: the getter
    * reads its text, the marker its JS value (`1.0000000000000001` in `us`:
    * 1000.0000000000001 through the getter, 1000 here).
+   * `options.requireUnit` refuses a value that does not name its unit (#233).
    */
-  duration(unit?: DurationUnit): ZodTransform<number, unknown> {
-    return unitMarker('duration', (text) => readDuration(text, unit))
+  duration(unit?: DurationUnit, options?: UnitMarkerOptions): ZodTransform<number, unknown> {
+    return unitMarker('duration', (text) => readDuration(text, unit), requireUnit(options, namesMagnitudeUnit))
   },
   /**
    * A byte size, read as {@link Config.getBytes} reads it (default unit `B`),
@@ -233,19 +272,28 @@ export const hocon = {
    * significant digits than a double holds can read differently: the getter
    * reads its text, the marker its JS value (`1.99999999999999999`: 1 through
    * the getter, 2 here).
+   * `options.requireUnit` refuses a value that does not name its unit (#233).
    */
-  bytes(unit?: ByteUnit): ZodTransform<number, unknown> {
-    return unitMarker('byte size', (text) => readBytes(text, unit))
+  bytes(unit?: ByteUnit, options?: UnitMarkerOptions): ZodTransform<number, unknown> {
+    return unitMarker('byte size', (text) => readBytes(text, unit), requireUnit(options, namesMagnitudeUnit))
   },
   /**
    * A calendar period, read as {@link Config.getPeriod} reads it (a bare
    * integer is days), except that a number literal with a decimal point or in
    * exponent form (`7.0`, `1e2`) can read differently: the getter refuses it,
    * the marker reads the JS number.
+   * `options.requireUnit` refuses a value that does not name its unit (#233).
    */
-  period(): ZodTransform<Period, unknown> {
-    return unitMarker('period', readPeriod)
+  period(options?: UnitMarkerOptions): ZodTransform<Period, unknown> {
+    return unitMarker('period', readPeriod, requireUnit(options, namesPeriodUnit))
   },
+}
+
+function requireUnit(
+  options: UnitMarkerOptions | undefined,
+  namesUnit: (text: string) => boolean,
+): ((text: string) => boolean) | undefined {
+  return options?.requireUnit === true ? namesUnit : undefined
 }
 
 function getDefType(schema: ZodType): string | undefined {
