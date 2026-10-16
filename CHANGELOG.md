@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — Zod: an error the schema throws was lost behind a prototype-key refusal
+
+- **When a `__proto__` / `constructor` / `prototype` key is refused, an
+  exception the schema throws now reaches the caller.** The 1.14.1 change
+  that reports the refusal together with the schema's issues (#227) turned any
+  exception from the schema into just the refusals, so a bug in a refinement
+  (a `TypeError`) went unseen. Only Zod's async error, which means the schema
+  cannot run synchronously, still gives the refusals.
+
 ## [1.14.1] - 2026-10-16
 
 This patch release fixes the Zod integration and the environment lookup. No
