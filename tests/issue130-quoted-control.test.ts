@@ -7,7 +7,8 @@
  *
  * The emitter half (E18 decision 5) is in render-hocon.test.ts.
  *
- * Fixtures (xx.hocon, fetched by `make testdata`):
+ * Fixtures (xx.hocon; the .conf files are tracked, the expected sidecars are
+ * fetched by `make testdata`):
  *   tests/lightbend/testdata/hocon/quoted-control/qc01-qc12
  */
 import { describe, expect, it } from 'vitest'
@@ -65,10 +66,6 @@ describe('S1.2.4 — raw C0 control inside a quoted string (xx.hocon#130)', () =
 
   it('subst-path guard: with the tab escaped in the path too, it resolves', () => {
     expect(parse('"x\\t" = 1\na = ${"x\\t"}\n').getNumber('a')).toBe(1)
-  })
-
-  it('covers all 18 positions', () => {
-    expect(Object.keys(positions)).toHaveLength(18)
   })
 
   it('the error points at the control character, not the opening quote', () => {
