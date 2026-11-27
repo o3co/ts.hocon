@@ -260,6 +260,18 @@ class Lexer {
     let value = ''
     while (this.pos < this.input.length && this.peek() !== '"') {
       if (this.peek() === '\n') throw new ParseError('unterminated string', openLine, openCol)
+      // S1.2.4: JSON forbids a raw C0 control inside a quoted string, as
+      // Lightbend does. LF is reported as unterminated above. Triple-quoted
+      // and unquoted strings keep controls verbatim.
+      const code = this.peek().charCodeAt(0)
+      if (code < 0x20) {
+        const hex = code.toString(16).padStart(4, '0')
+        throw new ParseError(
+          `unescaped control character U+${hex.toUpperCase()} in quoted string; use a backslash escape (\\u${hex})`,
+          this.line,
+          this.col,
+        )
+      }
       if (this.peek() === '\\') {
         const escCol = this.col
         this.advance() // consume '\'

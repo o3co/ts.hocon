@@ -140,11 +140,12 @@ function renderString(s: string): string {
 
 function quoteString(s: string): string {
   // A string containing newlines is triple-quoted when that is unambiguous
-  // and lossless: no embedded `"""`, no trailing `"`, and no carriage return
-  // (an invisible raw CR inside triple quotes is ambiguous to readers and
-  // editors even though this lexer preserves it — Lightbend probe 2026-08-19
-  // — so CR strings take the escaped double-quoted form below).
-  if (s.includes('\n') && !s.includes('\r') && !s.includes('"""') && !s.endsWith('"')) {
+  // and lossless: no embedded `"""`, no trailing `"`, and no C0 control
+  // other than LF and TAB (E18 decision 5). Raw controls are valid inside
+  // triple quotes (S9.1; this lexer preserves CR verbatim — Lightbend probe
+  // 2026-08-19), but an invisible one is ambiguous to readers and editors, so
+  // such strings take the escaped double-quoted form below.
+  if (s.includes('\n') && !hasControlOtherThanLfTab(s) && !s.includes('"""') && !s.endsWith('"')) {
     return `"""${s}"""`
   }
   let b = '"'
@@ -165,9 +166,29 @@ function quoteString(s: string): string {
       case '\t':
         b += '\\t'
         break
-      default:
-        b += ch
+      case '\b':
+        b += '\\b'
+        break
+      case '\f':
+        b += '\\f'
+        break
+      default: {
+        // S1.2.4: a raw C0 control inside quotes is a parse error, so every
+        // other one is written as \u00xx (lowercase, as Lightbend's renderer
+        // does). DEL and C1 are legal and stay verbatim.
+        const code = ch.charCodeAt(0)
+        b += code < 0x20 ? `\\u${code.toString(16).padStart(4, '0')}` : ch
+      }
     }
   }
   return b + '"'
+}
+
+/** Whether `s` holds a C0 control (U+0000–U+001F) other than LF and TAB. */
+function hasControlOtherThanLfTab(s: string): boolean {
+  for (let i = 0; i < s.length; i++) {
+    const code = s.charCodeAt(i)
+    if (code < 0x20 && code !== 0x0a && code !== 0x09) return true
+  }
+  return false
 }
