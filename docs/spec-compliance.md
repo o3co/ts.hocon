@@ -38,7 +38,7 @@ Section headings (S1–S26) match the template exactly for cross-impl matrix ali
   tests: tests/lexer.test.ts:74; tests/lightbend/testdata/subst-tokenize/st-err03-invalid-unicode-short.conf (fixture)
   status: ✅
 - **S1.2.4** Unescaped control char / raw newline in quoted string is rejected — §Unchanged from JSON (L118)
-  tests: tests/lightbend/testdata/subst-tokenize/st-err07-newline-in-string.conf (fixture); tests/lightbend/testdata/hocon/quoted-control/qc01–qc12 (fixtures, xx.hocon#130); tests/issue130-quoted-control.test.ts (full C0 sweep + key / path / array / substitution / include / concatenation positions, error position, legal forms outside single quotes); tests/render-hocon.test.ts ("renderHocon escapes control characters")
+  tests: tests/lightbend/testdata/subst-tokenize/st-err07-newline-in-string.conf (fixture); tests/lightbend/testdata/hocon/quoted-control/qc01–qc12 (fixtures, xx.hocon#130); tests/issue130-quoted-control.test.ts (full C0 sweep + key / path / array / substitution / include / concatenation / `+=` / every include form, error position, legal forms outside double quotes); tests/render-hocon.test.ts ("renderHocon escapes control characters")
   status: ✅
 - **S1.2.5** Unterminated quoted string is rejected — §Unchanged from JSON (L118)
   tests: tests/lexer.test.ts:175; tests/lightbend/testdata/subst-tokenize/st-err06-unterminated-string.conf (fixture)

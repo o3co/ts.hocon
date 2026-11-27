@@ -118,11 +118,14 @@ function renderScalar(s: HoconValue & { kind: 'scalar' }): string {
 const SAFE_UNQUOTED_KEY = /^[A-Za-z0-9_-]+$/
 
 function renderKey(k: string): string {
+  // A key that cannot be bare always takes the escaped double-quoted form
+  // (E18 decision 3, "the JSON-quoted form"), never triple quotes: a key
+  // containing LF renders as `"multi\nline key"` (rt11).
   // `include` is reserved unquoted at the start of a key (S12.5/S14a) — the
   // parser (and Lightbend: "include keyword is not followed by a quoted
   // string") rejects `include = 1`, so the key must be quoted to round-trip.
-  if (k === 'include') return quoteString(k)
-  return SAFE_UNQUOTED_KEY.test(k) ? k : quoteString(k)
+  if (k === 'include') return escapedString(k)
+  return SAFE_UNQUOTED_KEY.test(k) ? k : escapedString(k)
 }
 
 /**
@@ -148,6 +151,11 @@ function quoteString(s: string): string {
   if (s.includes('\n') && !hasControlOtherThanLfTab(s) && !s.includes('"""') && !s.endsWith('"')) {
     return `"""${s}"""`
   }
+  return escapedString(s)
+}
+
+/** The escaped double-quoted form (JSON string syntax, E18 decision 5). */
+function escapedString(s: string): string {
   let b = '"'
   for (const ch of s) {
     switch (ch) {

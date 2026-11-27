@@ -214,4 +214,15 @@ describe('renderHocon escapes control characters', () => {
     // DEL and C1 are legal in quotes and stay verbatim.
     expect(out).toContain('x\x7f\u0085y')
   })
+
+  it('a key containing LF takes the escaped form, never triple quotes (E18 decision 3)', () => {
+    const tree = { 'multi\nline key': 1, 'k\n\x01': 2, value: 'multi\nline' }
+    const out = fromMap(tree, 'test').renderHocon()
+    expect(out).toContain('"multi\\nline key" = 1')
+    expect(out).toContain('"k\\n\\u0001" = 2')
+    // Values keep the triple-quote branch.
+    expect(out).toContain('value = """multi\nline"""')
+    expect(out).not.toMatch(/"""multi\nline key"""/)
+    assertRoundTrip(tree)
+  })
 })

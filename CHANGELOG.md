@@ -18,14 +18,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   error names the character and points at it: `ParseError: unescaped control
   character U+0009 in quoted string; use a backslash escape (\u0009)`.
   **Workaround**: write the character as an escape (`\t`, `\r`, `\b`, `\f`
-  or `\u0001`), or use a triple-quoted string (`"""..."""`), which keeps
-  control characters verbatim. Unquoted strings, DEL (U+007F) and C1
-  (U+0080–U+009F) are unchanged and still accepted.
+  or `\u0001`). For a value, a triple-quoted string (`"""..."""`) also
+  works and keeps control characters verbatim; a `${...}` path has no
+  triple-quoted form, so there the escape is the only option. Unquoted
+  strings, DEL (U+007F) and C1 (U+0080–U+009F) are unchanged and still
+  accepted.
 - **`renderHocon()` escapes every C0 control** (xx.hocon E18 decision 5):
   `\b` and `\f` as short forms, the others as `\u00xx` (lowercase hex), in
   values and keys. Before, they were written raw, which the parser now
-  rejects. A multi-line string is triple-quoted only when its only C0
+  rejects. A multi-line string value is triple-quoted only when its only C0
   characters are LF and TAB. DEL and C1 are still written verbatim.
+- **`renderHocon()` never triple-quotes a key** (xx.hocon E18 decision 3): a
+  key that cannot be bare always takes the escaped double-quoted form, so a
+  key containing LF renders as `"multi\nline key"`. Before, it was
+  triple-quoted, which the parser rejects as a key, so the output did not
+  parse back.
 
 ## [1.14.3] - 2026-10-16
 

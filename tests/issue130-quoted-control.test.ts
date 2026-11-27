@@ -1,6 +1,6 @@
 /**
  * xx.hocon#130 — S1.2.4: a raw C0 control character (U+0000–U+001F) inside a
- * single-quoted string is a parse error, as in JSON and Lightbend. The lexer
+ * double-quoted string is a parse error, as in JSON and Lightbend. The lexer
  * rejected only LF; tab, CR, U+0001, U+001F and NUL were accepted in value,
  * key, substitution-path and include position. Triple-quoted (S9.1) and
  * unquoted (S8.8) strings keep controls verbatim, and DEL / C1 are legal.
@@ -38,20 +38,38 @@ describe('S1.2.4 — raw C0 control inside a quoted string (xx.hocon#130)', () =
 
   const positions: Record<string, string> = {
     key: '"a\tb" = 1\n',
-    'path-segment': 'a."b\x01" = 1\n',
+    'dotted-key-segment': 'a."b\x01" = 1\n',
+    'quoted-dotted-key': '"a"."b\tc" = 1\n',
+    'space-joined-key': 'a "b\tc" = 1\n',
+    'adjacent-key': 'a"b\tc" = 1\n',
+    'numeric-tail-key': '123abc."x\t= 1\n',
+    'nested-key': 'o { "a\tb" = 1 }\n',
     'array-element': 'a = ["x\x00"]\n',
-    'subst-path': 'x = 1\na = ${"x\t"}\n',
+    // The key exists (written with an escape), so only the lexer can fail.
+    'subst-path': '"x\\t" = 1\na = ${"x\t"}\n',
     'optional-subst': 'a = ${?"x\x1f"}\n',
+    concat: 'a = foo "x\x01" bar\n',
+    append: 'a = [1]\na += "x\ty"\n',
     include: 'include "x\ty"\n',
     'include-required': 'include required("x\ty")\n',
     'include-file': 'include file("x\ty")\n',
-    concat: 'a = foo "x\x01" bar\n',
+    'include-package-id': 'include package("p\tq", "f.conf")\n',
+    'include-package-file': 'include package("p", "f\td.conf")\n',
+    'include-nested': 'a { include "x\ty" }\n',
   }
   for (const [name, src] of Object.entries(positions)) {
     it(`${name} position is rejected with the control-character error`, () => {
-      expect(() => parse(src)).toThrow(/unescaped control character U\+00[01][0-9A-F]/)
+      expect(() => parse(src)).toThrow(/^unescaped control character U\+00[01][0-9A-F] in quoted string/)
     })
   }
+
+  it('subst-path guard: with the tab escaped in the path too, it resolves', () => {
+    expect(parse('"x\\t" = 1\na = ${"x\\t"}\n').getNumber('a')).toBe(1)
+  })
+
+  it('covers all 18 positions', () => {
+    expect(Object.keys(positions)).toHaveLength(18)
+  })
 
   it('the error points at the control character, not the opening quote', () => {
     let err: unknown
@@ -72,7 +90,7 @@ describe('S1.2.4 — raw C0 control inside a quoted string (xx.hocon#130)', () =
     ['unquoted', 'a = x\x01y\x00z\n', 'x\x01y\x00z'],
   ]
   for (const [name, src, want] of legal) {
-    it(`${name}: control characters outside single quotes stay legal`, () => {
+    it(`${name}: control characters outside double quotes stay legal`, () => {
       expect(parse(src).getString('a')).toBe(want)
     })
   }
