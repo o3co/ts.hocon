@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **BREAKING (S1.2.4): a raw control character inside a quoted string is a
+  parse error** ([xx.hocon#130](https://github.com/o3co/xx.hocon/issues/130)).
+  JSON and Lightbend reject a raw C0 control character (U+0000–U+001F) inside
+  a double-quoted string, but the lexer rejected only a raw newline; a tab,
+  CR, U+0001, U+001F or NUL was kept as text. This applies wherever a quoted
+  string can appear: values, keys, `${"..."}` paths and `include "..."`. The
+  error names the character and points at it: `ParseError: unescaped control
+  character U+0009 in quoted string; use a backslash escape (\u0009)`.
+  **Workaround**: write the character as an escape (`\t`, `\r`, `\b`, `\f`
+  or `\u0001`). For a value, a triple-quoted string (`"""..."""`) also
+  works and keeps control characters verbatim; a key, a `${...}` path and
+  an `include` argument have no triple-quoted form, so there the escape is the
+  only option. Unquoted
+  strings, DEL (U+007F) and C1 (U+0080–U+009F) are unchanged and still
+  accepted.
+- **`renderHocon()` escapes every C0 control** (xx.hocon E18 decision 5), in values
+  and keys, using the five short forms `\b \f \n \r \t` and lowercase `\u00xx`
+  for every other U+0000–U+001F. LF, CR and TAB were already written as
+  `\n \r \t`; the other C0 controls were written raw, which the parser now
+  rejects. A multi-line string value is triple-quoted only when its only C0
+  characters are LF and TAB. DEL and C1 are still written verbatim.
+- **`renderHocon()` never triple-quotes a key** (xx.hocon E18 decision 3): a
+  key that cannot be bare always takes the escaped double-quoted form, so a
+  key containing LF renders as `"multi\nline key"`. Before, it was
+  triple-quoted, which the parser rejects as a key, so the output did not
+  parse back.
+
 ## [1.14.3] - 2026-10-16
 
 This patch release adds an opt-in option; no schema, config or getter reads

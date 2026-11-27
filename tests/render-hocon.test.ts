@@ -179,3 +179,50 @@ describe('renderHocon from parsed document', () => {
     ).toBe(cfg._renderJSONForTest())
   })
 })
+
+// xx.hocon#130 / S1.2.4: a raw C0 control inside double quotes is a parse
+// error, so renderHocon must escape every one it writes there (E18 decision 5).
+describe('renderHocon escapes control characters', () => {
+  let allC0 = ''
+  for (let code = 0; code < 0x20; code++) allC0 += String.fromCharCode(code)
+  const tree = {
+    'all-c0': allC0,
+    'bare-but-control': 'abc\x01def',
+    'k\x01ey': 'key quotes only because of the control',
+    '\x00': 'nul key',
+    'multi-ctrl': 'line1\x01\nline2\x00',
+    'multi-tab': 'col1\tcol2\nrow2',
+    'del-c1': 'x\x7f\u0085y',
+  }
+
+  it('round-trips every C0 control in values and keys', () => {
+    assertRoundTrip(tree)
+  })
+
+  it('writes no raw C0 control other than LF and TAB', () => {
+    const out = fromMap(tree, 'test').renderHocon()
+    for (let i = 0; i < out.length; i++) {
+      const code = out.charCodeAt(i)
+      if (code < 0x20 && code !== 0x0a && code !== 0x09) {
+        throw new Error(`raw control U+${code.toString(16).padStart(4, '0')} at ${i} in:\n${out}`)
+      }
+    }
+    // Short forms where JSON has one, lowercase \u00xx otherwise.
+    for (const want of ['\\b', '\\f', '\\u0000', '\\u001f', '\\u0001']) expect(out).toContain(want)
+    // A multi-line string with only LF and TAB keeps the triple-quoted form.
+    expect(out).toContain('"""col1\tcol2\nrow2"""')
+    // DEL and C1 are legal in quotes and stay verbatim.
+    expect(out).toContain('x\x7f\u0085y')
+  })
+
+  it('a key containing LF takes the escaped form, never triple quotes (E18 decision 3)', () => {
+    const tree = { 'multi\nline key': 1, 'k\n\x01': 2, value: 'multi\nline' }
+    const out = fromMap(tree, 'test').renderHocon()
+    expect(out).toContain('"multi\\nline key" = 1')
+    expect(out).toContain('"k\\n\\u0001" = 2')
+    // Values keep the triple-quote branch.
+    expect(out).toContain('value = """multi\nline"""')
+    expect(out).not.toMatch(/"""multi\nline key"""/)
+    assertRoundTrip(tree)
+  })
+})
