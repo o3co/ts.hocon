@@ -24,9 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   only option. Unquoted
   strings, DEL (U+007F) and C1 (U+0080–U+009F) are unchanged and still
   accepted.
-- **`renderHocon()` escapes every C0 control** (xx.hocon E18 decision 5):
-  `\b` and `\f` as short forms, the others as `\u00xx` (lowercase hex), in
-  values and keys. Before, they were written raw, which the parser now
+- **`renderHocon()` escapes every C0 control** (xx.hocon E18 decision 5), in values
+  and keys, using the five short forms `\b \f \n \r \t` and lowercase `\u00xx`
+  for every other U+0000–U+001F. LF, CR and TAB were already written as
+  `\n \r \t`; the other C0 controls were written raw, which the parser now
   rejects. A multi-line string value is triple-quoted only when its only C0
   characters are LF and TAB. DEL and C1 are still written verbatim.
 - **`renderHocon()` never triple-quotes a key** (xx.hocon E18 decision 3): a
