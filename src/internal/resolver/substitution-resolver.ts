@@ -60,6 +60,23 @@ export class SubstitutionResolver {
   // a shape the fold could not see through (a live subst mid-navigation) —
   // report it as a cycle instead of recursing forever.
   private resolvingPrefixPriors = new Set<string>()
+  /**
+   * Interim guard for the in-progress branch of `resolveSubst` (the ts
+   * counterpart of go.hocon#218 / rs.hocon#199). Per substitution key, the
+   * in-progress set (sorted, joined) at each enclosing resolution of that
+   * key's saved prior. A prior can reach another in-progress key whose prior
+   * comes back here; that re-entry is legal and usually terminates, because
+   * the keys entered in between take a different branch the second time. A
+   * re-entry whose in-progress set equals an enclosing one repeats it, as
+   * `a = ${?b}` / `b = ${?a}` written twice did until the recursion limit
+   * fired: that cycle cannot be broken, so the optional form is nonexistent
+   * and the required form is an error, as in Lightbend. There are finitely
+   * many sets, so the nesting is finite. The cache is deliberately not part
+   * of the state: a cycle through nested objects adds a deeper cache key on
+   * every lap. The full fix is the resolver redesign in o3co/xx.hocon#67 /
+   * #125.
+   */
+  private priorReentry = new Map<string, string[]>()
 
   constructor(
     private root: ResObj,
@@ -287,18 +304,27 @@ export class SubstitutionResolver {
         prior =
           scope.priorValues.get(rootSeg) ?? this.root.priorValues.get(rootSeg)
       }
-      if (prior !== undefined) {
+      const state = [...this.resolving].sort().join('\u0000')
+      const outer = this.priorReentry.get(key)
+      if (prior !== undefined && !outer?.includes(state)) {
         // Clone the resolving set so that resolving the prior value can re-resolve
         // other paths currently in the set, while key (still present in the clone)
         // continues to guard against infinite recursion on the same path.
         const saved = this.resolving
         this.resolving = new Set(saved)
+        const stack = outer ?? []
+        stack.push(state)
+        this.priorReentry.set(key, stack)
         try {
           return this.resolveVal(prior, scope)
         } finally {
           this.resolving = saved
+          stack.pop()
+          if (stack.length === 0) this.priorReentry.delete(key)
         }
       }
+      // No prior, or re-entering it would repeat an enclosing resolution
+      // (see priorReentry): the cycle cannot be broken here.
       if (s.optional) return undefined
       throw new ResolveError(
         this.originPrefix() + `circular substitution: ${key}`,

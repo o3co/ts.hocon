@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **A substitution cycle written twice now resolves as in Lightbend instead
+  of failing with the recursion-limit error.** `a = ${?b}` / `b = ${?a}`
+  written twice gave `ParseError: input is nested too deeply for this
+  engine's stack, or contains a cycle`; Lightbend gives `{}`, and the
+  required form (`${b}` / `${a}`) is an unresolved-substitution error. The
+  same held for longer cycles and nested paths. While a key was in progress,
+  the resolver resolved its saved prior, and that prior could reach another
+  in-progress key and resolve that key's prior in turn until the recursion
+  limit fired (go and rs crashed on the same input: go.hocon#218,
+  rs.hocon#199). A re-entry in an unchanged state is now treated as an
+  unbreakable cycle: an optional substitution is nonexistent and a required
+  one is a `ResolveError`. Every input that loaded before reads the same. A
+  cycle written twice through string concatenation (`a = ${?b}x` /
+  `b = ${?a}y`, twice) now returns a value instead of the error, but not
+  Lightbend's value; that is left to the resolver redesign in
+  o3co/xx.hocon#67 / #125, which replaces this interim guard.
+
 ## [1.14.3] - 2026-10-16
 
 This patch release adds an opt-in option; no schema, config or getter reads
