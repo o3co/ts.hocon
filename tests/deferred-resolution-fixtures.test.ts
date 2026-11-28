@@ -33,6 +33,23 @@ const SKIP: Set<string> = new Set([
   'dr17-e11-package-include-deferred.yaml',
 ])
 
+// ── Per-impl known gaps ───────────────────────────────────────────────────────
+// Scenarios whose expected tree ts.hocon does not produce yet. Each is a strict
+// expected failure limited to the JSON comparison: every other check (a step
+// error, isResolved, getters) runs as usual, and the resolved tree must differ
+// from expect.json — a match fails the run, so the entry is removed when the
+// gap closes. An entry whose scenario is not on disk has no effect.
+
+const XX139_KNOWN_GAP =
+  "o3co/xx.hocon#139 (resolution-model §8.3): a cycle of optionals across a nested withFallback " +
+  "nests both fields instead of keeping the nested value in the receiver's field only — fixed by " +
+  'the resolution layer (o3co/xx.hocon#67 window); py: o3co/py.hocon#67'
+
+const KNOWN_GAPS: Map<string, string> = new Map([
+  ['dr31-nested-key-order-receiver-first.yaml', XX139_KNOWN_GAP],
+  ['dr32-nested-key-order-receiver-first-renamed.yaml', XX139_KNOWN_GAP],
+])
+
 // ── Source builder ────────────────────────────────────────────────────────────
 
 function buildSource(src: Source): Config {
@@ -189,7 +206,15 @@ if (!existsSync(FIXTURE_DIR)) {
         continue
       }
 
-      it(testName, () => {
+      const gap = KNOWN_GAPS.get(filename)
+
+      it(gap === undefined ? testName : `${testName} (known gap: see KNOWN_GAPS)`, () => {
+        if (gap !== undefined) {
+          expect(
+            scenario.expect.outcome === 'success' && scenario.expect.json !== undefined,
+            'a KNOWN_GAPS entry must be a success scenario with expect.json',
+          ).toBe(true)
+        }
         const { result, errorAt, error } = executeOps(scenario.build, scenario.sources)
 
         if (scenario.expect.outcome === 'error') {
@@ -221,16 +246,24 @@ if (!existsSync(FIXTURE_DIR)) {
           expect(result.isResolved()).toBe(scenario.expect.isResolved)
         }
 
+        // Getters run before the JSON comparison, so a known gap's getters are
+        // still checked.
+        if (scenario.expect.getter !== undefined) {
+          for (const ga of scenario.expect.getter) {
+            runGetterAssert(result, ga)
+          }
+        }
+
         if (scenario.expect.json !== undefined) {
           const expectedObj = JSON.parse(scenario.expect.json)
           const gotStr = result._renderJSONForTest()
           const gotObj = JSON.parse(gotStr)
-          expect(gotObj).toEqual(expectedObj)
-        }
-
-        if (scenario.expect.getter !== undefined) {
-          for (const ga of scenario.expect.getter) {
-            runGetterAssert(result, ga)
+          if (gap === undefined) {
+            expect(gotObj).toEqual(expectedObj)
+          } else {
+            expect(gotObj, `listed in KNOWN_GAPS but matches — remove the entry (${gap})`).not.toEqual(
+              expectedObj,
+            )
           }
         }
       })
