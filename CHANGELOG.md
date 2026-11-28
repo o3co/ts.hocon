@@ -20,8 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   limit fired (go and rs crashed on the same input: go.hocon#218,
   rs.hocon#199). A re-entry in an unchanged state is now treated as an
   unbreakable cycle: an optional substitution is nonexistent and a required
-  one is a `ResolveError`. No input that loads today changes result (checked
-  by a differential over 157,254 inputs against the previous release). A
+  one is a `ResolveError`. This is not proven to leave every loadable config
+  alone: a measured differential against the previous release (about 220,000
+  generated and corpus inputs) found no input that loaded and now reads
+  differently. A
   cycle written twice through string concatenation (`a = ${?b}x` /
   `b = ${?a}y`, twice) now returns a value instead of the error, but not
   Lightbend's value; that is left to the resolver redesign in
@@ -33,8 +35,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with `ResolveError: resolved value too large: <path> keeps growing (a cycle
   through nested objects?)`. Nothing is charged before a cut, so acyclic
   input — deep nesting, long paths, repeated references
-  (`a1 = { x = ${a0}, y = ${a0} }`, …) — is never charged; that no input
-  that loads today reaches the budget is checked by the same differential.
+  (`a1 = { x = ${a0}, y = ${a0} }`, …) — is never charged; in the same
+  measured differential no input that loaded reached the budget.
   The budget is capped at 2,000,000 nodes, and object keys and cache keys
   count one node per 16 characters, so padding cannot inflate it. After a
   cut, every substitution result is also charged as it is produced, so an
@@ -44,9 +46,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   characters. Interim, like the guard (same budget as rs.hocon#199).
 - **A cycle whose re-explorations multiply after the guard has cut it fails
   with `substitution cycle too complex to resolve` instead of running for
-  minutes.** After a cut, at most 200,000 further substitutions are
-  resolved; inputs that base rejected in milliseconds had run for minutes.
-  Nothing is counted before a cut. Interim, like the guard.
+  minutes.** After a cut, the resolver may spend at most 200,000 work units:
+  one per substitution, plus the size of each re-entry snapshot it builds and
+  compares (long keys and deep cycles made single steps expensive). Inputs
+  that base rejected in milliseconds had run for minutes. Nothing is counted
+  before a cut. Interim, like the guard.
 
 ## [1.14.3] - 2026-10-16
 

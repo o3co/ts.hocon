@@ -157,6 +157,29 @@ describe('post-cut bounds', () => {
   }, BUDGET_TEST_TIMEOUT)
 })
 
+// ts review round 2. arr40: an exponentially large *shared* array (cheap to
+// build, cached without a walk) reached after a cut; the charge stops
+// counting at the budget instead of walking all 2^40 elements. pd_120_2000:
+// a dense cycle under 120 keys of 2,000 characters; each re-entry snapshot is
+// charged to the work budget by its size, so few but huge snapshots still
+// stop. Base gave a ParseError quickly for both; an error is pinned.
+describe('post-cut bounds on cost per step (ts review round 2)', () => {
+  it('arr40: a shared array doubling 40 times', () => {
+    const lines = ['a0 = [1]']
+    for (let i = 1; i <= 40; i++) lines.push(`a${i} = [\${a${i - 1}}, \${a${i - 1}}]`)
+    lines.push('x = ${?y}', 'y = ${?x}', 'x = ${?y}', 'y = ${?x}', 'z = ${a40}')
+    expect(() => parse(lines.join('\n'))).toThrow(/resolved value too large|substitution cycle too complex/)
+  }, BUDGET_TEST_TIMEOUT)
+  it('pd_120_2000: a dense cycle behind 120 long keys', () => {
+    const q = 'q'.repeat(2000)
+    const lines = Array.from({ length: 120 }, (_, i) => `${q}${i} = \${${q}${i + 1}}`)
+    lines.push(`${q}120 = \${k1}`)
+    const all = Array.from({ length: 6 }, (_, i) => `\${?k${i + 1}}`).join('')
+    const dense = Array.from({ length: 6 }, (_, i) => `k${i + 1} = ${all}`)
+    expect(() => parse([...lines, ...dense, ...dense].join('\n'))).toThrow(/substitution cycle too complex|resolved value too large/)
+  }, BUDGET_TEST_TIMEOUT)
+})
+
 // documentStats walks fields and saved priors; current values and priors
 // share children, so without an identity check a chain whose every level
 // reaches the next level twice walks 2^depth paths.
