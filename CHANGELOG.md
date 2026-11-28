@@ -25,6 +25,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `b = ${?a}y`, twice) now returns a value instead of the error, but not
   Lightbend's value; that is left to the resolver redesign in
   o3co/xx.hocon#67 / #125, which replaces this interim guard.
+- **A cycle through nested objects fails with `resolved value too large`
+  instead of spending seconds of CPU building an exponentially large value.**
+  Once the guard above has cut a cycle, the resolver may cache at most
+  10,000 value nodes per node of the document; past that, resolution fails
+  with `ResolveError: resolved value too large: <path> keeps growing (a cycle
+  through nested objects?)`. Nothing is charged before a cut, and a cut
+  happens only on input that hit the recursion-limit error before, so no
+  config that loaded is affected: deep nesting, long paths and repeated
+  references (`a1 = { x = ${a0}, y = ${a0} }`, …) are never charged. Interim,
+  like the guard (same budget as rs.hocon#199).
 
 ## [1.14.3] - 2026-10-16
 

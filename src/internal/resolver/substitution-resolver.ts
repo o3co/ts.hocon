@@ -86,12 +86,21 @@ export class SubstitutionResolver {
   private priorReentry = new Map<string, string[]>()
   /** Longest substitution path (segments) in the document; see priorReentry. */
   private readonly maxSubstLen: number
+  /** Value nodes the cache may still take; see VALUE_NODES_PER_SOURCE_NODE. */
+  private valueBudget: number
+  /**
+   * Re-entries the priorReentry guard has refused. The value budget applies
+   * only once this is non-zero: a cut happens only on input that never
+   * terminated before the guard, so no acyclic config is ever charged.
+   */
+  private cuts = 0
 
   constructor(
     private root: ResObj,
     private opts: ResolveOptions,
   ) {
     this.maxSubstLen = maxSubstLenObj(root)
+    this.valueBudget = sourceNodesObj(root) * VALUE_NODES_PER_SOURCE_NODE
   }
 
   /** The resolver state compared by the priorReentry guard. */
@@ -143,15 +152,13 @@ export class SubstitutionResolver {
                   resolved as HoconValue & { kind: 'object' },
                 )
                 result.set(key, finalValue)
-                this.cache.set(fullCacheKey, finalValue)
-                this.cacheDescendants(fullCacheKey, finalValue)
+                this.cacheValue(fullCacheKey, finalValue)
                 continue
               }
             }
           }
           result.set(key, resolved)
-          this.cache.set(fullCacheKey, resolved)
-          this.cacheDescendants(fullCacheKey, resolved)
+          this.cacheValue(fullCacheKey, resolved)
         } else {
           // Unresolved optional substitution: fall back to prior value per HOCON spec
           const prior = obj.priorValues.get(key)
@@ -159,8 +166,7 @@ export class SubstitutionResolver {
             const priorResolved = this.resolveVal(prior, obj)
             if (priorResolved !== undefined) {
               result.set(key, priorResolved)
-              this.cache.set(fullCacheKey, priorResolved)
-              this.cacheDescendants(fullCacheKey, priorResolved)
+              this.cacheValue(fullCacheKey, priorResolved)
             }
           }
         }
@@ -185,13 +191,37 @@ export class SubstitutionResolver {
     return cur
   }
 
-  private cacheDescendants(prefix: string, value: HoconValue): void {
+  /**
+   * Cache a resolved field value under `key` and each of its descendants
+   * under their own paths, deducting every entry's nodes from the value
+   * budget (see VALUE_NODES_PER_SOURCE_NODE).
+   */
+  private cacheValue(key: string, value: HoconValue): void {
+    this.chargeValueBudget(key, value)
+    this.cache.set(key, value)
     if (value.kind !== 'object') return
-    for (const [key, child] of value.fields) {
-      const childKey = `${prefix}.${stringSegmentsToKey([key])}`
-      this.cache.set(childKey, child)
-      this.cacheDescendants(childKey, child)
+    for (const [childKey, child] of value.fields) {
+      this.cacheValue(`${key}.${stringSegmentsToKey([childKey])}`, child)
     }
+  }
+
+  /**
+   * Deduct a value about to be cached from the value budget, once the guard
+   * has cut a cycle (see cuts); before that, nothing is charged.
+   */
+  private chargeValueBudget(key: string, value: HoconValue): void {
+    if (this.cuts === 0) return
+    const n = valueNodes(value)
+    if (n > this.valueBudget) {
+      throw new ResolveError(
+        this.originPrefix() +
+          `resolved value too large: ${key} keeps growing (a cycle through nested objects?)`,
+        key,
+        0,
+        0,
+      )
+    }
+    this.valueBudget -= n
   }
 
   private resolveVal(v: ResolverValue, scope: ResObj): HoconValue | undefined {
@@ -345,6 +375,7 @@ export class SubstitutionResolver {
       }
       // No prior, or re-entering it would repeat an enclosing resolution
       // (see priorReentry): the cycle cannot be broken here.
+      if (prior !== undefined) this.cuts++
       if (s.optional) return undefined
       throw new ResolveError(
         this.originPrefix() + `circular substitution: ${key}`,
@@ -765,5 +796,48 @@ function maxSubstLenObj(o: ResObj): number {
   let n = 0
   for (const v of o.fields.values()) n = Math.max(n, maxSubstLen(v))
   for (const v of o.priorValues.values()) n = Math.max(n, maxSubstLen(v))
+  return n
+}
+
+/**
+ * Value nodes the resolver may put into its cache, per node of the document,
+ * once the priorReentry guard has cut a cycle. The guard stops every cycle,
+ * but a cycle through nested objects can still nest its value exponentially
+ * before it does, and every resolved field is cached with each of its
+ * descendants (an 8-line input spent seconds there). The budget is charged
+ * only after a cut (see `cuts`), which happens only on input that hit the
+ * recursion limit before the guard; acyclic input — deep nesting, long
+ * paths, repeated references — is never charged, so no config that loaded
+ * is affected. Interim, like the guard (o3co/xx.hocon#67 / #125); the same
+ * budget as rs.hocon#199.
+ */
+const VALUE_NODES_PER_SOURCE_NODE = 10_000
+
+/** Nodes in a resolved value (objects, arrays and leaves). */
+function valueNodes(v: HoconValue): number {
+  if (v.kind === 'object') {
+    let n = 1
+    for (const c of v.fields.values()) n += valueNodes(c)
+    return n
+  }
+  if (v.kind === 'array') return v.items.reduce((n, c) => n + valueNodes(c), 1)
+  return 1
+}
+
+/** Nodes in the unresolved document, saved priors included. */
+function sourceNodes(v: ResolverValue): number {
+  if (isSubst(v)) return 1
+  if (isConcat(v)) return v.nodes.reduce((n, x) => n + sourceNodes(x), 1)
+  if (isResObj(v)) return sourceNodesObj(v)
+  const hv = v as HoconValue
+  if (hv.kind === 'array') return hv.items.reduce((n, x) => n + sourceNodes(x as ResolverValue), 1)
+  if (hv.kind === 'object') return valueNodes(hv)
+  return 1
+}
+
+function sourceNodesObj(o: ResObj): number {
+  let n = 1
+  for (const v of o.fields.values()) n += sourceNodes(v)
+  for (const v of o.priorValues.values()) n += sourceNodes(v)
   return n
 }
