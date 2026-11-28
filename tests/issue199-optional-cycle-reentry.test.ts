@@ -17,7 +17,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { ResolveError } from '../src/errors.js'
-import { parse, parseFile } from '../src/index.js'
+import { parse, parseFile, parseStringWithOptions } from '../src/index.js'
 import { documentStats } from '../src/internal/resolver/substitution-resolver.js'
 import { makeResObj, type ResObj } from '../src/internal/resolver/types.js'
 
@@ -158,16 +158,19 @@ describe('post-cut bounds', () => {
 })
 
 // ts review round 2. arr40: an exponentially large *shared* array (cheap to
-// build, cached without a walk) reached after a cut; the charge stops
+// build, cached without a walk) charged inside a cut computation; the charge stops
 // counting at the budget instead of walking all 2^40 elements. pd_120_2000:
 // a dense cycle under 120 keys of 2,000 characters; each re-entry snapshot is
 // charged to the work budget by its size, so few but huge snapshots still
 // stop. Base gave a ParseError quickly for both; an error is pinned.
 describe('post-cut bounds on cost per step (ts review round 2)', () => {
-  it('arr40: a shared array doubling 40 times', () => {
+  // The shared array sits inside the computation that holds the cut (x's
+  // prior chain); a40 referenced from an unrelated field is acyclic and loads
+  // as in base, so it is not charged at all (see the scoping tests below).
+  it('arr40: a shared array doubling 40 times, inside the cut computation', () => {
     const lines = ['a0 = [1]']
     for (let i = 1; i <= 40; i++) lines.push(`a${i} = [\${a${i - 1}}, \${a${i - 1}}]`)
-    lines.push('x = ${?y}', 'y = ${?x}', 'x = ${?y}', 'y = ${?x}', 'z = ${a40}')
+    lines.push('x = ${?y}', 'y = ${?x}', 'x = ${?y}', 'y = ${?x}', 'x = ${?y} [${a40}]')
     expect(() => parse(lines.join('\n'))).toThrow(/resolved value too large|substitution cycle too complex/)
   }, BUDGET_TEST_TIMEOUT)
   it('pd_120_2000: a dense cycle behind 120 long keys', () => {
@@ -178,6 +181,43 @@ describe('post-cut bounds on cost per step (ts review round 2)', () => {
     const dense = Array.from({ length: 6 }, (_, i) => `k${i + 1} = ${all}`)
     expect(() => parse([...lines, ...dense, ...dense].join('\n'))).toThrow(/substitution cycle too complex|resolved value too large/)
   }, BUDGET_TEST_TIMEOUT)
+})
+
+// The budgets apply only inside the computation that contains a cut
+// (ts.hocon#241 review). A cut in one field must not charge a field resolved
+// beside or after it: a 500-level literal chain has ~500 nodes but its
+// per-level caching charge grows with the cube of the depth, so a leaked
+// charge made it exceed the cap.
+describe('budget charging is scoped to the computation that holds the cut', () => {
+  const chain = `z = ${'{ a = '.repeat(500)}1${' }'.repeat(500)}`
+  const depthOf = (v: unknown): number => {
+    let n = 0
+    for (let cur = v as Record<string, unknown>; cur && typeof cur === 'object' && 'a' in cur; cur = cur.a as Record<string, unknown>) n++
+    return n
+  }
+  it('an optional cycle written twice, then an independent 500-level chain', () => {
+    const obj = parse(`a = \${?b}\nb = \${?a}\na = \${?b}\nb = \${?a}\n${chain}\n`).toObject() as Record<string, unknown>
+    expect(Object.keys(obj)).toEqual(['z'])
+    expect(depthOf(obj.z)).toBe(500)
+  }, BUDGET_TEST_TIMEOUT)
+  it('cx1 plus an independent 500-level chain loads as in base', () => {
+    const obj = parse(`${CX1}\n${chain}\n`).toObject() as Record<string, unknown>
+    const { z, ...rest } = obj
+    expect(rest).toEqual(CX1_BASE)
+    expect(depthOf(z)).toBe(500)
+  }, BUDGET_TEST_TIMEOUT)
+})
+
+// allowUnresolved leaves unresolved placeholders in the resolved tree; once a
+// cut has switched charging on, the budget walk must count them as terminal
+// nodes instead of reading scalar text from them (ts.hocon#241 review).
+describe('allowUnresolved after a cut', () => {
+  it('returns a partially resolved Config', () => {
+    const src = 'a = ${?b}\nb = ${?a}\na = ${?b}\nb = ${?a}\nu = ${missing}\nv = [${missing2}, { w = ${missing3} }]\nk = 1\n'
+    const cfg = parseStringWithOptions(src, { resolveSubstitutions: false }).resolve({ allowUnresolved: true })
+    expect(cfg.isResolved()).toBe(false)
+    expect(cfg.getNumber('k')).toBe(1)
+  })
 })
 
 // documentStats walks fields and saved priors; current values and priors
@@ -218,6 +258,9 @@ describe('documentStats visits a shared container once', () => {
 // ts-specific steering state (ts guard review). These configs load today
 // and go through a cut; a snapshot without the concat-iteration set or the
 // scope identity changed their result. Expected values are ts base (5793e00).
+const CX1 = "a.a = ${?b}\nc.b { b { a += x, b += ${?a}, a += [${?c}] } }\nc.b { b { a += [] } }\na = ${c}\na = ${?a}\n"
+const CX1_BASE = {"a": {"b": {"b": {"a": ["x", [{"b": {"b": {"a": ["x", []], "b": [["x"], ["x"]]}}}], []], "b": [["x"], ["x", [{"b": {"b": {"a": ["x", []], "b": [["x"], ["x"]]}}}]]]}}}, "c": {"b": {"b": {"a": ["x", [{"b": {"b": {"a": ["x", [{"b": {"b": {"a": ["x", []], "b": [["x"], {"b": {"b": {"a": ["x", [{"b": {"b": {"a": ["x", []], "b": [["x"], ["x"]]}}}], []], "b": [["x"], ["x", [{"b": {"b": {"a": ["x", []], "b": [["x"], ["x"]]}}}]]]}}}]}}}], []], "b": [["x"], {"b": {"b": {"a": ["x", [{"b": {"b": {"a": ["x", []], "b": [["x"], ["x"]]}}}], []], "b": [["x"], ["x", [{"b": {"b": {"a": ["x", []], "b": [["x"], ["x"]]}}}]]]}}}]}}}], []], "b": [{"b": {"b": {"a": ["x", [{"b": {"b": {"a": ["x", []], "b": [["x"], ["x"]]}}}], []], "b": [["x"], ["x", [{"b": {"b": {"a": ["x", []], "b": [["x"], ["x"]]}}}]]]}}}]}}}}
+
 describe('re-entry state includes the concat set and the scope', () => {
   const cases: ReadonlyArray<readonly [string, string, unknown]> = [
     ['cx1', "a.a = ${?b}\nc.b { b { a += x, b += ${?a}, a += [${?c}] } }\nc.b { b { a += [] } }\na = ${c}\na = ${?a}\n", {"a": {"b": {"b": {"a": ["x", [{"b": {"b": {"a": ["x", []], "b": [["x"], ["x"]]}}}], []], "b": [["x"], ["x", [{"b": {"b": {"a": ["x", []], "b": [["x"], ["x"]]}}}]]]}}}, "c": {"b": {"b": {"a": ["x", [{"b": {"b": {"a": ["x", [{"b": {"b": {"a": ["x", []], "b": [["x"], {"b": {"b": {"a": ["x", [{"b": {"b": {"a": ["x", []], "b": [["x"], ["x"]]}}}], []], "b": [["x"], ["x", [{"b": {"b": {"a": ["x", []], "b": [["x"], ["x"]]}}}]]]}}}]}}}], []], "b": [["x"], {"b": {"b": {"a": ["x", [{"b": {"b": {"a": ["x", []], "b": [["x"], ["x"]]}}}], []], "b": [["x"], ["x", [{"b": {"b": {"a": ["x", []], "b": [["x"], ["x"]]}}}]]]}}}]}}}], []], "b": [{"b": {"b": {"a": ["x", [{"b": {"b": {"a": ["x", []], "b": [["x"], ["x"]]}}}], []], "b": [["x"], ["x", [{"b": {"b": {"a": ["x", []], "b": [["x"], ["x"]]}}}]]]}}}]}}}}],

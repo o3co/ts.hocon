@@ -94,14 +94,22 @@ export class SubstitutionResolver {
   /** Value nodes the cache may still take; see VALUE_NODES_PER_SOURCE_NODE. */
   private valueBudget: number
   /**
-   * Re-entries the priorReentry guard has refused. The value and work
-   * budgets apply only once this is non-zero, so acyclic input — deep
-   * nesting, long paths, repeated references — is never charged. A cut can
-   * happen on input that loads (a re-entry the guard refuses where base
-   * found the same answer another way); that no such input changes result
-   * is established by differential, not by construction.
+   * Where the priorReentry guard has cut a cycle. The value and work budgets
+   * apply only inside a computation that contains a cut, so acyclic input —
+   * deep nesting, long paths, repeated references — is never charged, and
+   * neither is a field resolved beside or after the one that held the cut
+   * (ts.hocon#241 review: a cut in one field made an unrelated 500-level
+   * literal chain under another key exceed the cap). A cut marks every field
+   * open at that moment, since each of them contains it: `cutFields` is how
+   * many of the outermost open fields are marked, and closing a field drops
+   * it. A cut outside any field marks the whole resolution. A cut can happen
+   * on input that loads (a re-entry the guard refuses where base found the
+   * same answer another way); that no such input changes result is
+   * established by differential, not by construction.
    */
-  private cuts = 0
+  private cutFields = 0
+  private openFields = 0
+  private cutOutsideField = false
   /** Objects numbered by `identity`. */
   private identities = new Map<object, number>()
   /**
@@ -164,6 +172,11 @@ export class SubstitutionResolver {
     return (depth + 1) * (1 + Math.floor(bytes / 16))
   }
 
+  /** Whether the current computation contains a cut (see cutFields). */
+  private charging(): boolean {
+    return this.cutFields > 0 || this.cutOutsideField
+  }
+
   /** A stable number per object, for the priorReentry state. */
   private identity(o: object): number {
     let id = this.identities.get(o)
@@ -195,6 +208,7 @@ export class SubstitutionResolver {
       // against the truncated path [bar, nested] and mis-route to the
       // prior of `nested` instead of the final tree.
       this.resolvingFieldPath.push(key)
+      this.openFields++
       const fullCacheKey = stringSegmentsToKey(this.resolvingFieldPath)
       this.cache.delete(fullCacheKey)
       try {
@@ -235,6 +249,8 @@ export class SubstitutionResolver {
       } finally {
         // `continue` routes through here too — every exit pops.
         this.resolvingFieldPath.pop()
+        this.openFields--
+        if (this.cutFields > this.openFields) this.cutFields = this.openFields
       }
     }
     return { kind: 'object', fields: result }
@@ -269,10 +285,11 @@ export class SubstitutionResolver {
 
   /**
    * Deduct a value about to be cached from the value budget, once the guard
-   * has cut a cycle (see cuts); before that, nothing is charged.
+   * has cut a cycle in the current computation (see cutFields); elsewhere,
+   * nothing is charged.
    */
   private chargeValueBudget(key: string, value: HoconValue, extra = 0): void {
-    if (this.cuts === 0) return
+    if (!this.charging()) return
     // Stop counting once over the remaining budget: a shared array can be
     // exponentially large while cheap to build (ts review round 2, arr40).
     const n = extra + valueNodesUpTo(value, this.valueBudget - extra)
@@ -333,7 +350,7 @@ export class SubstitutionResolver {
     s: SubstPlaceholder,
     scope: ResObj,
   ): HoconValue | undefined {
-    if (this.cuts > 0) this.chargeWork(1, s)
+    if (this.charging()) this.chargeWork(1, s)
     if (s.knownAbsent) {
       // A required substitution folded to knownAbsent (S13a.12 prefix fold
       // with no below value at the navigated path) is the spec's "undefined"
@@ -429,7 +446,7 @@ export class SubstitutionResolver {
           scope.priorValues.get(rootSeg) ?? this.root.priorValues.get(rootSeg)
       }
       const outer = this.priorReentry.get(key)
-      if (prior !== undefined && this.cuts > 0) this.chargeWork(this.snapshotUnits(outer?.length ?? 0), s)
+      if (prior !== undefined && this.charging()) this.chargeWork(this.snapshotUnits(outer?.length ?? 0), s)
       const state = prior === undefined ? '' : this.reentryState(scope)
       if (prior !== undefined && !outer?.includes(state)) {
         // Clone the resolving set so that resolving the prior value can re-resolve
@@ -450,7 +467,10 @@ export class SubstitutionResolver {
       }
       // No prior, or re-entering it would repeat an enclosing resolution
       // (see priorReentry): the cycle cannot be broken here.
-      if (prior !== undefined) this.cuts++
+      if (prior !== undefined) {
+        if (this.openFields === 0) this.cutOutsideField = true
+        else this.cutFields = this.openFields
+      }
       if (s.optional) return undefined
       throw new ResolveError(
         this.originPrefix() + `circular substitution: ${key}`,
@@ -901,7 +921,8 @@ export function documentStats(root: ResObj): { maxSubstLen: number; sourceNodes:
  * but a cycle through nested objects can still nest its value exponentially
  * before it does, and every resolved field is cached with each of its
  * descendants (an 8-line input spent seconds there). The budget is charged
- * only after a cut (see `cuts`), so acyclic input is never charged; that no
+ * only inside a computation that contains a cut (see `cutFields`), so
+ * acyclic input is never charged; that no
  * input that loads today reaches it is established by differential. Interim,
  * like the guard (o3co/xx.hocon#67 / #125); the same budget as rs.hocon#199.
  */
@@ -950,7 +971,9 @@ function valueNodesUpTo(v: HoconValue, limit: number): number {
         walk(c)
         if (n > limit) return
       }
-    } else n += scalarWeight(x.raw)
+    } else if (x.kind === 'scalar') n += scalarWeight(x.raw)
+    // An unresolved placeholder left in place by allowUnresolved: a terminal.
+    else n += 1
   }
   walk(v)
   return n
