@@ -246,6 +246,14 @@ if (!existsSync(FIXTURE_DIR)) {
           expect(result.isResolved()).toBe(scenario.expect.isResolved)
         }
 
+        // Getters run before the JSON comparison, so a known gap's getters are
+        // still checked.
+        if (scenario.expect.getter !== undefined) {
+          for (const ga of scenario.expect.getter) {
+            runGetterAssert(result, ga)
+          }
+        }
+
         if (scenario.expect.json !== undefined) {
           const expectedObj = JSON.parse(scenario.expect.json)
           const gotStr = result._renderJSONForTest()
@@ -256,12 +264,6 @@ if (!existsSync(FIXTURE_DIR)) {
             expect(gotObj, `listed in KNOWN_GAPS but matches — remove the entry (${gap})`).not.toEqual(
               expectedObj,
             )
-          }
-        }
-
-        if (scenario.expect.getter !== undefined) {
-          for (const ga of scenario.expect.getter) {
-            runGetterAssert(result, ga)
           }
         }
       })
