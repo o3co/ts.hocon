@@ -66,6 +66,50 @@ describe('a cycle through saved priors written twice (go.hocon#218 / rs.hocon#19
   })
 })
 
+// A cycle through nested objects can nest its value exponentially before the
+// guard stops it. The value budget (VALUE_NODES_PER_SOURCE_NODE) turns that
+// into an error instead of seconds of CPU and megabytes of value. Both inputs
+// hit the recursion limit before the guard; no time is asserted.
+describe('value budget for a cycle through nested objects (rs.hocon#199)', () => {
+  for (const [name, src] of [
+    ['r3d (r3b with o.y.q written twice)', "o.x = 2\no.x = ${?o}\no.y = { z = ${?o.y.z} }\no.y.z = ${?o}\no.x = ${?o.x}\no.y = { x = ${?o.y} }\no.y = ${?o.y.z}\no.y.q = ${?o.x}\no.y.q = ${?o.x}\n"],
+    ['r3c', "o.x = 2\no.x = ${?o}\no.y = { z = ${?o.y.z} }\no.y.z = ${?o}\no.x = ${?o.x}\no.y = { x = ${?o.y} }\no.y = { q = ${?o.y.z} }\n"],
+  ] as const) {
+    it(`${name}: resolved value too large`, () => {
+      expect(() => parse(src)).toThrow(/resolved value too large: o\.y\.\S+ keeps growing/)
+    })
+  }
+})
+
+// The budget is charged only after the guard has cut a cycle, so acyclic
+// input is never charged however large its value: deep nesting, a long
+// path, and repeated references (billion-laughs) load exactly as before.
+describe('value budget leaves acyclic input alone', () => {
+  const depthOf = (v: unknown, k: string): number => {
+    let n = 0
+    for (let cur = v as Record<string, unknown>; cur && typeof cur === 'object' && k in cur; cur = cur[k] as Record<string, unknown>) n++
+    return n
+  }
+  it('500 nested objects', () => {
+    const obj = parse(`${'a { '.repeat(500)}x = 1${' }'.repeat(500)}`).toObject()
+    expect(depthOf(obj, 'a')).toBe(500)
+  })
+  // Slow by nature (the path is re-walked per segment), not by the budget;
+  // the timeout only keeps a loaded CI runner from failing it.
+  it('a 1000-segment path', () => {
+    const obj = parse(`${Array(1000).fill('a').join('.')} = 1`).toObject()
+    expect(depthOf(obj, 'a')).toBe(1000)
+  }, 60_000)
+  it('billion-laughs, 12 levels (4096 leaves)', () => {
+    const lines = ['a0 = {v = 1}']
+    for (let n = 1; n <= 12; n++) lines.push(`a${n} = { x = \${a${n - 1}}, y = \${a${n - 1}} }`)
+    const obj = parse(lines.join('\n')).toObject() as Record<string, unknown>
+    const leaves = (v: unknown): number =>
+      v && typeof v === 'object' ? Object.values(v as object).reduce((n: number, c) => n + leaves(c), 0) : 1
+    expect(leaves(obj.a12)).toBe(4096)
+  })
+})
+
 describe('o3co/xx.hocon#136 fixture conformance (oc01-oc06)', () => {
   // `-inner.conf` files are include targets, not fixtures.
   const names = existsSync(ocDir)
