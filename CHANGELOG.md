@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.14.4] - 2026-11-29
+
+**Patch.** A substitution cycle written twice (`a = ${?b}` / `b = ${?a}`,
+twice) no longer fails with the recursion-limit `ParseError` (`input is
+nested too deeply for this engine's stack, or contains a cycle`). Such a
+cycle now resolves as Lightbend does (`{}` for the optional form, a
+`ResolveError` for the required one; the string-concatenation form is the
+exception, see below), and resolution after a cut cycle is bounded in work
+and value size. In a measured differential against the unfixed resolver,
+no input that loaded reads differently; only inputs that failed before,
+almost all with that `ParseError`, now load or fail with a `ResolveError`.
+`ResolveError` does not extend `ParseError`, so code that caught the
+recursion-limit failure as `ParseError` must also catch `ResolveError`.
+Same cycle guard as go.hocon and rs.hocon v1.14.3 (o3co/go.hocon#218,
+o3co/rs.hocon#199); the work and value limits are this resolver's own.
+
 ### Fixed
 
 - **A substitution cycle written twice now resolves as in Lightbend instead
@@ -23,11 +39,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   one is a `ResolveError`. This is not proven to leave every loadable config
   alone: a measured differential against the previous release (about 220,000
   generated and corpus inputs) found no input that loaded and now reads
-  differently. A
-  cycle written twice through string concatenation (`a = ${?b}x` /
-  `b = ${?a}y`, twice) now returns a value instead of the error, but not
-  Lightbend's value; that is left to the resolver redesign in
-  o3co/xx.hocon#67 / #125, which replaces this interim guard.
+  differently. A cycle written twice through string concatenation
+  (`a = ${?b}x` / `b = ${?a}y`, twice) now returns a value instead of the
+  error, but not Lightbend's value; that is left to the resolver redesign
+  in o3co/xx.hocon#67 / #125, which replaces this interim guard.
 - **A cycle through nested objects fails with `resolved value too large`
   instead of spending seconds of CPU building an exponentially large value.**
   Once the guard above has cut a cycle, the resolver may cache at most
