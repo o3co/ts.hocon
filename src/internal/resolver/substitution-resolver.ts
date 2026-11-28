@@ -35,7 +35,9 @@ export class SubstitutionResolver {
   // criterion was tightened to node-membership-in-iterating-set — strictly
   // narrower than path-equality. Spec amendment deferred to a follow-up
   // xx.hocon PR (see Phase 6 #3f close-out notes).
-  private resolvingConcats = new WeakSet<object>()
+  // A Set (not a WeakSet) so the priorReentry state can list its members;
+  // entries are removed in `finally`, so nothing outlives its iteration.
+  private resolvingConcats = new Set<object>()
   // Path stack tracking the full dotted path of the field currently being
   // assigned in `resolveResObj`. Leaf keys are pushed on entry to each
   // `(key, val)` iteration and popped on exit, so nested objects build up
@@ -60,11 +62,130 @@ export class SubstitutionResolver {
   // a shape the fold could not see through (a live subst mid-navigation) —
   // report it as a cycle instead of recursing forever.
   private resolvingPrefixPriors = new Set<string>()
+  /**
+   * Interim guard for the in-progress branch of `resolveSubst` (the ts
+   * counterpart of go.hocon#218 / rs.hocon#199). Per substitution key, the
+   * resolver state at each enclosing resolution of that key's saved prior. A
+   * prior can reach another in-progress key whose prior comes back here; that
+   * re-entry is legal and usually terminates, because the state has changed
+   * and the second pass takes different branches. A re-entry whose state
+   * equals an enclosing one repeats it, as `a = ${?b}` / `b = ${?a}` written
+   * twice did until the recursion limit fired: that cycle cannot be broken,
+   * so the optional form is nonexistent and the required form is an error,
+   * as in Lightbend.
+   *
+   * The state is the resolver state known to steer the branches a
+   * substitution takes here: the in-progress set, the S13a.12 prefix-prior
+   * guard set (`resolvingPrefixPriors`), the field path up to the longest
+   * substitution path in the document (`maxSubstLen`; the prefix branch and
+   * the owner checks compare the field path only against a substitution's
+   * segments, so deeper elements never matter), the concatenations being
+   * iterated (`resolvingConcats`, which the self-ref check consults), and
+   * the scope the prior is resolved in. Review found loadable configs that
+   * each omission changed. There are finitely many such states, so the
+   * nesting is finite. The cache is deliberately left out: a
+   * cycle through nested objects adds a deeper cache key on every lap, so a
+   * state that included it would never repeat. The full fix is the resolver
+   * redesign in o3co/xx.hocon#67 / #125.
+   */
+  private priorReentry = new Map<string, string[]>()
+  /** Longest substitution path (segments) in the document; see priorReentry. */
+  private readonly maxSubstLen: number
+  /** Value nodes the cache may still take; see VALUE_NODES_PER_SOURCE_NODE. */
+  private valueBudget: number
+  /**
+   * Where the priorReentry guard has cut a cycle. The value and work budgets
+   * apply only inside a computation that contains a cut, so acyclic input —
+   * deep nesting, long paths, repeated references — is never charged, and
+   * neither is a field resolved beside or after the one that held the cut
+   * (ts.hocon#241 review: a cut in one field made an unrelated 500-level
+   * literal chain under another key exceed the cap). A cut marks every field
+   * open at that moment, since each of them contains it: `cutFields` is how
+   * many of the outermost open fields are marked, and closing a field drops
+   * it. A cut outside any field marks the whole resolution. A cut can happen
+   * on input that loads (a re-entry the guard refuses where base found the
+   * same answer another way); that no such input changes result is
+   * established by differential, not by construction.
+   */
+  private cutFields = 0
+  private openFields = 0
+  private cutOutsideField = false
+  /** Objects numbered by `identity`. */
+  private identities = new Map<object, number>()
+  /**
+   * Substitutions resolved since the first cut; see WORK_AFTER_CUT. After a
+   * cut the guard lets every re-entry in a new state through, and the number
+   * of such states can grow exponentially with the cycle, so this bounds the
+   * CPU the way the value budget bounds the size.
+   */
+  private workAfterCut = 0
 
   constructor(
     private root: ResObj,
     private opts: ResolveOptions,
-  ) {}
+  ) {
+    const stats = documentStats(root)
+    this.maxSubstLen = stats.maxSubstLen
+    this.valueBudget = Math.min(stats.sourceNodes * VALUE_NODES_PER_SOURCE_NODE, MAX_VALUE_BUDGET)
+  }
+
+  /** The resolver state compared by the priorReentry guard. */
+  private reentryState(scope: ResObj): string {
+    return JSON.stringify([
+      [...this.resolving].sort(),
+      [...this.resolvingPrefixPriors].sort(),
+      this.resolvingFieldPath.slice(0, this.maxSubstLen),
+      [...this.resolvingConcats].map(c => this.identity(c)).sort((x, y) => x - y),
+      this.identity(scope),
+    ])
+  }
+
+  /**
+   * Charge `units` to the post-cut work budget (see WORK_AFTER_CUT). Called
+   * only once a cut has happened.
+   */
+  private chargeWork(units: number, s: SubstPlaceholder): void {
+    this.workAfterCut += units
+    if (this.workAfterCut <= WORK_AFTER_CUT) return
+    const key = segmentsToKey(s.segments)
+    throw new ResolveError(
+      this.originPrefix() + `substitution cycle too complex to resolve: ${key}`,
+      key,
+      s.line,
+      s.col,
+    )
+  }
+
+  /**
+   * Work units for building and comparing one re-entry snapshot: it grows
+   * with the keys it holds and is compared against every enclosing snapshot
+   * of the same key, so a dense cycle under long keys made each call
+   * expensive though the number of calls stayed small (ts review round 2,
+   * pd_120_2000; the same unit as rs).
+   */
+  private snapshotUnits(depth: number): number {
+    let bytes = 0
+    for (const k of this.resolving) bytes += k.length
+    for (const k of this.resolvingPrefixPriors) bytes += k.length
+    for (let i = 0; i < Math.min(this.resolvingFieldPath.length, this.maxSubstLen); i++) bytes += this.resolvingFieldPath[i]!.length
+    bytes += this.resolvingConcats.size * 4
+    return (depth + 1) * (1 + Math.floor(bytes / 16))
+  }
+
+  /** Whether the current computation contains a cut (see cutFields). */
+  private charging(): boolean {
+    return this.cutFields > 0 || this.cutOutsideField
+  }
+
+  /** A stable number per object, for the priorReentry state. */
+  private identity(o: object): number {
+    let id = this.identities.get(o)
+    if (id === undefined) {
+      id = this.identities.size + 1
+      this.identities.set(o, id)
+    }
+    return id
+  }
 
   /** Returns a prefix for error messages, including origin info when set. */
   private originPrefix(): string {
@@ -87,6 +208,7 @@ export class SubstitutionResolver {
       // against the truncated path [bar, nested] and mis-route to the
       // prior of `nested` instead of the final tree.
       this.resolvingFieldPath.push(key)
+      this.openFields++
       const fullCacheKey = stringSegmentsToKey(this.resolvingFieldPath)
       this.cache.delete(fullCacheKey)
       try {
@@ -106,15 +228,13 @@ export class SubstitutionResolver {
                   resolved as HoconValue & { kind: 'object' },
                 )
                 result.set(key, finalValue)
-                this.cache.set(fullCacheKey, finalValue)
-                this.cacheDescendants(fullCacheKey, finalValue)
+                this.cacheValue(fullCacheKey, finalValue)
                 continue
               }
             }
           }
           result.set(key, resolved)
-          this.cache.set(fullCacheKey, resolved)
-          this.cacheDescendants(fullCacheKey, resolved)
+          this.cacheValue(fullCacheKey, resolved)
         } else {
           // Unresolved optional substitution: fall back to prior value per HOCON spec
           const prior = obj.priorValues.get(key)
@@ -122,14 +242,15 @@ export class SubstitutionResolver {
             const priorResolved = this.resolveVal(prior, obj)
             if (priorResolved !== undefined) {
               result.set(key, priorResolved)
-              this.cache.set(fullCacheKey, priorResolved)
-              this.cacheDescendants(fullCacheKey, priorResolved)
+              this.cacheValue(fullCacheKey, priorResolved)
             }
           }
         }
       } finally {
         // `continue` routes through here too — every exit pops.
         this.resolvingFieldPath.pop()
+        this.openFields--
+        if (this.cutFields > this.openFields) this.cutFields = this.openFields
       }
     }
     return { kind: 'object', fields: result }
@@ -148,17 +269,53 @@ export class SubstitutionResolver {
     return cur
   }
 
-  private cacheDescendants(prefix: string, value: HoconValue): void {
+  /**
+   * Cache a resolved field value under `key` and each of its descendants
+   * under their own paths, deducting every entry's nodes from the value
+   * budget (see VALUE_NODES_PER_SOURCE_NODE).
+   */
+  private cacheValue(key: string, value: HoconValue): void {
+    this.chargeValueBudget(key, value, Math.floor(key.length / 16))
+    this.cache.set(key, value)
     if (value.kind !== 'object') return
-    for (const [key, child] of value.fields) {
-      const childKey = `${prefix}.${stringSegmentsToKey([key])}`
-      this.cache.set(childKey, child)
-      this.cacheDescendants(childKey, child)
+    for (const [childKey, child] of value.fields) {
+      this.cacheValue(`${key}.${stringSegmentsToKey([childKey])}`, child)
     }
   }
 
+  /**
+   * Deduct a value about to be cached from the value budget, once the guard
+   * has cut a cycle in the current computation (see cutFields); elsewhere,
+   * nothing is charged.
+   */
+  private chargeValueBudget(key: string, value: HoconValue, extra = 0): void {
+    if (!this.charging()) return
+    // Stop counting once over the remaining budget: a shared array can be
+    // exponentially large while cheap to build (ts review round 2, arr40).
+    const n = extra + valueNodesUpTo(value, this.valueBudget - extra)
+    if (n > this.valueBudget) {
+      throw new ResolveError(
+        this.originPrefix() +
+          `resolved value too large: ${key} keeps growing (a cycle through nested objects?)`,
+        key,
+        0,
+        0,
+      )
+    }
+    this.valueBudget -= n
+  }
+
   private resolveVal(v: ResolverValue, scope: ResObj): HoconValue | undefined {
-    if (isSubst(v)) return this.resolveSubst(v, scope)
+    if (isSubst(v)) {
+      const resolved = this.resolveSubst(v, scope)
+      // After a cut, also charge every substitution result as it is produced,
+      // so an array or string that doubles on every lap of a cycle is stopped
+      // while it is being built, not after its field is complete (a ring of
+      // `a_i = [${?a_i+1}, ${?a_i+1}]` written twice; go.hocon#223 /
+      // rs.hocon#203 review).
+      if (resolved !== undefined) this.chargeValueBudget(segmentsToKey(v.segments), resolved)
+      return resolved
+    }
     if (isConcat(v)) {
       // Mark this ConcatPlaceholder as mid-iteration so that resolveSubst can
       // detect a true self-ref (the substitution's found value IS this concat,
@@ -193,6 +350,7 @@ export class SubstitutionResolver {
     s: SubstPlaceholder,
     scope: ResObj,
   ): HoconValue | undefined {
+    if (this.charging()) this.chargeWork(1, s)
     if (s.knownAbsent) {
       // A required substitution folded to knownAbsent (S13a.12 prefix fold
       // with no below value at the navigated path) is the spec's "undefined"
@@ -287,17 +445,31 @@ export class SubstitutionResolver {
         prior =
           scope.priorValues.get(rootSeg) ?? this.root.priorValues.get(rootSeg)
       }
-      if (prior !== undefined) {
+      const outer = this.priorReentry.get(key)
+      if (prior !== undefined && this.charging()) this.chargeWork(this.snapshotUnits(outer?.length ?? 0), s)
+      const state = prior === undefined ? '' : this.reentryState(scope)
+      if (prior !== undefined && !outer?.includes(state)) {
         // Clone the resolving set so that resolving the prior value can re-resolve
         // other paths currently in the set, while key (still present in the clone)
         // continues to guard against infinite recursion on the same path.
         const saved = this.resolving
         this.resolving = new Set(saved)
+        const stack = outer ?? []
+        stack.push(state)
+        this.priorReentry.set(key, stack)
         try {
           return this.resolveVal(prior, scope)
         } finally {
           this.resolving = saved
+          stack.pop()
+          if (stack.length === 0) this.priorReentry.delete(key)
         }
+      }
+      // No prior, or re-entering it would repeat an enclosing resolution
+      // (see priorReentry): the cycle cannot be broken here.
+      if (prior !== undefined) {
+        if (this.openFields === 0) this.cutOutsideField = true
+        else this.cutFields = this.openFields
       }
       if (s.optional) return undefined
       throw new ResolveError(
@@ -703,4 +875,111 @@ export class SubstitutionResolver {
 
     return folded
   }
+}
+
+/**
+ * One walk over the unresolved document, saved priors included: the longest
+ * substitution path (see priorReentry) and the number of nodes (see
+ * VALUE_NODES_PER_SOURCE_NODE). Current values and saved priors share
+ * children, so a container is visited once by identity; without that, a
+ * legal config whose nested prefixes are overridden deepest-first walks an
+ * exponential number of paths (go.hocon#223 review).
+ */
+export function documentStats(root: ResObj): { maxSubstLen: number; sourceNodes: number } {
+  const seen = new Set<object>()
+  let maxSubstLen = 0
+  let sourceNodes = 0
+  const walk = (v: ResolverValue): void => {
+    if (isSubst(v)) {
+      sourceNodes++
+      maxSubstLen = Math.max(maxSubstLen, v.segments.length)
+      return
+    }
+    const hv = v as HoconValue
+    if (!isConcat(v) && !isResObj(v) && hv.kind === 'scalar') {
+      sourceNodes += scalarWeight(hv.raw)
+      return
+    }
+    if (seen.has(v)) return
+    seen.add(v)
+    sourceNodes++
+    if (isConcat(v)) v.nodes.forEach(walk)
+    else if (isResObj(v)) {
+      for (const c of v.fields.values()) walk(c)
+      for (const c of v.priorValues.values()) walk(c)
+    } else if (hv.kind === 'array') hv.items.forEach(x => walk(x as ResolverValue))
+    // Scalars returned above, so this is a resolved object.
+    else for (const c of (hv as HoconValue & { kind: 'object' }).fields.values()) walk(c)
+  }
+  walk(root)
+  return { maxSubstLen, sourceNodes }
+}
+
+/**
+ * Value nodes the resolver may put into its cache, per node of the document,
+ * once the priorReentry guard has cut a cycle. The guard stops every cycle,
+ * but a cycle through nested objects can still nest its value exponentially
+ * before it does, and every resolved field is cached with each of its
+ * descendants (an 8-line input spent seconds there). The budget is charged
+ * only inside a computation that contains a cut (see `cutFields`), so
+ * acyclic input is never charged; that no
+ * input that loads today reaches it is established by differential. Interim,
+ * like the guard (o3co/xx.hocon#67 / #125); the same budget as rs.hocon#199.
+ */
+const VALUE_NODES_PER_SOURCE_NODE = 10_000
+
+/**
+ * Upper bound on the value budget, whatever the document's size: padding
+ * (a 10,000-element array) or prior-heavy documents inflate the node count,
+ * and a 20 KB input reached gigabytes under the per-node budget alone
+ * (rs.hocon memory review; go and rs use the same cap).
+ */
+const MAX_VALUE_BUDGET = 2_000_000
+
+/**
+ * Substitutions the resolver may still resolve once the priorReentry guard
+ * has cut a cycle. After a cut, every re-entry in a state not seen before is
+ * still let through, and the number of states can grow exponentially with
+ * the cycle: inputs that base rejected in milliseconds ran for minutes
+ * (ts guard review). The value budget does not catch that — the cost is
+ * CPU, not size. Nothing is counted before a cut. Interim, like the guard.
+ */
+const WORK_AFTER_CUT = 200_000
+
+/**
+ * Weight of a resolved value for the value budget: its nodes (objects, arrays
+ * and leaves), plus one per 16 characters of scalar text and of object keys,
+ * since a string that doubles on every lap grows without adding nodes (the
+ * cache helper adds one per 16 characters of the cache key too). Counting
+ * stops once it passes `limit`, so charging a huge value — an exponentially
+ * large shared array is cheap to build — costs at most the budget.
+ */
+function valueNodesUpTo(v: HoconValue, limit: number): number {
+  let n = 0
+  const walk = (x: HoconValue): void => {
+    if (n > limit) return
+    if (x.kind === 'object') {
+      n += 1
+      for (const [k, c] of x.fields) {
+        n += Math.floor(k.length / 16)
+        walk(c)
+        if (n > limit) return
+      }
+    } else if (x.kind === 'array') {
+      n += 1
+      for (const c of x.items) {
+        walk(c)
+        if (n > limit) return
+      }
+    } else if (x.kind === 'scalar') n += scalarWeight(x.raw)
+    // An unresolved placeholder left in place by allowUnresolved: a terminal.
+    else n += 1
+  }
+  walk(v)
+  return n
+}
+
+/** Weight of scalar text for the value budget: one node per 16 characters. */
+function scalarWeight(raw: string): number {
+  return 1 + Math.floor(raw.length / 16)
 }
