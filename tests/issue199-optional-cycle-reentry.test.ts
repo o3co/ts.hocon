@@ -35,6 +35,13 @@ describe('a cycle through saved priors written twice (go.hocon#218 / rs.hocon#19
     ['legal re-entry', 'o = { y = ${?a} }\na = ${o.y}\no.x = 5\no.y += [3]\n', { a: [[3]], o: { x: 5, y: [[3]] } }],
     ['self-ref chain', 'a = 1\na = ${a}x\na = ${a}y\nb = ${a}\n', { a: '1xy', b: '1xy' }],
     ['cycle once', 'a = ${?b}\nb = ${?a}\na = ${?b}\n', {}],
+    // Re-entries that terminate only because the prefix-prior guard set or
+    // the field path changed in between (found by review in go/rs): a guard
+    // keyed on the in-progress set alone turned these into errors.
+    ['prefix-prior state', 'o = ${?k}z\no.y = ${?o.y}\nk = ${?o.x}\nk = ${k}z\n', { k: 'z', o: {} }],
+    ['prefix-prior state, deeper', 'o = ${?k}z\no.y.z = ${?o.y.z}\nk = ${?o.x}\nk = ${k}z\n', { k: 'z', o: { y: {} } }],
+    ['field-path state', 'o = { y = ${?k} }\nk = [${?o.y}]\nk = ${?m}\nm = ${?k}\no = ${?k}\n', { k: [[]], m: [[]], o: [[]] }],
+    ['field-path state, two elements', 'o = { y = ${?k} }\nk = [${?o.y}, 1]\nk = ${?m}\nm = ${?k}\no = ${?k}\n', { k: [[1], 1], m: [[1], 1], o: [[1], 1] }],
   ]
   for (const [name, src, want] of cases) {
     it(`${name}: ${JSON.stringify(want)}`, () => {
