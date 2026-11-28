@@ -132,6 +132,38 @@ export class SubstitutionResolver {
     ])
   }
 
+  /**
+   * Charge `units` to the post-cut work budget (see WORK_AFTER_CUT). Called
+   * only once a cut has happened.
+   */
+  private chargeWork(units: number, s: SubstPlaceholder): void {
+    this.workAfterCut += units
+    if (this.workAfterCut <= WORK_AFTER_CUT) return
+    const key = segmentsToKey(s.segments)
+    throw new ResolveError(
+      this.originPrefix() + `substitution cycle too complex to resolve: ${key}`,
+      key,
+      s.line,
+      s.col,
+    )
+  }
+
+  /**
+   * Work units for building and comparing one re-entry snapshot: it grows
+   * with the keys it holds and is compared against every enclosing snapshot
+   * of the same key, so a dense cycle under long keys made each call
+   * expensive though the number of calls stayed small (ts review round 2,
+   * pd_120_2000; the same unit as rs).
+   */
+  private snapshotUnits(depth: number): number {
+    let bytes = 0
+    for (const k of this.resolving) bytes += k.length
+    for (const k of this.resolvingPrefixPriors) bytes += k.length
+    for (let i = 0; i < Math.min(this.resolvingFieldPath.length, this.maxSubstLen); i++) bytes += this.resolvingFieldPath[i]!.length
+    bytes += this.resolvingConcats.size * 4
+    return (depth + 1) * (1 + Math.floor(bytes / 16))
+  }
+
   /** A stable number per object, for the priorReentry state. */
   private identity(o: object): number {
     let id = this.identities.get(o)
@@ -241,7 +273,9 @@ export class SubstitutionResolver {
    */
   private chargeValueBudget(key: string, value: HoconValue, extra = 0): void {
     if (this.cuts === 0) return
-    const n = valueNodes(value) + extra
+    // Stop counting once over the remaining budget: a shared array can be
+    // exponentially large while cheap to build (ts review round 2, arr40).
+    const n = extra + valueNodesUpTo(value, this.valueBudget - extra)
     if (n > this.valueBudget) {
       throw new ResolveError(
         this.originPrefix() +
@@ -299,15 +333,7 @@ export class SubstitutionResolver {
     s: SubstPlaceholder,
     scope: ResObj,
   ): HoconValue | undefined {
-    if (this.cuts > 0 && ++this.workAfterCut > WORK_AFTER_CUT) {
-      const key = segmentsToKey(s.segments)
-      throw new ResolveError(
-        this.originPrefix() + `substitution cycle too complex to resolve: ${key}`,
-        key,
-        s.line,
-        s.col,
-      )
-    }
+    if (this.cuts > 0) this.chargeWork(1, s)
     if (s.knownAbsent) {
       // A required substitution folded to knownAbsent (S13a.12 prefix fold
       // with no below value at the navigated path) is the spec's "undefined"
@@ -402,8 +428,9 @@ export class SubstitutionResolver {
         prior =
           scope.priorValues.get(rootSeg) ?? this.root.priorValues.get(rootSeg)
       }
-      const state = prior === undefined ? '' : this.reentryState(scope)
       const outer = this.priorReentry.get(key)
+      if (prior !== undefined && this.cuts > 0) this.chargeWork(this.snapshotUnits(outer?.length ?? 0), s)
+      const state = prior === undefined ? '' : this.reentryState(scope)
       if (prior !== undefined && !outer?.includes(state)) {
         // Clone the resolving set so that resolving the prior value can re-resolve
         // other paths currently in the set, while key (still present in the clone)
@@ -903,6 +930,33 @@ const WORK_AFTER_CUT = 200_000
  * since a string that doubles on every lap grows without adding nodes. The
  * cache helper adds one per 16 characters of the cache key too.
  */
+/**
+ * valueNodes(v), or any number above `limit` once the count passes it: the
+ * walk stops there, so charging a huge value costs at most the budget.
+ */
+function valueNodesUpTo(v: HoconValue, limit: number): number {
+  let n = 0
+  const walk = (x: HoconValue): void => {
+    if (n > limit) return
+    if (x.kind === 'object') {
+      n += 1
+      for (const [k, c] of x.fields) {
+        n += Math.floor(k.length / 16)
+        walk(c)
+        if (n > limit) return
+      }
+    } else if (x.kind === 'array') {
+      n += 1
+      for (const c of x.items) {
+        walk(c)
+        if (n > limit) return
+      }
+    } else n += 1 + Math.floor(x.raw.length / 16)
+  }
+  walk(v)
+  return n
+}
+
 function valueNodes(v: HoconValue): number {
   if (v.kind === 'object') {
     let n = 1
