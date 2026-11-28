@@ -40,8 +40,10 @@ jobs:
           path: |
             tests/lightbend/testdata/expected
             .xx-hocon-version
-          key: xx-hocon-expected-${{ hashFiles('.xx-hocon-version') }}
-          restore-keys: xx-hocon-expected-
+          # v2: caches written before `make testdata` replaced the tree (an
+          # overlay) can hold an expectation the corpus removed (xx.hocon#140).
+          key: xx-hocon-expected-v2-${{ hashFiles('.xx-hocon-version') }}
+          restore-keys: xx-hocon-expected-v2-
 
       - name: Fetch expected JSON
         run: make testdata

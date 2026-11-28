@@ -636,9 +636,11 @@ class Parser {
     if (raw === 'true' || raw === 'false') return 'boolean'
     if (raw === 'null') return 'null'
     // Number detection: first char must be 0-9 or - (Lightbend-aligned)
-    // Use strict decimal regex matching coerceNumber to ensure consistency
+    // Use strict decimal regex matching coerceNumber to ensure consistency.
+    // A run that starts with "-." stays text, like one that starts with ".",
+    // as in Lightbend 1.4.10 (lightbend/config#861, xx.hocon#140).
     if (raw.length > 0 && (raw.charCodeAt(0) >= 0x30 && raw.charCodeAt(0) <= 0x39 || raw.charCodeAt(0) === 0x2d)) {
-      if (DECIMAL_NUMBER_RE.test(raw)) {
+      if (DECIMAL_NUMBER_RE.test(raw) && !raw.startsWith('-.')) {
         // E19: a numeric literal whose magnitude overflows the double range
         // (`1e999`) is a parse error. Lightbend admits Infinity but cannot
         // render or re-parse it as a number; erroring at the parse (as go
