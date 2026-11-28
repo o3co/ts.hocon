@@ -153,7 +153,7 @@ describe('S8.6 — unquoted-starts conformance (post-E8 amendment)', () => {
     // Lightbend 1.4.10 (xx.hocon#140): a run starting with "-." is not a
     // number, so this is a run with '+' that is not a number (was -500).
     ['-.5e+3', 'error'],
-  ] as const)('a = %s → %j (Lightbend 1.4.6)', (text, expected) => {
+  ] as const)('a = %s → %j (Lightbend 1.4.6; "-." runs 1.4.10)', (text, expected) => {
     if (expected === 'error') {
       expect(() => parse(`a = ${text}`)).toThrow(/reserved character '\+'|unexpected character: "\+"/)
     } else {
@@ -161,7 +161,7 @@ describe('S8.6 — unquoted-starts conformance (post-E8 amendment)', () => {
     }
   })
 
-  // Number-lex edges without `+` (S8.4), Lightbend 1.4.6.
+  // Number-lex edges without `+` (S8.4), Lightbend 1.4.6; "-." runs 1.4.10.
   it.each([
     ['1.', 1],
     ['1.e5', 100000],
@@ -177,8 +177,32 @@ describe('S8.6 — unquoted-starts conformance (post-E8 amendment)', () => {
     ['.5', '.5'],
     ['-.', '-.'],
     ['1.e', '1.e'],
-  ] as const)('a = %s → %j (Lightbend 1.4.6)', (text, expected) => {
+  ] as const)('a = %s → %j (Lightbend 1.4.6; "-." runs 1.4.10)', (text, expected) => {
     expect(parse(`a = ${text}`).get('a')).toBe(expected)
+  })
+
+  // A run that starts with "-." in every position (Lightbend 1.4.10,
+  // xx.hocon#140): it is text, and with a `+` it is an error.
+  it.each([
+    ['-.5 = 1', { '-': { '5': 1 } }],
+    ['-.5e+3 = 1', 'error'],
+    ['a = x -.5e+3', 'error'],
+    ['a = -.5 b', { a: '-.5 b' }],
+    ['a = [-.5]', { a: ['-.5'] }],
+    ['a = [-.5e+3]', 'error'],
+    ['b = 1\na = ${b}-.5', { a: '1-.5', b: 1 }],
+    ['b = 1\na = ${b}-.5e+3', 'error'],
+    ['a = -.5e+3ms', 'error'],
+  ] as const)('"-." run: %j → %j (Lightbend 1.4.10)', (text, expected) => {
+    if (expected === 'error') {
+      expect(() => parse(text)).toThrow(/reserved character '\+'/)
+    } else {
+      expect(parse(text).toObject()).toEqual(expected)
+    }
+  })
+
+  it('getNumber still reads the string "-.5" as -0.5', () => {
+    expect(parse('a = -.5').getNumber('a')).toBe(-0.5)
   })
 
   it.each([
@@ -189,7 +213,7 @@ describe('S8.6 — unquoted-starts conformance (post-E8 amendment)', () => {
     ['x = [1]\nx += 2', { x: [1, 2] }],
     ['1 = [1]\n1+= 2', 'error'], // the number run swallows the + of +=, as in Lightbend
     ['x = [1]\n-.5+= 2', 'error'], // '-' still starts a number run (xx.hocon#140)
-  ] as const)('key position: %j → %j (Lightbend 1.4.6)', (text, expected) => {
+  ] as const)('key position: %j → %j (Lightbend 1.4.6; "-." runs 1.4.10)', (text, expected) => {
     if (expected === 'error') {
       expect(() => parse(text)).toThrow(/reserved character '\+'/)
     } else {
