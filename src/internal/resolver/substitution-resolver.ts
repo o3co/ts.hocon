@@ -877,7 +877,7 @@ export function documentStats(root: ResObj): { maxSubstLen: number; sourceNodes:
     }
     const hv = v as HoconValue
     if (!isConcat(v) && !isResObj(v) && hv.kind === 'scalar') {
-      sourceNodes += valueNodes(hv)
+      sourceNodes += scalarWeight(hv.raw)
       return
     }
     if (seen.has(v)) return
@@ -888,7 +888,8 @@ export function documentStats(root: ResObj): { maxSubstLen: number; sourceNodes:
       for (const c of v.fields.values()) walk(c)
       for (const c of v.priorValues.values()) walk(c)
     } else if (hv.kind === 'array') hv.items.forEach(x => walk(x as ResolverValue))
-    else if (hv.kind === 'object') for (const c of hv.fields.values()) walk(c)
+    // Scalars returned above, so this is a resolved object.
+    else for (const c of (hv as HoconValue & { kind: 'object' }).fields.values()) walk(c)
   }
   walk(root)
   return { maxSubstLen, sourceNodes }
@@ -927,12 +928,10 @@ const WORK_AFTER_CUT = 200_000
 /**
  * Weight of a resolved value for the value budget: its nodes (objects, arrays
  * and leaves), plus one per 16 characters of scalar text and of object keys,
- * since a string that doubles on every lap grows without adding nodes. The
- * cache helper adds one per 16 characters of the cache key too.
- */
-/**
- * valueNodes(v), or any number above `limit` once the count passes it: the
- * walk stops there, so charging a huge value costs at most the budget.
+ * since a string that doubles on every lap grows without adding nodes (the
+ * cache helper adds one per 16 characters of the cache key too). Counting
+ * stops once it passes `limit`, so charging a huge value — an exponentially
+ * large shared array is cheap to build — costs at most the budget.
  */
 function valueNodesUpTo(v: HoconValue, limit: number): number {
   let n = 0
@@ -951,18 +950,13 @@ function valueNodesUpTo(v: HoconValue, limit: number): number {
         walk(c)
         if (n > limit) return
       }
-    } else n += 1 + Math.floor(x.raw.length / 16)
+    } else n += scalarWeight(x.raw)
   }
   walk(v)
   return n
 }
 
-function valueNodes(v: HoconValue): number {
-  if (v.kind === 'object') {
-    let n = 1
-    for (const [k, c] of v.fields) n += Math.floor(k.length / 16) + valueNodes(c)
-    return n
-  }
-  if (v.kind === 'array') return v.items.reduce((n, c) => n + valueNodes(c), 1)
-  return 1 + Math.floor(v.raw.length / 16)
+/** Weight of scalar text for the value budget: one node per 16 characters. */
+function scalarWeight(raw: string): number {
+  return 1 + Math.floor(raw.length / 16)
 }
