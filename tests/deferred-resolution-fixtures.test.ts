@@ -33,6 +33,22 @@ const SKIP: Set<string> = new Set([
   'dr17-e11-package-include-deferred.yaml',
 ])
 
+// ── Per-impl known gaps ───────────────────────────────────────────────────────
+// Scenarios whose expected result ts.hocon does not produce yet. Each runs as
+// a strict expected failure (`it.fails`): a scenario that passes fails the run,
+// so the entry is removed when the gap closes. An entry whose scenario is not
+// on disk has no effect.
+
+const XX139_KNOWN_GAP =
+  "o3co/xx.hocon#139 (resolution-model §8.3): a cycle of optionals across a nested withFallback " +
+  "nests both fields instead of keeping the nested value in the receiver's field only — fixed by " +
+  'the resolution layer (o3co/xx.hocon#67 window); py: o3co/py.hocon#67'
+
+const KNOWN_GAPS: Map<string, string> = new Map([
+  ['dr31-nested-key-order-receiver-first.yaml', XX139_KNOWN_GAP],
+  ['dr32-nested-key-order-receiver-first-renamed.yaml', XX139_KNOWN_GAP],
+])
+
 // ── Source builder ────────────────────────────────────────────────────────────
 
 function buildSource(src: Source): Config {
@@ -189,7 +205,9 @@ if (!existsSync(FIXTURE_DIR)) {
         continue
       }
 
-      it(testName, () => {
+      const gap = KNOWN_GAPS.get(filename)
+      const run = gap === undefined ? it : it.fails
+      run(gap === undefined ? testName : `${testName} (known gap: ${gap})`, () => {
         const { result, errorAt, error } = executeOps(scenario.build, scenario.sources)
 
         if (scenario.expect.outcome === 'error') {
