@@ -214,7 +214,7 @@ class Lexer {
    * sign of a numeric literal (the Lightbend 1.4.6 behaviour). Where a token
    * starts like a number (a digit or `-`: Lightbend's `firstNumberChars`),
    * `pullNumber` takes the maximal `[0-9.eE+-]` run; when that run is a number
-   * (`1e+5`, `-.5e+3`), a `+` inside it is the exponent sign. A run that
+   * (`1e+5`, `-1.5e+3`), a `+` inside it is the exponent sign. A run that
    * contains `+` and is not a number is an error right here — this also covers
    * `1+= 2`, where the run swallows the `+` of `+=` in Lightbend. Returns the
    * input index up to which a `+` is allowed: the end of a number run, else
@@ -539,12 +539,15 @@ function isDecimalDigit(ch: string): boolean {
 const NUMBER_RUN_CHARS = '0123456789.eE+-'
 
 /**
- * What Long.parseLong / Double.parseDouble accept from a `[0-9.eE+-]` run that
- * starts with a digit or `-`. The integer and fraction digits are separate
+ * The `[0-9.eE+-]` runs, starting with a digit or `-`, that convert to a
+ * number: what Long.parseLong / Double.parseDouble accept, less a run that
+ * starts with `-.`, which Lightbend 1.4.10 (lightbend/config#861) no longer
+ * converts — like a `.` run, it stays text, and with a `+` it is an error
+ * (`-.5e+3`, xx.hocon#140). The integer and fraction digits are separate
  * groups so the match stays linear on a long digit run (`\d+\.?\d*`
  * backtracks quadratically).
  */
-const JAVA_NUMBER_RE = /^-?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/
+const JAVA_NUMBER_RE = /^(?:-?\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/
 
 function reservedPlus(line: number, col: number): ParseError {
   return new ParseError(`reserved character '+' is not allowed outside quotes (quote the value)`, line, col)

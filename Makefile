@@ -27,6 +27,9 @@ testdata:
 	fi; \
 	tmpdir="$$(mktemp -d)" && \
 	trap 'rm -rf "$$tmpdir"' EXIT INT TERM && \
+	curl -sfL "https://github.com/$(TESTDATA_REPO)/archive/$(TESTDATA_REF).tar.gz" -o "$$tmpdir/archive.tar.gz" && \
+	tar xzf "$$tmpdir/archive.tar.gz" -C "$$tmpdir" --strip-components=1 && \
+	rm -rf "$(EXPECTED_DIR)" && \
 	mkdir -p "$(EXPECTED_DIR)" && \
 	mkdir -p "$(UNITS_DIR)" && \
 	mkdir -p "$(UNQUOTED_STARTS_DIR)" && \
@@ -39,8 +42,6 @@ testdata:
 	mkdir -p "$(PATH_EMPTY_SEGMENT_DIR)" && \
 	mkdir -p "$(UNQUOTED_FORBIDDEN_DIR)" && \
 	mkdir -p "$(QUOTED_CONTROL_DIR)" && \
-	curl -sfL "https://github.com/$(TESTDATA_REPO)/archive/$(TESTDATA_REF).tar.gz" -o "$$tmpdir/archive.tar.gz" && \
-	tar xzf "$$tmpdir/archive.tar.gz" -C "$$tmpdir" --strip-components=1 && \
 	cp -R "$$tmpdir/expected/hocon/." "$(EXPECTED_DIR)/" && \
 	{ [ ! -d "$$tmpdir/testdata/format-ingestion" ] || { rm -rf tests/lightbend/testdata/format-ingestion && cp -R "$$tmpdir/testdata/format-ingestion" tests/lightbend/testdata/format-ingestion; }; } && \
 	cp -R "$$tmpdir/testdata/hocon/units-default/." "$(UNITS_DIR)/" && \

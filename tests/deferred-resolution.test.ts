@@ -218,13 +218,14 @@ describe('Config._renderJSONForTest', () => {
   })
 
   // Number lexemes that Lightbend reads as numbers but that are not JSON
-  // numbers as written (`1.`, `-.5`, `1.e5`; xx.hocon us60-us63) render as JSON
+  // numbers as written (`1.`, `-1.`, `1.e5`; xx.hocon us60-us62) render as JSON
   // numbers with the missing digit filled in, as Lightbend does and go.hocon
   // does since go#208 — not as quoted strings. Valid JSON either way.
-  it('fills in the digit a number lexeme lacks for JSON (us60-us63)', () => {
+  // (`-.5`, us63, is text since Lightbend 1.4.10, xx.hocon#140.)
+  it('fills in the digit a number lexeme lacks for JSON (us60-us62)', () => {
     const c = parse('a = 1.\nb = -1.\nc = -.5\nd = 1.e5\ne = 1.e+5\nf = -1.e-5')
-    expect(c._renderJSONForTest()).toBe('{"a":1.0,"b":-1.0,"c":-0.5,"d":1.0e5,"e":1.0e+5,"f":-1.0e-5}')
-    expect(JSON.parse(c._renderJSONForTest())).toEqual({ a: 1, b: -1, c: -0.5, d: 100000, e: 100000, f: -0.00001 })
+    expect(c._renderJSONForTest()).toBe('{"a":1.0,"b":-1.0,"c":"-.5","d":1.0e5,"e":1.0e+5,"f":-1.0e-5}')
+    expect(JSON.parse(c._renderJSONForTest())).toEqual({ a: 1, b: -1, c: '-.5', d: 100000, e: 100000, f: -0.00001 })
   })
 
   // Every unquoted-starts fixture Lightbend reads renders to JSON equal to its
