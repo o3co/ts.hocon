@@ -150,7 +150,9 @@ describe('S8.6 — unquoted-starts conformance (post-E8 amendment)', () => {
     ['1e+5e5', 'error'], // ★ go: string
     ['1e+5-', 'error'], // ★ go: string
     ['1.e+5', 100000], // ★ go: error
-    ['-.5e+3', -500],
+    // Lightbend 1.4.10 (xx.hocon#140): a run starting with "-." is not a
+    // number, so this is a run with '+' that is not a number (was -500).
+    ['-.5e+3', 'error'],
   ] as const)('a = %s → %j (Lightbend 1.4.6)', (text, expected) => {
     if (expected === 'error') {
       expect(() => parse(`a = ${text}`)).toThrow(/reserved character '\+'|unexpected character: "\+"/)
@@ -164,7 +166,13 @@ describe('S8.6 — unquoted-starts conformance (post-E8 amendment)', () => {
     ['1.', 1],
     ['1.e5', 100000],
     ['-1.', -1],
-    ['-.5', -0.5],
+    ['-0.5', -0.5],
+    ['-5.', -5],
+    // Text since Lightbend 1.4.10 (xx.hocon#140), like '.5' (was -0.5).
+    ['-.5', '-.5'],
+    ['-.5e3', '-.5e3'],
+    ['-.5e999', '-.5e999'],
+    ['-.5ms', '-.5ms'],
     ['1.5.', '1.5.'],
     ['.5', '.5'],
     ['-.', '-.'],
@@ -180,6 +188,7 @@ describe('S8.6 — unquoted-starts conformance (post-E8 amendment)', () => {
     ['a.1e+5 = 1', 'error'],
     ['x = [1]\nx += 2', { x: [1, 2] }],
     ['1 = [1]\n1+= 2', 'error'], // the number run swallows the + of +=, as in Lightbend
+    ['x = [1]\n-.5+= 2', 'error'], // '-' still starts a number run (xx.hocon#140)
   ] as const)('key position: %j → %j (Lightbend 1.4.6)', (text, expected) => {
     if (expected === 'error') {
       expect(() => parse(text)).toThrow(/reserved character '\+'/)

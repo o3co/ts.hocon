@@ -813,8 +813,8 @@ function renderHoconAsJSON(v: HoconValue): string {
           // Canonicalize leading zeros so the lexeme renders as a valid JSON
           // number matching Lightbend/rs.hocon ("023"->23, "-08.5"->-8.5);
           // xx.hocon#50. Fill in the digit JSON needs around a bare dot, as
-          // Lightbend reads these as numbers (`1.`->1.0, `-.5`->-0.5,
-          // `1.e5`->1.0e5; xx.hocon us60-us63, go#208). Render-only:
+          // Lightbend reads these as numbers (`1.`->1.0, `-1.`->-1.0,
+          // `1.e5`->1.0e5; xx.hocon us60-us62, go#208). Render-only:
           // getString/concat still see the verbatim lexeme (S10.11). Quoting
           // what is still not a JSON number is defensive: the parser's number
           // lexemes all complete to one.
@@ -858,7 +858,7 @@ function normalizeLeadingZeroNumber(raw: string): string {
   return raw.replace(/^([+-]?)0+(\d)/, '$1$2')
 }
 
-/** Adds the digit JSON requires next to a bare decimal point: `1.`→`1.0`, `-.5`→`-0.5`, `1.e5`→`1.0e5`. */
+/** Adds the digit JSON requires next to a bare decimal point: `1.`→`1.0`, `-1.`→`-1.0`, `1.e5`→`1.0e5`. */
 function completeJsonNumber(raw: string): string {
   return raw.replace(/^([+-]?)\./, '$10.').replace(/\.(?=[eE]|$)/, '.0')
 }
