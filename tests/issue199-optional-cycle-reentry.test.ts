@@ -197,6 +197,22 @@ describe('documentStats visits a shared container once', () => {
     expect(stats.maxSubstLen).toBe(2)
     expect(stats.sourceNodes).toBe(62)
   })
+  it('counts resolved objects, arrays, concatenations and scalar text, each container once', () => {
+    const scalar = (raw: string) => ({ kind: 'scalar', raw, valueType: 'string' }) as const
+    const subst = { _kind: 'subst-placeholder', segments: [{ text: 'a' }, { text: 'b' }, { text: 'c' }], optional: true, knownAbsent: false, listSuffix: false, line: 1, col: 1, prefixLen: 0 }
+    // a resolved object (1) whose 21-character scalar weighs 2, shared by a
+    // second field and a saved prior (counted once)
+    const obj = { kind: 'object', fields: new Map([['x', scalar('abcdefghijklmnopqrstu')]]) }
+    const root = makeResObj()
+    root.fields.set('o', obj as never)
+    root.fields.set('again', obj as never)
+    root.priorValues.set('o', obj as never)
+    root.fields.set('arr', { kind: 'array', items: [scalar('v')] } as never) // 1 + 1
+    root.fields.set('c', { _kind: 'concat-placeholder', nodes: [subst, scalar('x')], line: 1, col: 1 } as never) // 1 + 1 + 1
+    const stats = documentStats(root)
+    expect(stats.maxSubstLen).toBe(3)
+    expect(stats.sourceNodes).toBe(1 + 3 + 2 + 3)
+  })
 })
 
 // ts-specific steering state (ts guard review). These configs load today
