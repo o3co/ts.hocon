@@ -34,10 +34,11 @@ const SKIP: Set<string> = new Set([
 ])
 
 // ── Per-impl known gaps ───────────────────────────────────────────────────────
-// Scenarios whose expected result ts.hocon does not produce yet. Each runs as
-// a strict expected failure (`it.fails`): a scenario that passes fails the run,
-// so the entry is removed when the gap closes. An entry whose scenario is not
-// on disk has no effect.
+// Scenarios whose expected tree ts.hocon does not produce yet. Each is a strict
+// expected failure limited to the JSON comparison: every other check (a step
+// error, isResolved, getters) runs as usual, and the resolved tree must differ
+// from expect.json — a match fails the run, so the entry is removed when the
+// gap closes. An entry whose scenario is not on disk has no effect.
 
 const XX139_KNOWN_GAP =
   "o3co/xx.hocon#139 (resolution-model §8.3): a cycle of optionals across a nested withFallback " +
@@ -206,8 +207,14 @@ if (!existsSync(FIXTURE_DIR)) {
       }
 
       const gap = KNOWN_GAPS.get(filename)
-      const run = gap === undefined ? it : it.fails
-      run(gap === undefined ? testName : `${testName} (known gap: ${gap})`, () => {
+
+      it(gap === undefined ? testName : `${testName} (known gap: see KNOWN_GAPS)`, () => {
+        if (gap !== undefined) {
+          expect(
+            scenario.expect.outcome === 'success' && scenario.expect.json !== undefined,
+            'a KNOWN_GAPS entry must be a success scenario with expect.json',
+          ).toBe(true)
+        }
         const { result, errorAt, error } = executeOps(scenario.build, scenario.sources)
 
         if (scenario.expect.outcome === 'error') {
@@ -243,7 +250,13 @@ if (!existsSync(FIXTURE_DIR)) {
           const expectedObj = JSON.parse(scenario.expect.json)
           const gotStr = result._renderJSONForTest()
           const gotObj = JSON.parse(gotStr)
-          expect(gotObj).toEqual(expectedObj)
+          if (gap === undefined) {
+            expect(gotObj).toEqual(expectedObj)
+          } else {
+            expect(gotObj, `listed in KNOWN_GAPS but matches — remove the entry (${gap})`).not.toEqual(
+              expectedObj,
+            )
+          }
         }
 
         if (scenario.expect.getter !== undefined) {
