@@ -63,25 +63,45 @@ export class SubstitutionResolver {
   /**
    * Interim guard for the in-progress branch of `resolveSubst` (the ts
    * counterpart of go.hocon#218 / rs.hocon#199). Per substitution key, the
-   * in-progress set (sorted, joined) at each enclosing resolution of that
-   * key's saved prior. A prior can reach another in-progress key whose prior
-   * comes back here; that re-entry is legal and usually terminates, because
-   * the keys entered in between take a different branch the second time. A
-   * re-entry whose in-progress set equals an enclosing one repeats it, as
-   * `a = ${?b}` / `b = ${?a}` written twice did until the recursion limit
-   * fired: that cycle cannot be broken, so the optional form is nonexistent
-   * and the required form is an error, as in Lightbend. There are finitely
-   * many sets, so the nesting is finite. The cache is deliberately not part
-   * of the state: a cycle through nested objects adds a deeper cache key on
-   * every lap. The full fix is the resolver redesign in o3co/xx.hocon#67 /
-   * #125.
+   * resolver state at each enclosing resolution of that key's saved prior. A
+   * prior can reach another in-progress key whose prior comes back here; that
+   * re-entry is legal and usually terminates, because the state has changed
+   * and the second pass takes different branches. A re-entry whose state
+   * equals an enclosing one repeats it, as `a = ${?b}` / `b = ${?a}` written
+   * twice did until the recursion limit fired: that cycle cannot be broken,
+   * so the optional form is nonexistent and the required form is an error,
+   * as in Lightbend.
+   *
+   * The state is everything that steers the branches a substitution takes
+   * here: the in-progress set, the S13a.12 prefix-prior guard set
+   * (`resolvingPrefixPriors`), and the field path up to the longest
+   * substitution path in the document (`maxSubstLen`; the prefix branch and
+   * the owner checks compare the field path only against a substitution's
+   * segments, so deeper elements never matter). There are finitely many such
+   * states, so the nesting is finite. The cache is deliberately left out: a
+   * cycle through nested objects adds a deeper cache key on every lap, so a
+   * state that included it would never repeat. The full fix is the resolver
+   * redesign in o3co/xx.hocon#67 / #125.
    */
   private priorReentry = new Map<string, string[]>()
+  /** Longest substitution path (segments) in the document; see priorReentry. */
+  private readonly maxSubstLen: number
 
   constructor(
     private root: ResObj,
     private opts: ResolveOptions,
-  ) {}
+  ) {
+    this.maxSubstLen = maxSubstLenObj(root)
+  }
+
+  /** The resolver state compared by the priorReentry guard. */
+  private reentryState(): string {
+    return JSON.stringify([
+      [...this.resolving].sort(),
+      [...this.resolvingPrefixPriors].sort(),
+      this.resolvingFieldPath.slice(0, this.maxSubstLen),
+    ])
+  }
 
   /** Returns a prefix for error messages, including origin info when set. */
   private originPrefix(): string {
@@ -304,7 +324,7 @@ export class SubstitutionResolver {
         prior =
           scope.priorValues.get(rootSeg) ?? this.root.priorValues.get(rootSeg)
       }
-      const state = [...this.resolving].sort().join('\u0000')
+      const state = prior === undefined ? '' : this.reentryState()
       const outer = this.priorReentry.get(key)
       if (prior !== undefined && !outer?.includes(state)) {
         // Clone the resolving set so that resolving the prior value can re-resolve
@@ -729,4 +749,21 @@ export class SubstitutionResolver {
 
     return folded
   }
+}
+
+/** Longest substitution path (in segments) anywhere in `v`, priors included. */
+function maxSubstLen(v: ResolverValue): number {
+  if (isSubst(v)) return v.segments.length
+  if (isConcat(v)) return v.nodes.reduce((n, x) => Math.max(n, maxSubstLen(x)), 0)
+  if (isResObj(v)) return maxSubstLenObj(v)
+  const hv = v as HoconValue
+  if (hv.kind === 'array') return hv.items.reduce((n, x) => Math.max(n, maxSubstLen(x as ResolverValue)), 0)
+  return 0
+}
+
+function maxSubstLenObj(o: ResObj): number {
+  let n = 0
+  for (const v of o.fields.values()) n = Math.max(n, maxSubstLen(v))
+  for (const v of o.priorValues.values()) n = Math.max(n, maxSubstLen(v))
+  return n
 }
