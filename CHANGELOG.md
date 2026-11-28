@@ -20,7 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   limit fired (go and rs crashed on the same input: go.hocon#218,
   rs.hocon#199). A re-entry in an unchanged state is now treated as an
   unbreakable cycle: an optional substitution is nonexistent and a required
-  one is a `ResolveError`. Every input that loaded before reads the same. A
+  one is a `ResolveError`. No input that loads today changes result (checked
+  by a differential over 157,254 inputs against the previous release). A
   cycle written twice through string concatenation (`a = ${?b}x` /
   `b = ${?a}y`, twice) now returns a value instead of the error, but not
   Lightbend's value; that is left to the resolver redesign in
@@ -30,11 +31,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Once the guard above has cut a cycle, the resolver may cache at most
   10,000 value nodes per node of the document; past that, resolution fails
   with `ResolveError: resolved value too large: <path> keeps growing (a cycle
-  through nested objects?)`. Nothing is charged before a cut, and a cut
-  happens only on input that hit the recursion-limit error before, so no
-  config that loaded is affected: deep nesting, long paths and repeated
-  references (`a1 = { x = ${a0}, y = ${a0} }`, …) are never charged. Interim,
-  like the guard (same budget as rs.hocon#199).
+  through nested objects?)`. Nothing is charged before a cut, so acyclic
+  input — deep nesting, long paths, repeated references
+  (`a1 = { x = ${a0}, y = ${a0} }`, …) — is never charged; that no input
+  that loads today reaches the budget is checked by the same differential.
+  The budget is capped at 2,000,000 nodes, and object keys and cache keys
+  count one node per 16 characters, so padding cannot inflate it. After a
+  cut, every substitution result is also charged as it is produced, so an
+  array or string that doubles on every lap of a cycle (a 16-key ring of
+  `a_i = [${?a_i+1}, ${?a_i+1}]` written twice) fails while it is being built
+  instead of exhausting memory; scalar text counts one node per 16
+  characters. Interim, like the guard (same budget as rs.hocon#199).
+- **A cycle whose re-explorations multiply after the guard has cut it fails
+  with `substitution cycle too complex to resolve` instead of running for
+  minutes.** After a cut, at most 200,000 further substitutions are
+  resolved; inputs that base rejected in milliseconds had run for minutes.
+  Nothing is counted before a cut. Interim, like the guard.
 - **BREAKING (S1.2.4): a raw control character inside a quoted string is a
   parse error** ([xx.hocon#130](https://github.com/o3co/xx.hocon/issues/130)).
   JSON and Lightbend reject a raw C0 control character (U+0000–U+001F) inside
