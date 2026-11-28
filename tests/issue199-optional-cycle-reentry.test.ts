@@ -18,6 +18,8 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { ResolveError } from '../src/errors.js'
 import { parse, parseFile } from '../src/index.js'
+import { documentStats } from '../src/internal/resolver/substitution-resolver.js'
+import { makeResObj, type ResObj } from '../src/internal/resolver/types.js'
 
 const ocDir = fileURLToPath(new URL('./lightbend/testdata/hocon/optional-cycle-repeat', import.meta.url))
 const ocExpectedDir = fileURLToPath(new URL('./lightbend/testdata/expected/optional-cycle-repeat', import.meta.url))
@@ -76,7 +78,7 @@ describe('value budget for a cycle through nested objects (rs.hocon#199)', () =>
     ['r3c', "o.x = 2\no.x = ${?o}\no.y = { z = ${?o.y.z} }\no.y.z = ${?o}\no.x = ${?o.x}\no.y = { x = ${?o.y} }\no.y = { q = ${?o.y.z} }\n"],
   ] as const) {
     it(`${name}: resolved value too large`, () => {
-      expect(() => parse(src)).toThrow(/resolved value too large: o\.y\.\S+ keeps growing/)
+      expect(() => parse(src)).toThrow(/resolved value too large: \S+ keeps growing/)
     })
   }
 })
@@ -107,6 +109,118 @@ describe('value budget leaves acyclic input alone', () => {
     const leaves = (v: unknown): number =>
       v && typeof v === 'object' ? Object.values(v as object).reduce((n: number, c) => n + leaves(c), 0) : 1
     expect(leaves(obj.a12)).toBe(4096)
+  })
+})
+
+// The budget tests do bounded but non-trivial work before the bound hits; a
+// generous timeout keeps a loaded runner from failing them. No time is asserted.
+const BUDGET_TEST_TIMEOUT = 60_000
+
+// A ring of 16 keys, every line written twice, whose value doubles on every
+// lap. The value budget is charged as each substitution result is produced
+// and the work budget counts substitutions after a cut, so either stops it
+// while the value is being built rather than after exhausting memory
+// (go.hocon#223 / rs.hocon#203 review). No time or memory is asserted.
+describe('doubling rings (go.hocon#223 / rs.hocon#203 review)', () => {
+  const ring = (element: (next: number) => string): string => {
+    const n = 16
+    const lines = Array.from({ length: n }, (_, i) => `a${i} = ${element((i + 1) % n)}`).join('\n')
+    return `${lines}\n${lines}\n`
+  }
+  it('array ring: stopped by a budget', () => {
+    expect(() => parse(ring(j => `[\${?a${j}}, \${?a${j}}]`))).toThrow(/resolved value too large|substitution cycle too complex/)
+  }, BUDGET_TEST_TIMEOUT)
+  it('string ring: stopped by a budget', () => {
+    expect(() => parse(ring(j => `\${?a${j}}\${?a${j}}x`))).toThrow(/resolved value too large|substitution cycle too complex/)
+  }, BUDGET_TEST_TIMEOUT)
+})
+
+// Post-cut bounds (rs.hocon memory review): wide references that re-explore
+// cut subtrees, a dense cycle, and a string ring padded to inflate the
+// per-node budget. Whichever bound hits first is accepted. No time or memory
+// is asserted.
+describe('post-cut bounds', () => {
+  const stopped = /resolved value too large|substitution cycle too complex/
+  const twice = (lines: string[]): string => `${lines.join('\n')}\n${lines.join('\n')}\n`
+  it('wide references (8 per line)', () => {
+    const refs = (k: string) => Array(8).fill(`\${?${k}}`).join('')
+    expect(() => parse(twice([`a = ${refs('b')}`, `b = ${refs('a')}`]))).toThrow(stopped)
+  }, BUDGET_TEST_TIMEOUT)
+  it('a dense cycle (10 keys, each referencing all 10)', () => {
+    const all = Array.from({ length: 10 }, (_, i) => `\${?k${i + 1}}`).join('')
+    expect(() => parse(twice(Array.from({ length: 10 }, (_, i) => `k${i + 1} = ${all}`)))).toThrow(stopped)
+  }, BUDGET_TEST_TIMEOUT)
+  it('a padded string ring (16 keys, 10,000-element pad)', () => {
+    const ring = Array.from({ length: 16 }, (_, i) => `a${i} = \${?a${(i + 1) % 16}}\${?a${(i + 1) % 16}}x`)
+    const pad = `pad = [${Array(10_000).fill(1).join(',')}]`
+    expect(() => parse(`${pad}\n${twice(ring)}`)).toThrow(stopped)
+  }, BUDGET_TEST_TIMEOUT)
+})
+
+// documentStats walks fields and saved priors; current values and priors
+// share children, so without an identity check a chain whose every level
+// reaches the next level twice walks 2^depth paths.
+describe('documentStats visits a shared container once', () => {
+  it('a 60-level chain shared through fields and priorValues', () => {
+    let child: ResObj = makeResObj()
+    child.fields.set('s', { _kind: 'subst-placeholder', segments: [{ text: 'a' }, { text: 'b' }], optional: true, knownAbsent: false, listSuffix: false, line: 1, col: 1, prefixLen: 0 } as never)
+    for (let i = 0; i < 60; i++) {
+      const o = makeResObj()
+      o.fields.set('k', child)
+      o.priorValues.set('k', child)
+      child = o
+    }
+    const stats = documentStats(child)
+    expect(stats.maxSubstLen).toBe(2)
+    expect(stats.sourceNodes).toBe(62)
+  })
+})
+
+// ts-specific steering state (ts guard review). These configs load today
+// and go through a cut; a snapshot without the concat-iteration set or the
+// scope identity changed their result. Expected values are ts base (5793e00).
+describe('re-entry state includes the concat set and the scope', () => {
+  const cases: ReadonlyArray<readonly [string, string, unknown]> = [
+    ['cx1', "a.a = ${?b}\nc.b { b { a += x, b += ${?a}, a += [${?c}] } }\nc.b { b { a += [] } }\na = ${c}\na = ${?a}\n", {"a": {"b": {"b": {"a": ["x", [{"b": {"b": {"a": ["x", []], "b": [["x"], ["x"]]}}}], []], "b": [["x"], ["x", [{"b": {"b": {"a": ["x", []], "b": [["x"], ["x"]]}}}]]]}}}, "c": {"b": {"b": {"a": ["x", [{"b": {"b": {"a": ["x", [{"b": {"b": {"a": ["x", []], "b": [["x"], {"b": {"b": {"a": ["x", [{"b": {"b": {"a": ["x", []], "b": [["x"], ["x"]]}}}], []], "b": [["x"], ["x", [{"b": {"b": {"a": ["x", []], "b": [["x"], ["x"]]}}}]]]}}}]}}}], []], "b": [["x"], {"b": {"b": {"a": ["x", [{"b": {"b": {"a": ["x", []], "b": [["x"], ["x"]]}}}], []], "b": [["x"], ["x", [{"b": {"b": {"a": ["x", []], "b": [["x"], ["x"]]}}}]]]}}}]}}}], []], "b": [{"b": {"b": {"a": ["x", [{"b": {"b": {"a": ["x", []], "b": [["x"], ["x"]]}}}], []], "b": [["x"], ["x", [{"b": {"b": {"a": ["x", []], "b": [["x"], ["x"]]}}}]]]}}}]}}}}],
+    ['cx2', "b += { b { a { a = ${?c} }, a += [{ a = 1 }] }, b += { b { b { a = 1 } ${?a}, a { a = 1 } } } } { b += 2, b = [[${?c}]] }\nc = [${?b}]\nc = ${?b}\na.a.a = ${?c}\nb += { b { a { a { a = 1 } }, a += [{ a = 1 }] }, b += { b { b { a = 1 } { a = 1 } } } }\n", {"a": {"a": {"a": [{"b": [[[{"b": [[[[2]]]]}]]]}, {"b": [{"b": {"b": {"a": 1}}}]}]}}, "b": [{"b": [[[{"b": [[[[2]]]]}]]]}, {"b": [{"b": {"b": {"a": 1}}}]}], "c": [{"b": [[[{"b": [[[[2]]]]}]]]}, {"b": [{"b": {"b": {"a": 1}}}]}]}],
+  ]
+  for (const [name, text, expected] of cases) {
+    it(`${name} loads as before`, () => {
+      expect(parse(text).toObject()).toEqual(expected)
+    })
+  }
+})
+
+// One config per state component: a build whose snapshot omits that
+// component changes its result (found by differential over the review
+// corpora). c1 loads in base too, with this value. The others hit the
+// recursion limit in base, so their expected value is this fix's; no
+// base-loadable input in the corpora depends on the field path or the
+// concat set alone (cx1 / cx2 above need the concat set or the scope).
+describe('each re-entry state component is load-bearing', () => {
+  const cases: ReadonlyArray<readonly [string, string, string, unknown]> = [
+    ["the field path", "h03845.conf", "o.y.z = { y += 7, z = ${?o.x} ${p.q} }\np.q += ${?p}\no.y.z = { y += 7, z = ${?o.x} ${p.q} }\np.q += ${?p}\n", {"o": {"y": {"z": {"y": [7, 7], "z": [{"q": [{"q": [{"q": []}]}, {"q": [{"q": []}]}]}, {"q": [{"q": [{"q": []}]}, {"q": [{"q": []}]}]}]}}}, "p": {"q": [{"q": [{"q": [{"q": []}]}]}, {"q": [{"q": [{"q": []}]}]}]}}],
+    ["the prefix-prior set", "c1.conf", "x = ${a}\nx = ${a}\na = ${?x.y}\na = ${?a}ok\n", {"a": "ok", "x": "ok"}],
+    ["the concat set", "u00187.conf", "a = 5\na.a += { a = ${?a} }\na.a += ${?b.a}\n", {"a": {"a": [{"a": {"a": [{"a": {"a": [{"a": {"a": [{"a": 5}]}}, {"a": 5}]}}]}}]}}],
+    ["the scope", "t19411.conf", "o.x = ${?o.y}\no.y = ${?o}\no.y.z = [${?o.y}]\n", {"o": {"x": {"x": {"x": {"y": {"x": {"y": {}}}}, "y": {"x": {"x": {"y": {}}, "y": {}}}}, "y": {"x": {"x": {"y": {}}, "y": {"x": {"y": {}}}}, "y": {"x": {"x": {"y": {}}, "y": {}}}, "z": [{"x": {"y": {"x": {"y": {}}}}, "y": {"x": {"x": {"y": {}}, "y": {}}}}]}, "z": [{"x": {"x": {"y": {"x": {"y": {}}}}, "y": {"x": {"x": {"y": {}}, "y": {}}}}, "y": {"x": {"x": {"y": {}}, "y": {"x": {"y": {}}}}, "y": {"x": {"x": {"y": {}}, "y": {}}}, "z": [{"x": {"y": {"x": {"y": {}}}}, "y": {"x": {"x": {"y": {}}, "y": {}}}}]}}]}, "y": {"x": {"x": {"x": {"y": {"x": {"y": {}}}}, "y": {"x": {"x": {"y": {}}, "y": {}}}}, "y": {"x": {"x": {"y": {}}, "y": {"x": {"y": {}}}}, "y": {"x": {"x": {"y": {}}, "y": {}}}, "z": [{"x": {"y": {"x": {"y": {}}}}, "y": {"x": {"x": {"y": {}}, "y": {}}}}]}}, "y": {"x": {"x": {"y": {}}, "y": {"x": {"y": {}}}}, "y": {"x": {"x": {"y": {}}, "y": {}}}, "z": [{"x": {"y": {"x": {"y": {}}}}, "y": {"x": {"x": {"y": {}}, "y": {}}}}]}, "z": [{"x": {"x": {"y": {"x": {"y": {}}}}, "y": {"x": {"x": {"y": {}}, "y": {}}}}, "y": {"x": {"x": {"y": {}}, "y": {"x": {"y": {}}}}, "y": {"x": {"x": {"y": {}}, "y": {}}}, "z": [{"x": {"y": {"x": {"y": {}}}}, "y": {"x": {"x": {"y": {}}, "y": {}}}}]}}]}}}],
+  ]
+  for (const [component, name, text, expected] of cases) {
+    it(`${component}: ${name}`, () => {
+      expect(parse(text).toObject()).toEqual(expected)
+    })
+  }
+})
+
+// After a cut the guard lets each re-entry in a new state through, and the
+// states can multiply exponentially. Base answered these quickly (an error);
+// the work budget keeps the answer an error instead of minutes of CPU. No
+// time is asserted.
+describe('work budget after a cut (ts guard review)', () => {
+  it('s16427: the base error', () => {
+    expect(() => parse("o.o = { o = ${?o.a} ${?o.o} }\no.b = ${o.b}x\no.o.a = ${o.o.a} y\no.o.a += ${?o}[1]\no.o.a = x${?o.o}\no.a = ${o.o.a}y\no.o.a = ${o.o.a} y\no.o.a += ${?o}[1]\no.o.a = x${?o.o}\no.a = ${o.o.a}y\no.o.a = x${?o.o}\no.o.a = ${o.o.a} y\no.o.a += ${?o}[1]\no.o.a = x${?o.o}\no.a = ${o.o.a}y\n")).toThrow(/circular substitution: o\.o\.a/)
+  })
+  it('h04998: an error', () => {
+    expect(() => parse("o.y = ${o.y} ${o.y}\nb = ${a}${b}\no.y.z = ${?o.y.z}${?o}\no.x = ${o.x} y\no.y.z += ${?o.y.z} ${?c}\no.x = ${o.x}\no.y.z = ${?o.y.z}${?o}\no.x = ${o.x} y\no.y.z += ${?o.y.z} ${?c}\no.x = ${o.x}\no.y.z = ${?o.y.z}${?o}\no.x = ${o.x} y\no.y.z += ${?o.y.z} ${?c}\no.x = ${o.x}\no.x = ${o.x}x\no.y.z = ${o.y.z} y\n")).toThrow(ResolveError)
   })
 })
 
